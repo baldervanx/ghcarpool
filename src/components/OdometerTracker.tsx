@@ -44,6 +44,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const MAX_DIST = 999;
+const COST_PER_KM = 2.5; // FIXME: Fetch from DB.
 
 const OdometerTracker = () => {
   const [user, setUser] = useState(null);
@@ -54,7 +55,9 @@ const OdometerTracker = () => {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [lastOdometer, setLastOdometer] = useState('');
   const [tripDistance, setTripDistance] = useState('');
+  const [cost, setCost] = useState('');
   const [newOdometer, setNewOdometer] = useState('');
+  const [editOdometer, setEditOdometer] = useState('');
   const [comment, setComment] = useState('');
   
   useEffect(() => {
@@ -69,8 +72,9 @@ const OdometerTracker = () => {
         if (isMember) {
           await fetchData();          
           setSelectedUsers([userDoc.id]); // Förvälj användaren
+          setUser({user_id: userDoc.id, ...user});
         }
-      }
+      }      
     });
     return () => unsubscribe();
   }, []);
@@ -136,11 +140,21 @@ const OdometerTracker = () => {
     fetchLastOdometer(carId);
   };
 
-  const handleNewOdometerChange = (value) => {
-    setNewOdometer(value);
-    let dist = value - lastOdometer;
-    if (dist < 0 || dist > MAX_DIST) dist = 0;
+  const handleOdometerChange = (value) => {
+    setEditOdometer(value);
+    let newOdometer = lastOdometer;
+    if (value.length > 0) {
+      let prefix = lastOdometer.slice(0, -value.length);
+      newOdometer = prefix + value;
+      if (newOdometer < lastOdometer) {
+          newOdometer = (parseInt(prefix) + 1).toString() + value;
+      }
+    }
+    let dist = newOdometer - lastOdometer;
+    if (dist <= 0 || dist > MAX_DIST) dist = '';
     setTripDistance(dist);
+    setCost(dist != '' ? (dist*COST_PER_KM).toFixed(2) + " kr" : '');
+    setNewOdometer(newOdometer);
   }
 
   const handleUserToggle = (userId) => {
@@ -162,18 +176,20 @@ const OdometerTracker = () => {
     try {
       const carRef = doc(db, 'cars', selectedCar);
       const userRefs = selectedUsers.map((u) => doc(db, 'users', u));
+      const byUser = doc(db, 'users', user.user_id);
       await addDoc(collection(db, 'trips'), {
         car: carRef,
         users: userRefs,
         odo: Number(newOdometer),
         distance: tripDistance,
+        cost: cost,
         timestamp: serverTimestamp(),
-        comment: comment
+        comment: comment,
+        byUser: byUser
       });
       
       alert('Resa sparad!');
-      setTripDistance(0);
-      setComment('');
+      handleOdometerChange('');
       fetchLastOdometer(selectedCar);
     } catch (error) {
       console.error('Error saving trip:', error);
@@ -253,22 +269,48 @@ const OdometerTracker = () => {
         />
       </div>
 
-      <div className="space-y-2">
-        <Label>Sträcka</Label>
-        <Input
-          type="number"
-          value={tripDistance}
-          disabled
-        />
+      <div className="flex gap-4">
+        <div className="space-y-2 flex-1">
+          <Label>Ny mätarställning</Label>
+          <Input
+            type="number"
+            value={newOdometer}
+            disabled
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Sista siffror</Label>
+          <Input
+            min="0"
+            max="999"
+            type="number"
+            value={editOdometer}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value.length <= 3 && parseInt(value) <= 999) {
+                handleOdometerChange(value);
+              }
+            }}
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label>Ny mätarställning</Label>
-        <Input
-          type="number"
-          value={newOdometer}
-          onChange={(e) => handleNewOdometerChange(e.target.value)}
-        />
+      <div className="flex gap-4">
+        <div className="space-y-2 flex-1">
+          <Label>Sträcka</Label>
+          <Input
+            type="number"
+            value={tripDistance}
+            disabled
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Kostnad</Label>
+          <Input
+            value={cost}
+            disabled
+          />
+        </div>
       </div>
 
       <div className="space-y-2">

@@ -1,6 +1,6 @@
 {
-  "name": "GH Bilpool",
-  "short_name": "GHBil",
+  "name": "Goda Händer Bilpool",
+  "short_name": "GHBilpool",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -10,6 +10,16 @@
       "src": "favicon.jpg",
       "sizes": "64x64",
       "type": "image/jpeg"
+    },
+    {
+      "src": "ghlogo192.png",
+      "type": "image/jpeg",
+      "sizes": "192x192"
+    },
+    {
+      "src": "ghlogo512.png",
+      "type": "image/jpeg",
+      "sizes": "512x512"
     }
   ]
 }

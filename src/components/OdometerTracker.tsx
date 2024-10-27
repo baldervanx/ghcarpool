@@ -15,7 +15,8 @@ import {
   where,
   addDoc,
   serverTimestamp,
-  doc
+  doc,
+  limit
 } from 'firebase/firestore';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,26 +43,44 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const MAX_DIST = 999;
 
 const OdometerTracker = () => {
   const [user, setUser] = useState(null);
+  const [isMember, setIsMember] = useState(false); 
   const [cars, setCars] = useState([]);
   const [users, setUsers] = useState([]);
-  const [selectedCar, setSelectedCar] = useState('');
+  const [selectedCar, setSelectedCar] = useState('');  
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [lastOdometer, setLastOdometer] = useState('');
+  const [tripDistance, setTripDistance] = useState('');
   const [newOdometer, setNewOdometer] = useState('');
+  const [comment, setComment] = useState('');
   
   useEffect(() => {
     // Lyssna på auth-status
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
-        fetchData();
+        // Kontrollera medlemskap när användaren loggar in
+        const userDoc = await getUserDocByEmail(user.email);
+        const isMember = userDoc != null;
+        setIsMember(isMember);
+        if (isMember) {
+          await fetchData();          
+          setSelectedUsers([userDoc.id]); // Förvälj användaren
+        }
       }
     });
     return () => unsubscribe();
   }, []);
+
+  const getUserDocByEmail = async (email) => {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', email));
+    const snapshot = await getDocs(q);
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  };
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
@@ -96,8 +115,8 @@ const OdometerTracker = () => {
     const q = query(
       tripsRef,
       where('car', '==', carRef),
-      orderBy('timestamp', 'desc')
-      //limit(1)
+      orderBy('timestamp', 'desc'),
+      limit(1)
     );
     
     const snapshot = await getDocs(q);
@@ -106,6 +125,7 @@ const OdometerTracker = () => {
       setLastOdometer(lastTrip.odo.toString());
       setNewOdometer(lastTrip.odo.toString());
     } else {
+      alert('Bilen saknar logg, ny bil?');
       setLastOdometer('0');
       setNewOdometer('0');
     }
@@ -115,6 +135,13 @@ const OdometerTracker = () => {
     setSelectedCar(carId);
     fetchLastOdometer(carId);
   };
+
+  const handleNewOdometerChange = (value) => {
+    setNewOdometer(value);
+    let dist = value - lastOdometer;
+    if (dist < 0 || dist > MAX_DIST) dist = 0;
+    setTripDistance(dist);
+  }
 
   const handleUserToggle = (userId) => {
     setSelectedUsers(prev => {
@@ -139,10 +166,14 @@ const OdometerTracker = () => {
         car: carRef,
         users: userRefs,
         odo: Number(newOdometer),
-        timestamp: serverTimestamp()
+        distance: tripDistance,
+        timestamp: serverTimestamp(),
+        comment: comment
       });
       
       alert('Resa sparad!');
+      setTripDistance(0);
+      setComment('');
       fetchLastOdometer(selectedCar);
     } catch (error) {
       console.error('Error saving trip:', error);
@@ -156,6 +187,25 @@ const OdometerTracker = () => {
         <Button onClick={signIn}>
           Logga in med Google
         </Button>
+      </div>
+    );
+  }
+
+  // Visa meddelande om användaren inte är medlem
+  if (!isMember) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="p-6">
+          <h2 className="text-xl font-bold mb-4">Åtkomst nekad</h2>
+          <p>Du är inte medlem i denna bilpool.</p>
+          <p>Kontakta administratören för att få tillgång.</p>
+          <Button 
+            onClick={() => signOut(auth)} 
+            className="mt-4"
+          >
+            Logga ut
+          </Button>
+        </Card>
       </div>
     );
   }
@@ -188,7 +238,7 @@ const OdometerTracker = () => {
               size="sm"
               onClick={() => handleUserToggle(user.id)}
             >
-              {user.name}
+              {user.id}
             </Button>
           ))}
         </div>
@@ -204,18 +254,35 @@ const OdometerTracker = () => {
       </div>
 
       <div className="space-y-2">
+        <Label>Sträcka</Label>
+        <Input
+          type="number"
+          value={tripDistance}
+          disabled
+        />
+      </div>
+
+      <div className="space-y-2">
         <Label>Ny mätarställning</Label>
         <Input
           type="number"
           value={newOdometer}
-          onChange={(e) => setNewOdometer(e.target.value)}
+          onChange={(e) => handleNewOdometerChange(e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Kommentar</Label>
+        <Input
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
         />
       </div>
 
       <Button 
         className="w-full" 
         onClick={handleSubmit}
-        disabled={!selectedCar || selectedUsers.length === 0 || !newOdometer}
+        disabled={!selectedCar || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0}
       >
         Spara resa
       </Button>

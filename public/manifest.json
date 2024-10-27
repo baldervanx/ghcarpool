@@ -1,0 +1,15 @@
+{
+  "name": "GH Bilpool",
+  "short_name": "GHBil",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "favicon.jpg",
+      "sizes": "64x64",
+      "type": "image/jpeg"
+    }
+  ]
+}

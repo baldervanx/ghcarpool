@@ -44,7 +44,7 @@ export function CarSelector() {
         <SelectContent>
           {cars.map(car => (
             <SelectItem key={car.id} value={car.id}>
-              {car.make} {car.model}
+              {car.name} ({car.id})
             </SelectItem>
           ))}
         </SelectContent>

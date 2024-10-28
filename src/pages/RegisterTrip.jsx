@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../utils/firebase';
 import { 
   getFirestore, 
@@ -33,6 +34,7 @@ const COST_PER_KM = 2.5; // FIXME: Fetch from DB.
 
 export function RegisterTrip() {
 
+  const navigate = useNavigate();
   const { selectedCar } = useCar();
   const { user, isMember } = useAuth();
   const [users, setUsers] = useState([]);
@@ -44,6 +46,7 @@ export function RegisterTrip() {
   const [editOdometer, setEditOdometer] = useState('');
   const [comment, setComment] = useState('');
   
+  // Should probably NOT fetch users here, must only be loaded once.
   useEffect(() => {
     const fetchData = async () => {
       // Hämta användare
@@ -54,9 +57,12 @@ export function RegisterTrip() {
       }));
       setUsers(usersData);
       setSelectedUsers([user.user_id]); // Förvälj användaren
+      if (selectedCar) {
+        fetchLastOdometer(selectedCar);
+      }
     };
     fetchData();
-  }, []);
+  }, [selectedCar]);
 
 
 
@@ -82,26 +88,21 @@ export function RegisterTrip() {
     setComment('');    
   };
 
-  const handleCarChange = (carId) => {
-    setSelectedCar(carId);
-    fetchLastOdometer(carId);
-  };
-
   const handleOdometerChange = (value) => {
     setEditOdometer(value);
-    let newOdometer = lastOdometer;
+    let newOdo = lastOdometer;
     if (value.length > 0) {
       let prefix = lastOdometer.slice(0, -value.length);
-      newOdometer = prefix + value;
-      if (newOdometer < lastOdometer) {
-          newOdometer = (parseInt(prefix) + 1).toString() + value;
+      newOdo = prefix + value;
+      if (newOdo < lastOdometer) {
+          newOdo = (parseInt(prefix) + 1).toString() + value;
       }
     }
-    let dist = newOdometer - lastOdometer;
+    let dist = newOdo - lastOdometer;
     if (dist <= 0 || dist > MAX_DIST) dist = '';
     setTripDistance(dist);
-    setCost(dist != '' ? (dist*COST_PER_KM).toFixed(2) + " kr" : '');
-    setNewOdometer(newOdometer);
+    setCost(dist != '' ? (dist*COST_PER_KM).toFixed(2) : '');
+    setNewOdometer(newOdo);
   }
 
   const handleUserToggle = (userId) => {
@@ -129,14 +130,13 @@ export function RegisterTrip() {
         users: userRefs,
         odo: Number(newOdometer),
         distance: tripDistance,
-        cost: cost,
+        cost: Number(cost),
         timestamp: serverTimestamp(),
         comment: comment,
         byUser: byUser
       });
-      
-      alert('Resa sparad!');
-      fetchLastOdometer(selectedCar);
+
+      navigate('/trip-log');
     } catch (error) {
       console.error('Error saving trip:', error);
       alert('Ett fel uppstod när resan skulle sparas');
@@ -209,7 +209,7 @@ export function RegisterTrip() {
         <div className="space-y-2">
           <Label>Kostnad</Label>
           <Input
-            value={cost}
+            value={cost + ' kr'}
             disabled
           />
         </div>

@@ -63,14 +63,13 @@ const OdometerTracker = () => {
   useEffect(() => {
     // Lyssna på auth-status
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
       if (user) {
         // Kontrollera medlemskap när användaren loggar in
         const userDoc = await getUserDocByEmail(user.email);
         const isMember = userDoc != null;
         setIsMember(isMember);
         if (isMember) {
-          await fetchData();          
+          await fetchData();
           setSelectedUsers([userDoc.id]); // Förvälj användaren
           setUser({user_id: userDoc.id, ...user});
         }
@@ -127,12 +126,12 @@ const OdometerTracker = () => {
     if (!snapshot.empty) {
       const lastTrip = snapshot.docs[0].data();
       setLastOdometer(lastTrip.odo.toString());
-      setNewOdometer(lastTrip.odo.toString());
     } else {
       alert('Bilen saknar logg, ny bil?');
-      setLastOdometer('0');
-      setNewOdometer('0');
+      setLastOdometer('0');      
     }
+    handleOdometerChange('');
+    setComment('');    
   };
 
   const handleCarChange = (carId) => {
@@ -189,7 +188,6 @@ const OdometerTracker = () => {
       });
       
       alert('Resa sparad!');
-      handleOdometerChange('');
       fetchLastOdometer(selectedCar);
     } catch (error) {
       console.error('Error saving trip:', error);

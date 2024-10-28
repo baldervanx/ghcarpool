@@ -1,4 +1,7 @@
+import { Card } from '@/components/ui/card';
+import { CarSelector } from '../components/CarSelector';
 import React, { useState, useEffect } from 'react';
+import { db } from '../utils/firebase';
 import { 
   getFirestore, 
   collection, 
@@ -11,7 +14,6 @@ import {
   doc,
   limit
 } from 'firebase/firestore';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,18 +24,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useCar } from '../App';
+import { useAuth } from '../App';
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+
 const MAX_DIST = 999;
 const COST_PER_KM = 2.5; // FIXME: Fetch from DB.
 
-const OdometerTracker = () => {
-  const [user, setUser] = useState(null);
-  const [isMember, setIsMember] = useState(false); 
-  const [cars, setCars] = useState([]);
-  const [selectedCar, setSelectedCar] = useState('');  
+export function RegisterTrip() {
+
+  const { selectedCar } = useCar();
+  const { user, isMember } = useAuth();
   const [users, setUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [lastOdometer, setLastOdometer] = useState('');
@@ -44,29 +45,20 @@ const OdometerTracker = () => {
   const [comment, setComment] = useState('');
   
   useEffect(() => {
-    await fetchData();
-    setSelectedUsers([userDoc.id]); // Förvälj användaren
-    setUser({user_id: userDoc.id, ...user});    
+    const fetchData = async () => {
+      // Hämta användare
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const usersData = usersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setUsers(usersData);
+      setSelectedUsers([user.user_id]); // Förvälj användaren
+    };
+    fetchData();
   }, []);
 
 
-  const fetchData = async () => {
-    // Hämta bilar
-    const carsSnapshot = await getDocs(collection(db, 'cars'));
-    const carsData = carsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    setCars(carsData);
-
-    // Hämta användare
-    const usersSnapshot = await getDocs(collection(db, 'users'));
-    const usersData = usersSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    setUsers(usersData);
-  };
 
   const fetchLastOdometer = async (carId) => {
     const tripsRef = collection(db, 'trips');
@@ -151,54 +143,10 @@ const OdometerTracker = () => {
     }
   };
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Button onClick={signIn}>
-          Logga in med Google
-        </Button>
-      </div>
-    );
-  }
-
-  // Visa meddelande om användaren inte är medlem
-  if (!isMember) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="p-6">
-          <h2 className="text-xl font-bold mb-4">Åtkomst nekad</h2>
-          <p>Du är inte medlem i denna bilpool.</p>
-          <p>Kontakta administratören för att få tillgång.</p>
-          <Button 
-            onClick={() => signOut(auth)} 
-            className="mt-4"
-          >
-            Logga ut
-          </Button>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <Card className="max-w-md mx-auto p-6 space-y-4">
-      <div className="space-y-2">
-        <Label>Välj bil</Label>
-        <Select value={selectedCar} onValueChange={handleCarChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Välj en bil" />
-          </SelectTrigger>
-          <SelectContent>
-            {cars.map(car => (
-              <SelectItem key={car.id} value={car.id}>
-                {car.make} {car.model}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
+      <CarSelector />
+            <div className="space-y-2">
         <Label>Välj användare</Label>
         <div className="flex flex-wrap gap-2 p-2 border rounded">
           {users.map(user => (
@@ -284,6 +232,4 @@ const OdometerTracker = () => {
       </Button>
     </Card>
   );
-};
-
-export default OdometerTracker;
+}

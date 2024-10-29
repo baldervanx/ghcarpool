@@ -35,8 +35,8 @@ export function CarSelector() {
   };
 
   return (
-    <div className="space-y-2">
-      <Label>Välj bil</Label>
+    <div className="flex items-center gap-2">
+      <Label className="w-20">Bil</Label>
       <Select value={selectedCar} onValueChange={handleCarChange}>
         <SelectTrigger>
           <SelectValue placeholder="Välj en bil" />

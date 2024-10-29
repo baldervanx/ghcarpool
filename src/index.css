@@ -67,3 +67,10 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .compact-table td,
+  .compact-table th {
+    @apply px-2 py-2;
+  }
+}

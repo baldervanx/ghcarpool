@@ -83,20 +83,20 @@ export function TripLog() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-2">
-      <Card className="p-6">
+      <Card className="p-4">
         <CarSelector />
       </Card>
       
       {trips.length > 0 && (
-        <Card className="p-6">
+        <Card className="p-4">
           <Table className="compact-table">
             <TableHeader>
               <TableRow>
-                <TableHead style={{ padding: '0.5rem' }}>Datum</TableHead>
-                <TableHead style={{ padding: '0.5rem' }} className="text-right">Odo</TableHead>
-                <TableHead style={{ padding: '0.5rem' }} className="text-right">Sträcka</TableHead>
-                <TableHead style={{ padding: '0.5rem' }} className="text-right">Kostnad</TableHead>
-                <TableHead style={{ padding: '0.5rem' }} className="text-right">Personer</TableHead>
+                <TableHead>Datum</TableHead>
+                <TableHead className="text-right">Odo</TableHead>
+                <TableHead className="text-right">Sträcka</TableHead>
+                <TableHead className="text-right">Kostnad</TableHead>
+                <TableHead className="text-right">Personer</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -105,19 +105,19 @@ export function TripLog() {
                   <TableRow className="group">
                     <TableCell 
                       rowSpan={trip.comment ? 2 : 1}
-                      style={{ padding: '0.5rem' }}
+                     
                       className="align-middle border-r group-last:border-b"
                     >
                       {formatDate(trip.timestamp)}
                     </TableCell>
-                    <TableCell style={{ padding: '0.5rem' }} className="text-right">{trip.odo}</TableCell>
-                    <TableCell style={{ padding: '0.5rem' }} className="text-right">{trip.distance} km</TableCell>
-                    <TableCell style={{ padding: '0.5rem' }} className="text-right">{formatCost(trip.cost)}</TableCell>
-                    <TableCell style={{ padding: '0.5rem' }} className="text-right">{formatUsers(trip.users)}</TableCell>
+                    <TableCell className="text-right">{trip.odo}</TableCell>
+                    <TableCell className="text-right">{trip.distance} km</TableCell>
+                    <TableCell className="text-right">{formatCost(trip.cost)}</TableCell>
+                    <TableCell className="text-right">{formatUsers(trip.users)}</TableCell>
                   </TableRow>
                   {trip.comment && (
                     <TableRow className="bg-muted/50 group-hover:bg-muted/50">
-                      <TableCell style={{ padding: '0.5rem' }} colSpan={4} className="italic text-muted-foreground py-2">
+                      <TableCell colSpan={4} className="italic text-muted-foreground py-2">
                         {trip.comment}
                       </TableCell>
                     </TableRow>

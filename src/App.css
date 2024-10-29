@@ -40,7 +40,3 @@
 .read-the-docs {
   color: #888;
 }
-
-.compact-table :where(th, td) {
-  padding: 0.5rem !important;
-}

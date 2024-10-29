@@ -1,5 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
+//import { MultiSelect } from "@/components/MultiSelect"
+import Select from 'react-select';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../utils/firebase';
@@ -18,13 +20,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useCar } from '../App';
 import { useAuth } from '../App';
 
@@ -46,10 +41,10 @@ export function RegisterTrip() {
   const [editOdometer, setEditOdometer] = useState('');
   const [comment, setComment] = useState('');
   
-  // Should probably NOT fetch users here, must only be loaded once.
+
   useEffect(() => {
-    const fetchData = async () => {
-      // Hämta användare
+    // Hämta alla användare en gång och cacha dem
+    const fetchUsers = async () => {
       const usersSnapshot = await getDocs(collection(db, 'users'));
       const usersData = usersSnapshot.docs.map(doc => ({
         id: doc.id,
@@ -57,13 +52,19 @@ export function RegisterTrip() {
       }));
       setUsers(usersData);
       setSelectedUsers([user.user_id]); // Förvälj användaren
+    };
+
+    fetchUsers();
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
       if (selectedCar) {
         fetchLastOdometer(selectedCar);
       }
     };
     fetchData();
   }, [selectedCar]);
-
 
 
   const fetchLastOdometer = async (carId) => {
@@ -81,12 +82,19 @@ export function RegisterTrip() {
       const lastTrip = snapshot.docs[0].data();
       setLastOdometer(lastTrip.odo.toString());
     } else {
-      alert('Bilen saknar logg, ny bil?');
-      setLastOdometer('0');      
+      alert('Kan inte hämta senaste mätarställning för vald bil.');
+      setLastOdometer('');
     }
-    handleOdometerChange('');
-    setComment('');    
+    resetAllFields();
   };
+
+  const resetAllFields = () => {
+    setEditOdometer('');
+    setTripDistance('');
+    setCost('');
+    setNewOdometer('');
+    setComment('');    
+  }
 
   const handleOdometerChange = (value) => {
     setEditOdometer(value);
@@ -105,16 +113,6 @@ export function RegisterTrip() {
     setNewOdometer(newOdo);
   }
 
-  const handleUserToggle = (userId) => {
-    setSelectedUsers(prev => {
-      if (prev.includes(userId)) {
-        return prev.filter(id => id !== userId);
-      } else {
-        return [...prev, userId];
-      }
-    });
-  };
-
   const handleSubmit = async () => {
     if (!selectedCar || selectedUsers.length === 0 || !newOdometer) {
       alert('Vänligen fyll i alla fält');
@@ -125,6 +123,7 @@ export function RegisterTrip() {
       const carRef = doc(db, 'cars', selectedCar);
       const userRefs = selectedUsers.map((u) => doc(db, 'users', u));
       const byUser = doc(db, 'users', user.user_id);
+      // First check that nothing changed?
       await addDoc(collection(db, 'trips'), {
         car: carRef,
         users: userRefs,
@@ -143,33 +142,61 @@ export function RegisterTrip() {
     }
   };
 
+  // Konvertera users-arrayen till det format react-select förväntar sig
+  const userOptions = users.map(user => ({
+    value: user.id,
+    label: `${user.name} (${user.id})`  // eller bara user.name om du föredrar
+  }));
+
+  const selectedValues = userOptions.filter(option => 
+    selectedUsers.includes(option.value)
+  );
+
+  const handleSelectionChange = (selectedOptions) => {
+    const selectedIds = selectedOptions ? selectedOptions.map(option => option.value) : [];
+    setSelectedUsers(selectedIds); 
+  };
+
+  const CompactField = ({ label, children }) => (
+    <div className="flex items-center gap-2">
+      <Label className="w-24">{label}</Label>
+      {children}
+    </div>
+);
+
   return (
     <Card className="max-w-md mx-auto p-6 space-y-4">
       <CarSelector />
-            <div className="space-y-2">
-        <Label>Välj användare</Label>
-        <div className="flex flex-wrap gap-2 p-2 border rounded">
-          {users.map(user => (
-            <Button
-              key={user.id}
-              variant={selectedUsers.includes(user.id) ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleUserToggle(user.id)}
-            >
-              {user.id}
-            </Button>
-          ))}
-        </div>
-      </div>
+      <CompactField label="Resenärer">
+          <Select
+            isMulti
+            options={userOptions}
+            value={selectedValues}
+            onChange={handleSelectionChange}
+            formatOptionLabel={(option, { context }) => {
+              if (context === 'menu') {
+                return option.label;
+              } else {
+                return option.value;
+              }
+            }}            
+            className="w-full"
+            classNames={{
+                control: (state) => 'border-input bg-background',
+                menu: () => 'bg-background',
+                option: (state) => state.isFocused ? 'bg-accent' : 'bg-background',
+              }}
+            placeholder="Välj ..."
+          />
+      </CompactField>
 
-      <div className="space-y-2">
-        <Label>Senaste mätarställning</Label>
+      <CompactField label="Senaste ODO">
         <Input
           type="number"
           value={lastOdometer}
           disabled
         />
-      </div>
+      </CompactField>
 
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
@@ -189,7 +216,9 @@ export function RegisterTrip() {
             value={editOdometer}
             onChange={(e) => {
               const value = e.target.value;
-              if (value.length <= 3 && parseInt(value) <= 999) {
+              if (value === '') {
+                resetAllFields();
+              } else if (parseInt(value) <= 999) {
                 handleOdometerChange(value);
               }
             }}
@@ -201,8 +230,7 @@ export function RegisterTrip() {
         <div className="space-y-2 flex-1">
           <Label>Sträcka</Label>
           <Input
-            type="number"
-            value={tripDistance}
+            value={tripDistance + ' km'}
             disabled
           />
         </div>

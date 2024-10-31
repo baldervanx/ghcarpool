@@ -69,6 +69,16 @@
 }
 
 @layer components {
+  .alert {
+    @apply relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground;
+  }
+
+  .alert-destructive {
+    @apply border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive;
+  }
+}
+
+@layer components {
   .compact-table td,
   .compact-table th {
     @apply px-2 py-2;

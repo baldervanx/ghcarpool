@@ -1,4 +1,7 @@
 // pages/TripLog.jsx
+
+import ThemeSwitcher from '../components/ThemeSwitcher';
+import OfflineStatus from '../components/OfflineStatus';
 import React, { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
@@ -16,37 +19,29 @@ import {
 
 export function TripLog() {
   const [trips, setTrips] = useState([]);
-  const [users, setUsers] = useState({});
+  const [lastFetchTime, setLastFetchTime] = useState(null);
   const { selectedCar } = useCar();
 
   useEffect(() => {
-    // Hämta alla användare en gång och cacha dem
-    const fetchUsers = async () => {
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      const usersData = {};
-      usersSnapshot.docs.forEach(doc => {
-        usersData[doc.id] = doc.data();
-      });
-      setUsers(usersData);
-    };
+    fetchTrips();
+  }, [selectedCar]);
 
-    fetchUsers();
-  }, []);
+  const fetchTrips = async () => {
+    if (!selectedCar) return;
+    
+    setTrips([]);
 
-  useEffect(() => {
-    const fetchTrips = async () => {
-      if (!selectedCar) return;
-      
-      const tripsRef = collection(db, 'trips');
-      const carRef = doc(db, 'cars', selectedCar);
-      const q = query(
-        tripsRef,
-        where('car', '==', carRef),
-        orderBy('timestamp', 'desc'),
-        limit(20)
-      );
-      
-      const snapshot = await getDocs(q);
+    const tripsRef = collection(db, 'trips');
+    const carRef = doc(db, 'cars', selectedCar);
+    const q = query(
+      tripsRef,
+      where('car', '==', carRef),
+      orderBy('timestamp', 'desc'),
+      limit(20)
+    );
+    // Should perhaps show "loading" while waiting for the data.    
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
       const tripsData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -54,10 +49,9 @@ export function TripLog() {
       }));
       
       setTrips(tripsData);
-    };
-
-    fetchTrips();
-  }, [selectedCar]);
+      setLastFetchTime(Date.now());
+    }
+  };
 
   const formatDate = (date) => {
     if (!date) return '';
@@ -72,7 +66,8 @@ export function TripLog() {
   const formatUsers = (userRefs) => {
     if (!userRefs) return '';
     return userRefs
-      .map(ref => users[ref.id]?.id || ref.id)
+      //.map(ref => users[ref.id]?.id || ref.id)
+      .map(ref => ref.id)
       .join(', ');
   };
 
@@ -83,10 +78,15 @@ export function TripLog() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-2">
-      <Card className="p-4">
+      <Card className="p-4 space-y-2">
         <CarSelector />
+        <OfflineStatus 
+          lastFetchTime={lastFetchTime}
+          onRefresh={fetchTrips}
+          staleDuration={5 * 60 * 1000} // milliseconds
+          //staleDuration={30 * 1000}
+        />  
       </Card>
-      
       {trips.length > 0 && (
         <Card className="p-4">
           <Table className="compact-table">
@@ -128,6 +128,8 @@ export function TripLog() {
           </Table>
         </Card>
       )}
+
+      <ThemeSwitcher />
     </div>
   );
 }

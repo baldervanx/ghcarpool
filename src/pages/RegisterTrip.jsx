@@ -1,6 +1,6 @@
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
-//import { MultiSelect } from "@/components/MultiSelect"
+//import OdoNumberInput from '../components/OdoNumberInput';
 import Select from 'react-select';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -9,7 +9,8 @@ import {
   getFirestore, 
   collection, 
   query, 
-  getDocs, 
+  getDocs,
+  getDoc, 
   orderBy, 
   where,
   addDoc,
@@ -25,7 +26,7 @@ import { useAuth } from '../App';
 
 
 const MAX_DIST = 999;
-const COST_PER_KM = 2.5; // FIXME: Fetch from DB.
+let COST_PER_KM = 1;
 
 export function RegisterTrip() {
 
@@ -52,8 +53,10 @@ export function RegisterTrip() {
       }));
       setUsers(usersData);
       setSelectedUsers([user.user_id]); // Förvälj användaren
+      const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
+      const settings = settingsSnap.data();
+      COST_PER_KM = settings.cost_per_km;
     };
-
     fetchUsers();
   }, []);
 
@@ -77,23 +80,25 @@ export function RegisterTrip() {
       limit(1)
     );
     
+    let lastOdo = '';
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
       const lastTrip = snapshot.docs[0].data();
-      setLastOdometer(lastTrip.odo.toString());
+      lastOdo = lastTrip.odo.toString();
+      setLastOdometer(lastOdo);
     } else {
       alert('Kan inte hämta senaste mätarställning för vald bil.');
       setLastOdometer('');
     }
-    resetAllFields();
+    resetAllFields(lastOdo);
   };
 
-  const resetAllFields = () => {
+  const resetAllFields = (lastOdo) => {
     setEditOdometer('');
     setTripDistance('');
     setCost('');
-    setNewOdometer('');
-    setComment('');    
+    setNewOdometer(lastOdo);
+    setComment('');
   }
 
   const handleOdometerChange = (value) => {
@@ -226,6 +231,21 @@ export function RegisterTrip() {
         </div>
       </div>
 
+{/*      <div className="space-y-2 flex-1">
+        <Label>Ny mätarställning 2</Label>
+        <OdoNumberInput
+          originalValue={newOdometer}
+          inputValue={editOdometer}
+          onChange={(value) => {
+              if (value === '') {
+                resetAllFields();
+              } else if (parseInt(value) <= 999) {
+                handleOdometerChange(value);
+              }
+          }}
+        />
+      </div>      
+*/}
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
           <Label>Sträcka</Label>
@@ -234,7 +254,7 @@ export function RegisterTrip() {
             disabled
           />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2  flex-1">
           <Label>Kostnad</Label>
           <Input
             value={cost + ' kr'}

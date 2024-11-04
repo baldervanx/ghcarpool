@@ -1,3 +1,4 @@
+import ThemeSwitcher from '../components/ThemeSwitcher';
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
 //import OdoNumberInput from '../components/OdoNumberInput';
@@ -25,7 +26,7 @@ import { useCar } from '../App';
 import { useAuth } from '../App';
 
 
-const MAX_DIST = 999;
+const MAX_DIST = 9999;
 let COST_PER_KM = 1;
 
 export function RegisterTrip() {
@@ -98,7 +99,7 @@ export function RegisterTrip() {
     setTripDistance('');
     setCost('');
     setNewOdometer(lastOdo);
-    setComment('');
+    //setComment('');
   }
 
   const handleOdometerChange = (value) => {
@@ -172,6 +173,7 @@ export function RegisterTrip() {
   return (
     <Card className="max-w-md mx-auto p-6 space-y-4">
       <CarSelector />
+
       <CompactField label="Resenärer">
           <Select
             isMulti
@@ -184,26 +186,61 @@ export function RegisterTrip() {
               } else {
                 return option.value;
               }
-            }}            
+            }}
+            isClearable={false}            
             className="w-full"
             classNames={{
-                control: (state) => 'border-input bg-background',
-                menu: () => 'bg-background',
-                option: (state) => state.isFocused ? 'bg-accent' : 'bg-background',
-              }}
+              control: (state) => 
+                'border-input bg-background dark:bg-background hover:bg-accent/50',
+              menu: () => 
+                'bg-background dark:bg-popover border border-input mt-2',
+              menuList: () => 
+                'bg-background dark:bg-popover',
+              option: (state) => 
+                state.isFocused 
+                  ? 'bg-accent/80 dark:bg-accent/30 text-accent-foreground cursor-pointer' 
+                  : 'bg-background dark:bg-popover hover:bg-accent/50 dark:hover:bg-accent/20 cursor-pointer',
+              multiValue: () => 
+                'bg-secondary dark:bg-secondary/50 secondary-foreground dark:secondary-foreground rounded',
+              multiValueRemove: () => 
+                'hover:text-destructive/90 rounded-r',
+              placeholder: () => 
+                'text-muted-foreground',
+              valueContainer: () => 
+                'gap-1',
+            }}
+            theme={(theme) => ({
+              ...theme,
+              colors: {
+                ...theme.colors,
+                neutral0: 'transparent',
+                neutral20: 'hsl(var(--input))',
+                neutral30: 'hsl(var(--input))',
+                primary: 'hsl(var(--primary))',
+                primary25: 'hsl(var(--accent))',
+                primary50: 'hsl(var(--accent))',
+                danger: 'hsl(var(--destructive))',
+                dangerLight: 'hsl(var(--destructive))',
+              },
+              spacing: {
+                ...theme.spacing,
+                baseUnit: 4,
+                controlHeight: 40,
+              },
+            })}
             placeholder="Välj ..."
           />
       </CompactField>
 
-      <CompactField label="Senaste ODO">
-        <Input
-          type="number"
-          value={lastOdometer}
-          disabled
-        />
-      </CompactField>
-
       <div className="flex gap-4">
+        <div className="space-y-2 flex-1">
+          <Label>Senaste mätarställning</Label>
+          <Input
+            type="number"
+            value={lastOdometer}
+            disabled
+          />
+        </div>
         <div className="space-y-2 flex-1">
           <Label>Ny mätarställning</Label>
           <Input
@@ -212,41 +249,26 @@ export function RegisterTrip() {
             disabled
           />
         </div>
-        <div className="space-y-2">
+      </div>
+
+      <div className="flex gap-4">
+        <div className="space-y-2 flex-1">
           <Label>Sista siffror</Label>
           <Input
             min="0"
-            max="999"
+            max="9999"
             type="number"
             value={editOdometer}
             onChange={(e) => {
               const value = e.target.value;
               if (value === '') {
-                resetAllFields();
-              } else if (parseInt(value) <= 999) {
+                resetAllFields(lastOdometer);
+              } else if (parseInt(value) <= 9999) {
                 handleOdometerChange(value);
               }
             }}
           />
         </div>
-      </div>
-
-{/*      <div className="space-y-2 flex-1">
-        <Label>Ny mätarställning 2</Label>
-        <OdoNumberInput
-          originalValue={newOdometer}
-          inputValue={editOdometer}
-          onChange={(value) => {
-              if (value === '') {
-                resetAllFields();
-              } else if (parseInt(value) <= 999) {
-                handleOdometerChange(value);
-              }
-          }}
-        />
-      </div>      
-*/}
-      <div className="flex gap-4">
         <div className="space-y-2 flex-1">
           <Label>Sträcka</Label>
           <Input
@@ -275,9 +297,11 @@ export function RegisterTrip() {
         className="w-full" 
         onClick={handleSubmit}
         disabled={!selectedCar || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0}
-      >
+        >
         Spara resa
       </Button>
+
+      <ThemeSwitcher />
     </Card>
   );
 }

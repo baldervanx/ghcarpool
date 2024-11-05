@@ -1,3 +1,4 @@
+import { Car } from 'lucide-react';
 import { useEffect } from 'react';
 import { 
   Select, 
@@ -36,10 +37,10 @@ export function CarSelector() {
 
   return (
     <div className="flex items-center gap-2">
-      <Label className="w-20">Bil</Label>
+      <Car size={32} />
       <Select value={selectedCar} onValueChange={handleCarChange}>
         <SelectTrigger>
-          <SelectValue placeholder="Välj en bil" />
+          <SelectValue placeholder="Välj bil..." />
         </SelectTrigger>
         <SelectContent>
           {cars.map(car => (

@@ -8,6 +8,7 @@ import { CarSelector } from '../components/CarSelector';
 import { collection, query, where, orderBy, getDocs, doc, limit } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { useCar } from '../App';
+import CarPoolCSVExporter from '@/components/ui/car-pool-csv-export';
 import {
   Table,
   TableBody,
@@ -130,6 +131,7 @@ export function TripLog() {
       )}
 
       <ThemeSwitcher />
+      <CarPoolCSVExporter />
     </div>
   );
 }

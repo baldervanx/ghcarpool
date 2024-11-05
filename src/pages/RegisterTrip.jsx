@@ -1,7 +1,8 @@
 import ThemeSwitcher from '../components/ThemeSwitcher';
+import { User } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
-//import OdoNumberInput from '../components/OdoNumberInput';
+import MultipleSelector from '@/components/ui/multiple-selector';
 import Select from 'react-select';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -119,10 +120,26 @@ export function RegisterTrip() {
     setNewOdometer(newOdo);
   }
 
+  const getSelectedUserObjects = () => {
+    return users.filter(user => 
+        selectedUsers.includes(user.id)
+    ).map(user => ({
+        ...user,
+        commentMandatory: user.commentMandatory ?? false // nullish coalescing
+    }));
+  }
+
   const handleSubmit = async () => {
     if (!selectedCar || selectedUsers.length === 0 || !newOdometer) {
       alert('Vänligen fyll i alla fält');
       return;
+    }
+
+    const selUserObjs = getSelectedUserObjects();
+    const userCommentMandatory = selUserObjs.find(user => user.commentMandatory === true);
+    if (comment === "" && userCommentMandatory) {
+      alert('Kommentar krävs för ' + userCommentMandatory.shortName);
+      return;      
     }
 
     try {
@@ -151,7 +168,7 @@ export function RegisterTrip() {
   // Konvertera users-arrayen till det format react-select förväntar sig
   const userOptions = users.map(user => ({
     value: user.id,
-    label: `${user.name} (${user.id})`  // eller bara user.name om du föredrar
+    label: `${user.shortName}`
   }));
 
   const selectedValues = userOptions.filter(option => 
@@ -174,63 +191,16 @@ export function RegisterTrip() {
     <Card className="max-w-md mx-auto p-6 space-y-4">
       <CarSelector />
 
-      <CompactField label="Resenärer">
-          <Select
-            isMulti
-            options={userOptions}
+      <div className="flex items-center gap-2">
+          <User size={32} />
+          <MultipleSelector
             value={selectedValues}
             onChange={handleSelectionChange}
-            formatOptionLabel={(option, { context }) => {
-              if (context === 'menu') {
-                return option.label;
-              } else {
-                return option.value;
-              }
-            }}
-            isClearable={false}            
-            className="w-full"
-            classNames={{
-              control: (state) => 
-                'border-input bg-background dark:bg-background hover:bg-accent/50',
-              menu: () => 
-                'bg-background dark:bg-popover border border-input mt-2',
-              menuList: () => 
-                'bg-background dark:bg-popover',
-              option: (state) => 
-                state.isFocused 
-                  ? 'bg-accent/80 dark:bg-accent/30 text-accent-foreground cursor-pointer' 
-                  : 'bg-background dark:bg-popover hover:bg-accent/50 dark:hover:bg-accent/20 cursor-pointer',
-              multiValue: () => 
-                'bg-secondary dark:bg-secondary/50 secondary-foreground dark:secondary-foreground rounded',
-              multiValueRemove: () => 
-                'hover:text-destructive/90 rounded-r',
-              placeholder: () => 
-                'text-muted-foreground',
-              valueContainer: () => 
-                'gap-1',
-            }}
-            theme={(theme) => ({
-              ...theme,
-              colors: {
-                ...theme.colors,
-                neutral0: 'transparent',
-                neutral20: 'hsl(var(--input))',
-                neutral30: 'hsl(var(--input))',
-                primary: 'hsl(var(--primary))',
-                primary25: 'hsl(var(--accent))',
-                primary50: 'hsl(var(--accent))',
-                danger: 'hsl(var(--destructive))',
-                dangerLight: 'hsl(var(--destructive))',
-              },
-              spacing: {
-                ...theme.spacing,
-                baseUnit: 4,
-                controlHeight: 40,
-              },
-            })}
-            placeholder="Välj ..."
+            options={userOptions}
+            hidePlaceholderWhenSelected={true}
+            placeholder="Välj personer"
           />
-      </CompactField>
+      </div>
 
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
@@ -276,7 +246,7 @@ export function RegisterTrip() {
             disabled
           />
         </div>
-        <div className="space-y-2  flex-1">
+        <div className="space-y-2 flex-1">
           <Label>Kostnad</Label>
           <Input
             value={cost + ' kr'}

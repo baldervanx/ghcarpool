@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 export interface Option {
   value: string;
   label: string;
+  badgeLabel?: string;
   disable?: boolean;
   /** fixed option that can't be removed. */
   fixed?: boolean;
@@ -466,7 +467,8 @@ const MultipleSelector = React.forwardRef<MultipleSelectorRef, MultipleSelectorP
                   data-fixed={option.fixed}
                   data-disabled={disabled || undefined}
                 >
-                  {option.label}
+                  {/* Jens: Made it possible to use a separate label for badges. */}
+                  {option.badgeLabel || option.label}
                   <button
                     className={cn(
                       'ml-1 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2',
@@ -484,7 +486,6 @@ const MultipleSelector = React.forwardRef<MultipleSelectorRef, MultipleSelectorP
                     onClick={() => handleUnselect(option)}
                   >
                     {/* Jens: Inverted the colors, as the background is inverted. Increased stroke. */}
-                    
                     <X strokeWidth="3" className="h-3 w-3 text-muted-background hover:text-background" />
                   </button>
                 </Badge>

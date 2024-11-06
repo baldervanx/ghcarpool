@@ -60,7 +60,7 @@ export function RegisterTrip() {
       COST_PER_KM = settings.cost_per_km;
     };
     fetchUsers();
-  }); //Missing deps user.user_id?
+  }, []); //Missing deps user.user_id?
 
   useEffect(() => {
     const fetchData = async () => {
@@ -156,7 +156,7 @@ export function RegisterTrip() {
 
   // Calculate the editOdometer from newOdometer and distance
   const calculateEditOdometer = (newOdo, dist) => {
-    return newOdometer.slice(newOdo.length - dist.length);
+    return newOdo.slice(newOdo.length - dist.length);
   }
 
   const handleEditModeChange = async (checked) => {
@@ -230,7 +230,8 @@ export function RegisterTrip() {
 
   const userOptions = users.map(user => ({
     value: user.id,
-    label: `${user.shortName}`
+    badgeLabel: `${user.shortName}`,
+    label: `${user.name}`
   }));
 
   const selectedValues = userOptions.filter(option =>
@@ -252,6 +253,7 @@ export function RegisterTrip() {
               value={selectedValues}
               onChange={handleSelectionChange}
               options={userOptions}
+              maxSelected={3}
               hidePlaceholderWhenSelected={true}
               placeholder="Välj personer"
           />

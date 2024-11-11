@@ -1,7 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
- 
+
 @layer base {
   :root {
     --background: 82 43% 97%;    /* Ljus grönbeige bakgrund */
@@ -30,7 +30,7 @@
     --chart-4: 89 30% 55%;
     --chart-5: 83 55% 70%;
   }
- 
+
   .dark {
     --background: 89 42% 15%;    /* Mörkgrön bakgrund */
     --foreground: 82 43% 97%;
@@ -58,13 +58,17 @@
     --chart-5: 75 45% 80%;
   }
 }
- 
+
 @layer base {
   * {
     @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  .time-select-trigger .lucide-chevron-down {
+    display: none;
   }
 }
 
@@ -81,5 +85,5 @@
 
   .alert-destructive {
     @apply border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive;
-  }  
+  }
 }

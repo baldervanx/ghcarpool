@@ -8,6 +8,9 @@ import { Navbar } from './components/Navbar';
 import { Login } from './pages/Login';
 import { RegisterTrip } from './pages/register-trip';
 import { TripLog } from './pages/TripLog';
+import BookTrip from './pages/book-trip';
+import BookingOverview from './pages/booking-overview';
+
 import { AccessibilityProvider } from './lib/utils';
 import { ThemeProvider } from './components/theme-context';
 import { HomePage } from './pages/home';
@@ -38,6 +41,14 @@ function App() {
             <Route
                 path="/home"
                 element={<ProtectedRoute><HomePage /></ProtectedRoute>}
+            />
+            <Route
+                path="/book-trip"
+                element={<ProtectedRoute><BookTrip /></ProtectedRoute>}
+            />
+            <Route
+                path="/booking-overview"
+                element={<ProtectedRoute><BookingOverview /></ProtectedRoute>}
             />
             <Route
                 path="/register-trip"

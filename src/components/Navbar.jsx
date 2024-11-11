@@ -17,6 +17,20 @@ export function Navbar() {
                 <House size={32}/>
               </Button>
             </Link>
+            <Link to="/book-trip">
+              <Button className="h-8"
+                  variant={location.pathname === '/book-trip' ? 'default' : 'ghost'}
+              >
+                Boka
+              </Button>
+            </Link>
+            <Link to="/booking-overview">
+              <Button className="h-8"
+                      variant={location.pathname === '/book-overview' ? 'default' : 'ghost'}
+              >
+                Bokningar
+              </Button>
+            </Link>
             <Link to="/register-trip">
               <Button className="h-8"
                 variant={location.pathname === '/register-trip' ? 'default' : 'ghost'}
@@ -37,3 +51,4 @@ export function Navbar() {
     </nav>
   );
 }
+

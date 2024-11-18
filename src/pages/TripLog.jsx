@@ -25,11 +25,12 @@ export function TripLog() {
 
   useEffect(() => {
     fetchTrips();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCar]);
 
   const fetchTrips = async () => {
     if (!selectedCar) return;
-    
+
     setTrips([]);
 
     const tripsRef = collection(db, 'trips');
@@ -40,7 +41,7 @@ export function TripLog() {
       orderBy('timestamp', 'desc'),
       limit(20)
     );
-    // Should perhaps show "loading" while waiting for the data.    
+    // Should perhaps show "loading" while waiting for the data.
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
       const tripsData = snapshot.docs.map(doc => ({
@@ -48,7 +49,7 @@ export function TripLog() {
         ...doc.data(),
         timestamp: doc.data().timestamp?.toDate()
       }));
-      
+
       setTrips(tripsData);
       setLastFetchTime(Date.now());
     }
@@ -79,17 +80,17 @@ export function TripLog() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-2">
-      <Card className="p-4 space-y-2">
+      <Card className="p-2 space-y-2">
         <CarSelector />
-        <OfflineStatus 
+        <OfflineStatus
           lastFetchTime={lastFetchTime}
           onRefresh={fetchTrips}
           staleDuration={5 * 60 * 1000} // milliseconds
           //staleDuration={30 * 1000}
-        />  
+        />
       </Card>
       {trips.length > 0 && (
-        <Card className="p-4">
+        <Card className="p-2">
           <Table className="compact-table">
             <TableHeader>
               <TableRow>
@@ -97,16 +98,16 @@ export function TripLog() {
                 <TableHead className="text-right">Odo</TableHead>
                 <TableHead className="text-right">Sträcka</TableHead>
                 <TableHead className="text-right">Kostnad</TableHead>
-                <TableHead className="text-right">Personer</TableHead>
+                <TableHead className="text-left">Personer</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {trips.map(trip => (
                 <React.Fragment key={trip.id}>
                   <TableRow className="group">
-                    <TableCell 
+                    <TableCell
                       rowSpan={trip.comment ? 2 : 1}
-                     
+
                       className="align-middle border-r group-last:border-b"
                     >
                       {formatDate(trip.timestamp)}
@@ -114,7 +115,7 @@ export function TripLog() {
                     <TableCell className="text-right">{trip.odo}</TableCell>
                     <TableCell className="text-right">{trip.distance} km</TableCell>
                     <TableCell className="text-right">{formatCost(trip.cost)}</TableCell>
-                    <TableCell className="text-right">{formatUsers(trip.users)}</TableCell>
+                    <TableCell className="text-left">{formatUsers(trip.users)}</TableCell>
                   </TableRow>
                   {trip.comment && (
                     <TableRow className="bg-muted/50 group-hover:bg-muted/50">
@@ -125,7 +126,7 @@ export function TripLog() {
                   )}
                 </React.Fragment>
               ))}
-            </TableBody>            
+            </TableBody>
           </Table>
         </Card>
       )}

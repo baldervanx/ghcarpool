@@ -585,6 +585,9 @@ const MultipleSelector = React.forwardRef<MultipleSelectorRef, MultipleSelectorP
                                 const newOptions = [...selected, option];
                                 setSelected(newOptions);
                                 onChange?.(newOptions);
+                                // Closing automatically after selection require some
+                                // more work than this. The menu wont open as it is already selected.
+                                //setOpen(false);
                               }}
                               className={cn(
                                 'cursor-pointer',

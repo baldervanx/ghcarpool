@@ -8,26 +8,26 @@ export function Navbar() {
 
   return (
     <nav className="border-b">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
-          <div className="flex space-x-4">
+      <div className="container mx-auto px-2">
+        <div className="flex items-center justify-between h-12">
+          <div className="flex space-x-2">
             <Link to="/register-trip">
-              <Button 
+              <Button className="h-8"
                 variant={location.pathname === '/register-trip' ? 'default' : 'ghost'}
               >
-                Registrera resa
+                Logga
               </Button>
             </Link>
             <Link to="/trip-log">
-              <Button 
+              <Button className="h-8"
                 variant={location.pathname === '/trip-log' ? 'default' : 'ghost'}
               >
-                Körjournal
+                Journal
               </Button>
             </Link>
           </div>
-          <Button 
-            variant="outline" 
+          <Button className="h-8"
+            variant="outline"
             onClick={() => signOut(auth)}
           >
             Logga ut

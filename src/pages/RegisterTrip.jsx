@@ -255,6 +255,7 @@ export function RegisterTrip() {
               options={userOptions}
               maxSelected={3}
               hidePlaceholderWhenSelected={true}
+              hideClearAllButton={true}
               placeholder="Välj personer"
           />
         </div>
@@ -274,7 +275,7 @@ export function RegisterTrip() {
 
         <div className="flex gap-4">
           <div className="space-y-2 flex-1">
-            <Label>Senaste mätarställning</Label>
+            <Label>Mätarställning</Label>
             <Input
                 type="number"
                 value={lastOdometer}

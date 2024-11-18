@@ -7,6 +7,7 @@ import { Login } from './pages/Login';
 import { RegisterTrip } from './pages/RegisterTrip';
 import { TripLog } from './pages/TripLog';
 import { getUserDocByEmail } from './utils/firebase';
+import PropTypes from "prop-types";
 
 // Skapa contexts för global state
 export const AuthContext = createContext();
@@ -22,7 +23,7 @@ function App() {
     isMember: false,
     loading: true
   });
-  
+
   const [carState, setCarState] = useState({
     cars: [],
     selectedCar: '',
@@ -62,35 +63,35 @@ function App() {
         <CarContext.Provider value={{ ...carState, setCarState }}>
           <div className="min-h-screen bg-background">
             {authState.user && authState.isMember && <Navbar />}
-            <div className="container mx-auto px-4 py-8">
+            <div className="container mx-auto px-4 py-4">
               <Routes>
-                <Route 
-                  path="/login" 
+                <Route
+                  path="/login"
                   element={
-                    authState.user && authState.isMember ? 
-                      <Navigate to="/register-trip" replace /> : 
+                    authState.user && authState.isMember ?
+                      <Navigate to="/register-trip" replace /> :
                       <Login />
-                  } 
+                  }
                 />
-                <Route 
-                  path="/register-trip" 
+                <Route
+                  path="/register-trip"
                   element={
                     <ProtectedRoute>
                       <RegisterTrip />
                     </ProtectedRoute>
-                  } 
+                  }
                 />
-                <Route 
-                  path="/trip-log" 
+                <Route
+                  path="/trip-log"
                   element={
                     <ProtectedRoute>
                       <TripLog />
                     </ProtectedRoute>
-                  } 
+                  }
                 />
-                <Route 
-                  path="*" 
-                  element={<Navigate to="/register-trip" replace />} 
+                <Route
+                  path="*"
+                  element={<Navigate to="/register-trip" replace />}
                 />
               </Routes>
             </div>
@@ -104,12 +105,16 @@ function App() {
 // Skyddad route komponent
 function ProtectedRoute({ children }) {
   const { user, isMember } = useAuth();
-  
+
   if (!user || !isMember) {
     return <Navigate to="/login" replace />;
   }
-  
+
   return children;
 }
+
+ProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
+};
 
 export default App;

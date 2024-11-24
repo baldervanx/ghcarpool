@@ -6,6 +6,9 @@ import { Navbar } from './components/Navbar';
 import { Login } from './pages/Login';
 import { RegisterTrip } from './pages/RegisterTrip';
 import { TripLog } from './pages/TripLog';
+import { AccessibilityProvider } from './lib/utils';
+import { ThemeProvider } from './components/theme-context';
+import { HomePage } from './pages/home';
 import { getUserDocByEmail } from './utils/firebase';
 import PropTypes from "prop-types";
 
@@ -57,45 +60,57 @@ function App() {
     return <div className="flex items-center justify-center min-h-screen">Laddar...</div>;
   }
 
-  return (
+  return (    
     <Router>
       <AuthContext.Provider value={{ ...authState, setAuthState }}>
         <CarContext.Provider value={{ ...carState, setCarState }}>
-          <div className="min-h-screen bg-background">
-            {authState.user && authState.isMember && <Navbar />}
-            <div className="container mx-auto px-4 py-4">
-              <Routes>
-                <Route
-                  path="/login"
-                  element={
-                    authState.user && authState.isMember ?
-                      <Navigate to="/register-trip" replace /> :
-                      <Login />
-                  }
-                />
-                <Route
-                  path="/register-trip"
-                  element={
-                    <ProtectedRoute>
-                      <RegisterTrip />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/trip-log"
-                  element={
-                    <ProtectedRoute>
-                      <TripLog />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="*"
-                  element={<Navigate to="/register-trip" replace />}
-                />
-              </Routes>
+          <AccessibilityProvider>
+            <ThemeProvider>
+            <div className="min-h-screen bg-background">
+              {authState.user && authState.isMember && <Navbar />}
+              <div className="container mx-auto px-4 py-4">
+                <Routes>
+                  <Route
+                    path="/login"
+                    element={
+                      authState.user && authState.isMember ?
+                        <Navigate to="/register-trip" replace /> :
+                        <Login />
+                    }
+                  />
+                  <Route
+                    path="/home"
+                    element={
+                      <ProtectedRoute>
+                        <HomePage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/register-trip"
+                    element={
+                      <ProtectedRoute>
+                        <RegisterTrip />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/trip-log"
+                    element={
+                      <ProtectedRoute>
+                        <TripLog />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="*"
+                    element={<Navigate to="/register-trip" replace />}
+                  />
+                </Routes>
+              </div>
             </div>
-          </div>
+            </ThemeProvider>
+          </AccessibilityProvider>
         </CarContext.Provider>
       </AuthContext.Provider>
     </Router>

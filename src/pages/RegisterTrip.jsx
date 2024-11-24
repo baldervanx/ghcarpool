@@ -1,4 +1,3 @@
-import ThemeSwitcher from '../components/ThemeSwitcher';
 import { User } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
@@ -320,7 +319,7 @@ export function RegisterTrip() {
           <div className="space-y-2 flex-1">
             <Label>Kostnad</Label>
             <Input
-                value={cost + ' kr'}
+                value={Math.round(cost) + ' kr'}
                 disabled
             />
           </div>
@@ -341,8 +340,6 @@ export function RegisterTrip() {
         >
           {isEditMode ? 'Uppdatera resa' : 'Spara resa'}
         </Button>
-
-        <ThemeSwitcher />
       </Card>
   );
 }

@@ -1,6 +1,5 @@
 // pages/TripLog.jsx
 
-import ThemeSwitcher from '../components/ThemeSwitcher';
 import OfflineStatus from '../components/OfflineStatus';
 import React, { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
@@ -75,7 +74,7 @@ export function TripLog() {
 
   const formatCost = (cost) => {
      if (!cost) return '';
-     return cost.toFixed(2);
+     return Math.round(cost).toString() + ' kr';
   };
 
   return (
@@ -130,8 +129,7 @@ export function TripLog() {
           </Table>
         </Card>
       )}
-
-      <ThemeSwitcher />
+      
       <CarPoolCSVExporter />
     </div>
   );

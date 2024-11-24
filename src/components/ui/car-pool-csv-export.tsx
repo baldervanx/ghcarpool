@@ -26,8 +26,8 @@ const CarPoolCSVExporter = () => {
     const querySnapshot = await getDocs(q);
     const docs = querySnapshot.docs.map((doc) => doc.data());
 
-    const header = 'Odo,Distance,User1,User2,User3,Cost,Comment,Timestamp,By User\n'
-    let csvData = '';
+    const header = 'Odo,Distance,User1,User2,User3,Cost,Comment,Timestamp,By User\n'    
+    let csvData = '\ufeff' // Add BOM for UTF-8 encoding
 
     const fillArray = new Array(2).fill('');
     let currentCar = {id:''};

@@ -7,7 +7,7 @@ import { forwardRef, useEffect } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
-import { cn } from '@/lib/utils';
+import { useAccessibleCn } from '@/lib/utils';
 
 export interface Option {
   value: string;
@@ -151,7 +151,7 @@ const CommandEmpty = forwardRef<
   React.ComponentProps<typeof CommandPrimitive.Empty>
 >(({ className, ...props }, forwardedRef) => {
   const render = useCommandState((state) => state.filtered.count === 0);
-
+  const cn = useAccessibleCn()
   if (!render) return null;
 
   return (
@@ -424,6 +424,8 @@ const MultipleSelector = React.forwardRef<MultipleSelectorRef, MultipleSelectorP
       // Using default filter in `cmdk`. We don't have to provide it.
       return undefined;
     }, [creatable, commandProps?.filter]);
+
+    const cn = useAccessibleCn();
 
     return (
       <Command

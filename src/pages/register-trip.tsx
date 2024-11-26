@@ -2,7 +2,7 @@ import { User } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
 import MultipleSelector from '@/components/ui/multiple-selector';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../utils/firebase';
 import {
@@ -44,6 +44,8 @@ export function RegisterTrip() {
   const [lastTrip, setLastTrip] = useState(null);
   const [previousTrip, setPreviousTrip] = useState(null);
   const [canEdit, setCanEdit] = useState(false);
+  // New state for tracking submission process
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -190,7 +192,12 @@ export function RegisterTrip() {
       return;
     }
 
+    // Prevent multiple submissions
+    if (isSubmitting) return;
+
     try {
+      setIsSubmitting(true);
+
       const carRef = doc(db, 'cars', selectedCar);
       const userRefs = selectedUsers.map((u) => doc(db, 'users', u));
       const byUser = doc(db, 'users', user.user_id);
@@ -224,6 +231,8 @@ export function RegisterTrip() {
     } catch (error) {
       console.error('Error saving trip:', error);
       alert('Ett fel uppstod när resan skulle sparas');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -243,8 +252,8 @@ export function RegisterTrip() {
   };
 
   return (
-      <Card className="max-w-md mx-auto p-6 space-y-4">
-        <CarSelector />
+    <Card className="max-w-md mx-auto p-6 space-y-4">
+        <CarSelector disabled={isSubmitting} />
 
         <div className="flex items-center gap-2">
           <User size={32} />
@@ -256,6 +265,7 @@ export function RegisterTrip() {
               hidePlaceholderWhenSelected={true}
               hideClearAllButton={true}
               placeholder="Välj personer"
+              disabled={isSubmitting}
           />
         </div>
 
@@ -265,6 +275,7 @@ export function RegisterTrip() {
                   id="edit-mode"
                   checked={isEditMode}
                   onCheckedChange={handleEditModeChange}
+                  disabled={isSubmitting}
               />
               <Label htmlFor="edit-mode" className="text-sm">
                 Redigera din senaste resa
@@ -307,6 +318,7 @@ export function RegisterTrip() {
                     handleOdometerChange(value);
                   }
                 }}
+                disabled={isSubmitting}
             />
           </div>
           <div className="space-y-2 flex-1">
@@ -330,16 +342,26 @@ export function RegisterTrip() {
           <Input
               value={comment}
               onChange={(e) => setComment(e.target.value)}
+              disabled={isSubmitting}
           />
         </div>
 
-        <Button
-            className="w-full"
-            onClick={handleSubmit}
-            disabled={!selectedCar || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0}
-        >
-          {isEditMode ? 'Uppdatera resa' : 'Spara resa'}
-        </Button>
-      </Card>
+      <Button
+        className="w-full"
+        onClick={handleSubmit}
+        disabled={
+          isSubmitting ||
+          !selectedCar ||
+          selectedUsers.length === 0 ||
+          !newOdometer ||
+          tripDistance <= 0
+        }
+      >
+        {isSubmitting
+          ? 'Sparar ...'
+          : (isEditMode ? 'Uppdatera resa' : 'Spara resa')
+        }
+      </Button>
+    </Card>
   );
 }

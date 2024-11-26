@@ -14,7 +14,7 @@ export function Navbar() {
               <Button className="h-8"
                 variant={location.pathname === '/home' ? 'default' : 'ghost'}
               >
-                <House/>
+                <House size={32}/>
               </Button>
             </Link>
             <Link to="/register-trip">

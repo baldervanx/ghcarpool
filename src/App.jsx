@@ -4,7 +4,7 @@ import { useState, useEffect, createContext, useContext } from 'react';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { Navbar } from './components/Navbar';
 import { Login } from './pages/Login';
-import { RegisterTrip } from './pages/RegisterTrip';
+import { RegisterTrip } from './pages/register-trip';
 import { TripLog } from './pages/TripLog';
 import { AccessibilityProvider } from './lib/utils';
 import { ThemeProvider } from './components/theme-context';
@@ -60,7 +60,7 @@ function App() {
     return <div className="flex items-center justify-center min-h-screen">Laddar...</div>;
   }
 
-  return (    
+  return (
     <Router>
       <AuthContext.Provider value={{ ...authState, setAuthState }}>
         <CarContext.Provider value={{ ...carState, setCarState }}>

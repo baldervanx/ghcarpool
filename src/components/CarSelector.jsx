@@ -1,18 +1,17 @@
 import { Car } from 'lucide-react';
 import { useEffect } from 'react';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
 import { useCar } from '../App';
 import { collection, getDocs, doc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 
-export function CarSelector() {
+export function CarSelector({disabled=false}) {
   const { cars, selectedCar, setCarState } = useCar();
 
   useEffect(() => {
@@ -38,7 +37,7 @@ export function CarSelector() {
   return (
     <div className="flex items-center gap-2">
       <Car size={32} />
-      <Select value={selectedCar} onValueChange={handleCarChange}>
+      <Select value={selectedCar} onValueChange={handleCarChange} disabled={disabled} >
         <SelectTrigger>
           <SelectValue placeholder="Välj bil..." />
         </SelectTrigger>

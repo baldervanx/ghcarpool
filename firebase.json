@@ -13,5 +13,18 @@
       }
     ]
   },
-  "projectId": "ghcarpool-f49f9"
+  "projectId": "ghcarpool-f49f9",
+
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 9090
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    }
+  }
 }

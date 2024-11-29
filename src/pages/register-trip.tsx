@@ -1,39 +1,29 @@
-import { User } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { CarSelector } from '../components/CarSelector';
-import MultipleSelector from '@/components/ui/multiple-selector';
+// register-trip.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import { db } from '../utils/firebase';
-import {
-  collection,
-  query,
-  getDocs,
-  getDoc,
-  orderBy,
-  where,
-  addDoc,
-  updateDoc,
-  serverTimestamp,
-  doc,
-  limit
-} from 'firebase/firestore';
+import { collection, query, getDocs, doc, orderBy, where, addDoc, updateDoc, serverTimestamp, limit, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCar } from '../App';
-import { useAuth } from '../App';
+import { Card } from '@/components/ui/card';
+import { CarSelector } from '../components/CarSelector';
+import UserSelector from '../components/UserSelector';
+import { setSelectedUsers } from '../store';
 
 const MAX_DIST = 9999;
 let COST_PER_KM = 1;
 
 export function RegisterTrip() {
   const navigate = useNavigate();
-  const { selectedCar } = useCar();
-  const { user } = useAuth();
-  const [users, setUsers] = useState([]);
-  const [selectedUsers, setSelectedUsers] = useState([]);
+  const dispatch = useDispatch();
+  const { selectedCar } = useSelector(state => state.car);
+  const { user } = useSelector(state => state.auth);
+  const { selectedUsers, users } = useSelector(state => state.user);
+  const { data } = useSelector(state => state.settings);
+  const [odometerLoading, setOdometerLoading] = useState(false);
   const [lastOdometer, setLastOdometer] = useState('');
   const [tripDistance, setTripDistance] = useState('');
   const [cost, setCost] = useState('');
@@ -44,24 +34,12 @@ export function RegisterTrip() {
   const [lastTrip, setLastTrip] = useState(null);
   const [previousTrip, setPreviousTrip] = useState(null);
   const [canEdit, setCanEdit] = useState(false);
-  // New state for tracking submission process
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      const usersData = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setUsers(usersData);
-      setSelectedUsers([user.user_id]);
-      const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
-      const settings = settingsSnap.data();
-      COST_PER_KM = settings.cost_per_km;
-    };
-    fetchUsers();
-  }, []); //Missing deps user.user_id?
+    COST_PER_KM = data.cost_per_km;
+    dispatch(setSelectedUsers([user.user_id]));
+  }, [dispatch, users.length, user.user_id]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -70,9 +48,13 @@ export function RegisterTrip() {
       }
     };
     fetchData();
-  }, [selectedCar]); //ESLint: "Missing deps fetchLastTrips", why?
+  }, [selectedCar]);
 
   const fetchLastTrips = async (carId) => {
+    resetAllFields('');
+    setLastOdometer('');
+    setOdometerLoading(true);
+    // FIXME: May not use cache if offline!
     const tripsRef = collection(db, 'trips');
     const carRef = doc(db, 'cars', carId);
     const q = query(
@@ -83,6 +65,7 @@ export function RegisterTrip() {
     );
 
     const snapshot = await getDocs(q);
+    setOdometerLoading(false);
     if (!snapshot.empty) {
       const trips = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -93,28 +76,25 @@ export function RegisterTrip() {
       setLastTrip(latestTrip);
       setPreviousTrip(prevTrip);
 
-      // Check if the user can edit this trip
       const canEditTrip = latestTrip.byUser?.id === user.user_id;
       setCanEdit(canEditTrip);
 
       if (isEditMode && canEditTrip) {
-        // In edit mode, use previous trip's odometer as lastOdometer
         setLastOdometer(prevTrip ? prevTrip.odo.toString() : '0');
-        // Load trip data for editing
-        setSelectedUsers(latestTrip.users.map(u => u.id));
+        dispatch(setSelectedUsers(latestTrip.users.map(u => u.id)));
         setNewOdometer(latestTrip.odo.toString());
         setTripDistance(latestTrip.distance);
-        setEditOdometer(calculateEditOdometer())
+        setEditOdometer(calculateEditOdometer(latestTrip.odo.toString(), latestTrip.distance.toString()));
         setCost(latestTrip.cost.toFixed(2));
         setComment(latestTrip.comment || '');
       } else {
-        // In new trip mode, use latest trip's odometer as lastOdometer
         setLastOdometer(latestTrip.odo.toString());
         resetAllFields(latestTrip.odo.toString());
       }
     } else {
       alert('Kan inte hämta senaste mätarställning för vald bil.');
       setLastOdometer('');
+      setNewOdometer('');
       setLastTrip(null);
       setPreviousTrip(null);
       setCanEdit(false);
@@ -131,7 +111,7 @@ export function RegisterTrip() {
 
   const handleOdometerChange = (value) => {
     setEditOdometer(value);
-    let newOdo = lastOdometer;
+    let newOdo: any = lastOdometer;
     if (value.length > 0) {
       let prefix = lastOdometer.slice(0, -value.length);
       newOdo = prefix + value;
@@ -139,43 +119,31 @@ export function RegisterTrip() {
         newOdo = (parseInt(prefix) + 1).toString() + value;
       }
     }
-    let dist = newOdo - lastOdometer;
+    let dist: any = newOdo - lastOdometer;
     if (dist <= 0 || dist > MAX_DIST) dist = '';
     setTripDistance(dist);
     setCost(dist !== '' ? (dist * COST_PER_KM).toFixed(2) : '');
     setNewOdometer(newOdo);
   };
 
-  const getSelectedUserObjects = () => {
-    return users.filter(user =>
-        selectedUsers.includes(user.id)
-    ).map(user => ({
-      ...user,
-      commentMandatory: user.commentMandatory ?? false
-    }));
-  };
-
-  // Calculate the editOdometer from newOdometer and distance
   const calculateEditOdometer = (newOdo, dist) => {
     return newOdo.slice(newOdo.length - dist.length);
-  }
+  };
 
   const handleEditModeChange = async (checked) => {
     setIsEditMode(checked);
     if (checked && lastTrip && canEdit && previousTrip) {
-      // Load the last trip data for editing
       setLastOdometer(previousTrip.odo.toString());
-      setSelectedUsers(lastTrip.users.map(u => u.id));
+      dispatch(setSelectedUsers(lastTrip.users.map(u => u.id)));
       setNewOdometer(lastTrip.odo.toString());
       setTripDistance(lastTrip.distance);
-      setEditOdometer(calculateEditOdometer(lastTrip.odo.toString(), lastTrip.distance.toString()))
+      setEditOdometer(calculateEditOdometer(lastTrip.odo.toString(), lastTrip.distance.toString()));
       setCost(lastTrip.cost.toFixed(2));
       setComment(lastTrip.comment || '');
     } else {
-      // Reset to new trip mode
       setLastOdometer(lastTrip?.odo.toString() || '');
       resetAllFields(lastTrip?.odo.toString() || '');
-      setSelectedUsers([user.user_id]);
+      dispatch(setSelectedUsers([user.user_id]));
     }
   };
 
@@ -192,7 +160,6 @@ export function RegisterTrip() {
       return;
     }
 
-    // Prevent multiple submissions
     if (isSubmitting) return;
 
     try {
@@ -212,15 +179,14 @@ export function RegisterTrip() {
         byUser: byUser
       };
 
+      // FIXME: Must not wait forever when offline.
       if (isEditMode && lastTrip) {
-        // Update existing trip
         const tripRef = doc(db, 'trips', lastTrip.id);
         await updateDoc(tripRef, {
           ...tripData,
           editedAt: serverTimestamp()
         });
       } else {
-        // Add new trip
         await addDoc(collection(db, 'trips'), {
           ...tripData,
           timestamp: serverTimestamp()
@@ -236,38 +202,19 @@ export function RegisterTrip() {
     }
   };
 
-  const userOptions = users.map(user => ({
-    value: user.id,
-    badgeLabel: `${user.shortName}`,
-    label: `${user.name}`
-  }));
-
-  const selectedValues = userOptions.filter(option =>
-      selectedUsers.includes(option.value)
-  );
-
-  const handleSelectionChange = (selectedOptions) => {
-    const selectedIds = selectedOptions ? selectedOptions.map(option => option.value) : [];
-    setSelectedUsers(selectedIds);
+  const getSelectedUserObjects = () => {
+    return users.filter(user =>
+        selectedUsers.includes(user.id)
+    ).map(user => ({
+      ...user,
+      commentMandatory: user.commentMandatory ?? false
+    }));
   };
 
   return (
-    <Card className="max-w-md mx-auto p-6 space-y-4">
+      <Card className="max-w-md mx-auto p-6 space-y-4">
         <CarSelector disabled={isSubmitting} />
-
-        <div className="flex items-center gap-2">
-          <User size={32} />
-          <MultipleSelector
-              value={selectedValues}
-              onChange={handleSelectionChange}
-              options={userOptions}
-              maxSelected={3}
-              hidePlaceholderWhenSelected={true}
-              hideClearAllButton={true}
-              placeholder="Välj personer"
-              disabled={isSubmitting}
-          />
-        </div>
+        <UserSelector disabled={isSubmitting} />
 
         {lastTrip && canEdit && (
             <div className="flex items-center space-x-2">
@@ -289,6 +236,7 @@ export function RegisterTrip() {
             <Input
                 type="number"
                 value={lastOdometer}
+                placeholder={odometerLoading ? 'Laddar ...' : ''}
                 disabled
             />
           </div>
@@ -318,7 +266,7 @@ export function RegisterTrip() {
                     handleOdometerChange(value);
                   }
                 }}
-                disabled={isSubmitting}
+                disabled={isSubmitting || odometerLoading}
             />
           </div>
           <div className="space-y-2 flex-1">
@@ -346,22 +294,15 @@ export function RegisterTrip() {
           />
         </div>
 
-      <Button
-        className="w-full"
-        onClick={handleSubmit}
-        disabled={
-          isSubmitting ||
-          !selectedCar ||
-          selectedUsers.length === 0 ||
-          !newOdometer ||
-          tripDistance <= 0
-        }
-      >
-        {isSubmitting
-          ? 'Sparar ...'
-          : (isEditMode ? 'Uppdatera resa' : 'Spara resa')
-        }
-      </Button>
-    </Card>
+        <Button
+            className="w-full"
+            onClick={handleSubmit}
+            disabled={
+                isSubmitting || !selectedCar || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0
+            }
+        >
+          {isSubmitting ? 'Sparar ...' : (isEditMode ? 'Uppdatera resa' : 'Spara resa')}
+        </Button>
+      </Card>
   );
 }

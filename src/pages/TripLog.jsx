@@ -2,11 +2,11 @@
 
 import OfflineStatus from '../components/OfflineStatus';
 import React, { useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
 import { collection, query, where, orderBy, getDocs, doc, limit } from 'firebase/firestore';
 import { db } from '../utils/firebase';
-import { useCar } from '../App';
 import CarPoolCSVExporter from '@/components/ui/car-pool-csv-export';
 import {
   Table,
@@ -19,8 +19,9 @@ import {
 
 export function TripLog() {
   const [trips, setTrips] = useState([]);
+  const [tripsLoading, setTripsLoading] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(null);
-  const { selectedCar } = useCar();
+  const { selectedCar } = useSelector(state => state.car);
 
   useEffect(() => {
     fetchTrips();
@@ -30,6 +31,7 @@ export function TripLog() {
   const fetchTrips = async () => {
     if (!selectedCar) return;
 
+    setTripsLoading(true);
     setTrips([]);
 
     const tripsRef = collection(db, 'trips');
@@ -40,7 +42,6 @@ export function TripLog() {
       orderBy('timestamp', 'desc'),
       limit(20)
     );
-    // Should perhaps show "loading" while waiting for the data.
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
       const tripsData = snapshot.docs.map(doc => ({
@@ -51,6 +52,7 @@ export function TripLog() {
 
       setTrips(tripsData);
       setLastFetchTime(Date.now());
+      setTripsLoading(false);
     }
   };
 
@@ -88,7 +90,7 @@ export function TripLog() {
           //staleDuration={30 * 1000}
         />
       </Card>
-      {trips.length > 0 && (
+      {!tripsLoading && trips.length > 0 && (
         <Card className="p-2">
           <Table className="compact-table">
             <TableHeader>
@@ -129,8 +131,12 @@ export function TripLog() {
           </Table>
         </Card>
       )}
-      
-      <CarPoolCSVExporter />
+
+      {tripsLoading && (
+          <div className="flex items-center justify-center min-h-screen">Laddar...</div>
+      )}
+
+      <CarPoolCSVExporter/>
     </div>
   );
 }

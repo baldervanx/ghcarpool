@@ -38,17 +38,17 @@ export const useAccessibility = () => {
 
 const getStoredSettings = (): AccessibilitySettings => {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS
-  
+
   try {
     const stored = localStorage.getItem('accessibilitySettings')
     if (!stored) return DEFAULT_SETTINGS
-    
+
     const parsed = JSON.parse(stored) as Partial<AccessibilitySettings>
-    
+
     return {
       isHighContrast: typeof parsed.isHighContrast === 'boolean' ? parsed.isHighContrast : DEFAULT_SETTINGS.isHighContrast,
-      textSize: parsed.textSize && ['normal', 'large', 'larger'].includes(parsed.textSize) 
-        ? parsed.textSize 
+      textSize: parsed.textSize && ['normal', 'large', 'larger'].includes(parsed.textSize)
+        ? parsed.textSize
         : DEFAULT_SETTINGS.textSize
     }
   } catch (error) {
@@ -121,7 +121,7 @@ export function useAccessibleCn() {
   return useMemo(() => {
     return function (...inputs: ClassValue[]) {
       let classes = clsx(inputs).split(' ')
-      
+
       if (!classes.includes('no-a11y')) {
         // Hantera textstorlekar
         if (settings.textSize !== 'normal') {
@@ -139,3 +139,7 @@ export function useAccessibleCn() {
     }
   }, [settings.isHighContrast, settings.textSize])
 }
+
+export const isOnline = () => {
+  return window.navigator.onLine;
+};

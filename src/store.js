@@ -28,13 +28,6 @@ export const fetchAuthState = createAsyncThunk(
         return new Promise(async (resolve) => {
             const auth = getAuth();
 
-            // Hämta användare, bilar och inställningar parallellt
-            const [users, cars, settings] = await Promise.all([
-                dispatch(fetchUsers()).unwrap(),
-                dispatch(fetchCars()).unwrap(),
-                dispatch(fetchSettings()).unwrap()
-            ]);
-
             onAuthStateChanged(auth, async (user) => {
                 let authState = {
                     user: null,
@@ -42,6 +35,11 @@ export const fetchAuthState = createAsyncThunk(
                     loading: false
                 };
                 if (user) {
+                    const [users, cars, settings] = await Promise.all([
+                        dispatch(fetchUsers()).unwrap(),
+                        dispatch(fetchCars()).unwrap(),
+                        dispatch(fetchSettings()).unwrap()
+                    ]);
                     // Hitta användaren i den hämtade användarlistan
                     const matchedUser = users.find(u => u.email === user.email);
                     if (matchedUser) {

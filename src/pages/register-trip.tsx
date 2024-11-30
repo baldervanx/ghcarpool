@@ -1,9 +1,8 @@
-// register-trip.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { db } from '../utils/firebase';
-import { collection, query, getDocs, doc, orderBy, where, addDoc, updateDoc, serverTimestamp, limit, getDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, orderBy, where, addDoc, updateDoc, serverTimestamp, limit } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,9 +11,20 @@ import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
 import UserSelector from '../components/UserSelector';
 import { setSelectedUsers } from '../store';
+import { isOnline } from '@/lib/utils'; // Importera nätverkskontrollen
 
 const MAX_DIST = 9999;
 let COST_PER_KM = 1;
+
+interface Trip {
+  id: string;
+  odo: number;
+  distance: number;
+  cost: number;
+  comment?: string;
+  users: { id: string }[];
+  byUser: { id: string };
+}
 
 export function RegisterTrip() {
   const navigate = useNavigate();
@@ -31,10 +41,11 @@ export function RegisterTrip() {
   const [editOdometer, setEditOdometer] = useState('');
   const [comment, setComment] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
-  const [lastTrip, setLastTrip] = useState(null);
-  const [previousTrip, setPreviousTrip] = useState(null);
+  const [lastTrip, setLastTrip] = useState<Trip | null>(null);
+  const [previousTrip, setPreviousTrip] = useState<Trip | null>(null);
   const [canEdit, setCanEdit] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     COST_PER_KM = data.cost_per_km;
@@ -50,54 +61,85 @@ export function RegisterTrip() {
     fetchData();
   }, [selectedCar]);
 
+  useEffect(() => {
+    const handleOnlineStatus = () => {
+      if (!isOnline()) {
+        setErrorMessage('Du är offline. Aktivera nätverk för att logga.');
+        setIsProcessing(true);
+      } else {
+        setErrorMessage(null);
+        setIsProcessing(false);
+      }
+    };
+    window.addEventListener('online', handleOnlineStatus);
+    window.addEventListener('offline', handleOnlineStatus);
+
+    return () => {
+      window.removeEventListener('online', handleOnlineStatus);
+      window.removeEventListener('offline', handleOnlineStatus);
+    };
+  }, []);
+
   const fetchLastTrips = async (carId) => {
+    if (!isOnline()) {
+      setErrorMessage('Du är offline. Kan inte hämta senaste resor.');
+      setIsProcessing(true);
+      return;
+    }
+
     resetAllFields('');
     setLastOdometer('');
     setOdometerLoading(true);
-    // FIXME: May not use cache if offline!
-    const tripsRef = collection(db, 'trips');
-    const carRef = doc(db, 'cars', carId);
-    const q = query(
-        tripsRef,
-        where('car', '==', carRef),
-        orderBy('timestamp', 'desc'),
-        limit(2)
-    );
 
-    const snapshot = await getDocs(q);
-    setOdometerLoading(false);
-    if (!snapshot.empty) {
-      const trips = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+    try {
+      const tripsRef = collection(db, 'trips');
+      const carRef = doc(db, 'cars', carId);
+      const q = query(
+          tripsRef,
+          where('car', '==', carRef),
+          orderBy('timestamp', 'desc'),
+          limit(2)
+      );
 
-      const [latestTrip, prevTrip] = trips;
-      setLastTrip(latestTrip);
-      setPreviousTrip(prevTrip);
+      const snapshot = await getDocs(q);
+      setOdometerLoading(false);
 
-      const canEditTrip = latestTrip.byUser?.id === user.user_id;
-      setCanEdit(canEditTrip);
+      if (!snapshot.empty) {
+        const trips = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Trip[];
 
-      if (isEditMode && canEditTrip) {
-        setLastOdometer(prevTrip ? prevTrip.odo.toString() : '0');
-        dispatch(setSelectedUsers(latestTrip.users.map(u => u.id)));
-        setNewOdometer(latestTrip.odo.toString());
-        setTripDistance(latestTrip.distance);
-        setEditOdometer(calculateEditOdometer(latestTrip.odo.toString(), latestTrip.distance.toString()));
-        setCost(latestTrip.cost.toFixed(2));
-        setComment(latestTrip.comment || '');
+        const [latestTrip, prevTrip] = trips;
+        setLastTrip(latestTrip);
+        setPreviousTrip(prevTrip);
+
+        const canEditTrip = latestTrip.byUser?.id === user.user_id;
+        setCanEdit(canEditTrip);
+
+        if (isEditMode && canEditTrip) {
+          setLastOdometer(prevTrip ? prevTrip.odo.toString() : '0');
+          dispatch(setSelectedUsers(latestTrip.users.map(u => u.id)));
+          setNewOdometer(latestTrip.odo.toString());
+          setTripDistance(latestTrip.distance);
+          setEditOdometer(calculateEditOdometer(latestTrip.odo.toString(), latestTrip.distance.toString()));
+          setCost(latestTrip.cost.toFixed(2));
+          setComment(latestTrip.comment || '');
+        } else {
+          setLastOdometer(latestTrip.odo.toString());
+          resetAllFields(latestTrip.odo.toString());
+        }
       } else {
-        setLastOdometer(latestTrip.odo.toString());
-        resetAllFields(latestTrip.odo.toString());
+        setErrorMessage('Kan inte hämta senaste mätarställning för vald bil.');
+        setLastOdometer('');
+        setNewOdometer('');
+        setLastTrip(null);
+        setPreviousTrip(null);
+        setCanEdit(false);
       }
-    } else {
-      alert('Kan inte hämta senaste mätarställning för vald bil.');
-      setLastOdometer('');
-      setNewOdometer('');
-      setLastTrip(null);
-      setPreviousTrip(null);
-      setCanEdit(false);
+    } catch (error) {
+      setErrorMessage('Ett fel uppstod när resan skulle hämtas.');
+      console.error('Error fetching trips:', error);
     }
   };
 
@@ -149,21 +191,21 @@ export function RegisterTrip() {
 
   const handleSubmit = async () => {
     if (!selectedCar || selectedUsers.length === 0 || !newOdometer) {
-      alert('Vänligen fyll i alla fält');
+      setErrorMessage('Vänligen fyll i alla fält');
       return;
     }
 
     const selUserObjs = getSelectedUserObjects();
     const userCommentMandatory = selUserObjs.find(user => user.commentMandatory === true);
     if (comment === "" && userCommentMandatory) {
-      alert('Kommentar krävs för ' + userCommentMandatory.shortName);
+      setErrorMessage('Kommentar krävs för ' + userCommentMandatory.shortName);
       return;
     }
 
-    if (isSubmitting) return;
+    if (isProcessing) return;
 
     try {
-      setIsSubmitting(true);
+      setIsProcessing(true);
 
       const carRef = doc(db, 'cars', selectedCar);
       const userRefs = selectedUsers.map((u) => doc(db, 'users', u));
@@ -179,7 +221,6 @@ export function RegisterTrip() {
         byUser: byUser
       };
 
-      // FIXME: Must not wait forever when offline.
       if (isEditMode && lastTrip) {
         const tripRef = doc(db, 'trips', lastTrip.id);
         await updateDoc(tripRef, {
@@ -196,9 +237,9 @@ export function RegisterTrip() {
       navigate('/trip-log');
     } catch (error) {
       console.error('Error saving trip:', error);
-      alert('Ett fel uppstod när resan skulle sparas');
+      setErrorMessage('Ett fel uppstod när resan skulle sparas');
     } finally {
-      setIsSubmitting(false);
+      setIsProcessing(false);
     }
   };
 
@@ -213,8 +254,8 @@ export function RegisterTrip() {
 
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
-        <CarSelector disabled={isSubmitting} />
-        <UserSelector disabled={isSubmitting} />
+        <CarSelector disabled={isProcessing} />
+        <UserSelector disabled={isProcessing} />
 
         {lastTrip && canEdit && (
             <div className="flex items-center space-x-2">
@@ -222,7 +263,7 @@ export function RegisterTrip() {
                   id="edit-mode"
                   checked={isEditMode}
                   onCheckedChange={handleEditModeChange}
-                  disabled={isSubmitting}
+                  disabled={isProcessing}
               />
               <Label htmlFor="edit-mode" className="text-sm">
                 Redigera din senaste resa
@@ -266,7 +307,7 @@ export function RegisterTrip() {
                     handleOdometerChange(value);
                   }
                 }}
-                disabled={isSubmitting || odometerLoading}
+                disabled={isProcessing || odometerLoading}
             />
           </div>
           <div className="space-y-2 flex-1">
@@ -290,18 +331,24 @@ export function RegisterTrip() {
           <Input
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              disabled={isSubmitting}
+              disabled={isProcessing}
           />
         </div>
+
+        {errorMessage && (
+            <div className="text-red-500">
+              {errorMessage}
+            </div>
+        )}
 
         <Button
             className="w-full"
             onClick={handleSubmit}
             disabled={
-                isSubmitting || !selectedCar || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0
+                isProcessing || !selectedCar || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0
             }
         >
-          {isSubmitting ? 'Sparar ...' : (isEditMode ? 'Uppdatera resa' : 'Spara resa')}
+          {isProcessing && isOnline() ? 'Sparar ...' : (isEditMode ? 'Uppdatera resa' : 'Spara resa')}
         </Button>
       </Card>
   );

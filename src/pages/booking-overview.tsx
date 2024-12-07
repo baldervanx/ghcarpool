@@ -21,7 +21,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {useSelector} from "react-redux";
 
+// TODO: Add short-name of destination, when the destinations are cached in store.
 const BookingCell = ({ bookings, onClick }) => {
   if (!bookings || bookings.length === 0) return null;
 
@@ -40,7 +42,10 @@ const BookingCell = ({ bookings, onClick }) => {
           onClick={() => onClick(booking)}
           className="min-w-[16ch] bg-primary/10 dark:bg-primary/20 p-1 rounded text-xs cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors"
         >
-          {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)} (${booking.distance/10})`}
+          {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}` +
+              (booking.distance ? ` (${Math.round(booking.distance/10)})` : ``) +
+              (booking.destination ? ` ${booking.destination}` : ``)
+          }
         </div>
       ))}
     </div>
@@ -49,22 +54,10 @@ const BookingCell = ({ bookings, onClick }) => {
 
 const BookingOverview = ({ onEditBooking }) => {
   const navigate = useNavigate();
-  const [cars, setCars] = useState([]);
+  const { cars } = useSelector(state => state.car);
   const [bookings, setBookings] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
   const daysPerPage = 14;
-
-  useEffect(() => {
-    const fetchCars = async () => {
-      const snapshot = await getDocs(collection(db, 'cars'));
-      const carsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setCars(carsData);
-    };
-    fetchCars();
-  }, []);
 
   useEffect(() => {
     const fetchBookings = async () => {
@@ -72,17 +65,22 @@ const BookingOverview = ({ onEditBooking }) => {
       const endDate = addDays(startDate, daysPerPage);
 
       const q = query(
-        collection(db, 'bookings'),
-        where('date', '>=', format(startDate, 'yyyy-MM-dd')),
-        where('date', '<', format(endDate, 'yyyy-MM-dd')),
-        orderBy('date')
+          collection(db, 'date-car-bookings'),
+          where('date', '>=', format(startDate, 'yyyy-MM-dd')),
+          where('date', '<', format(endDate, 'yyyy-MM-dd'))
       );
 
       const snapshot = await getDocs(q);
-      const bookingsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const bookingsData = snapshot.docs.flatMap(doc => {
+        const { date, car, bookings } = doc.data();
+        return bookings.map(booking => ({
+          ...booking,
+          date,
+          car,
+          parent_id: doc.id
+        }));
+      }).sort((a, b) => a.startTime - b.startTime);
+
       setBookings(bookingsData);
     };
     fetchBookings();
@@ -96,7 +94,7 @@ const BookingOverview = ({ onEditBooking }) => {
   );
 
   const handleBookingClick = (booking) => {
-    navigate(`/book-trip?id=${booking.id}`);
+    navigate('/book-trip', { state: { parent_id: booking.parent_id, booking_id: booking.id } });
   };
 
   const columns = useMemo(() => [
@@ -105,7 +103,7 @@ const BookingOverview = ({ onEditBooking }) => {
       accessorKey: 'date',
       cell: ({ row }) => (
         <div className="font-medium whitespace-nowrap">
-          {format(row.original, 'yyyy-MM-dd')}
+          {format(row.original, 'dd/MM E',  {locale: sv})}
         </div>
       ),
       meta: {

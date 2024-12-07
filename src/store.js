@@ -97,6 +97,9 @@ const carSlice = createSlice({
     reducers: {
         setCarState: (state, action) => {
             return { ...state, ...action.payload };
+        },
+        setSelectedCar: (state, action) => {
+            state.selectedCar = action.payload;
         }
     },
     extraReducers: (builder) => {
@@ -168,7 +171,7 @@ const store = configureStore({
 });
 
 export const { setAuthState } = authSlice.actions;
-export const { setCarState } = carSlice.actions;
+export const { setCarState, setSelectedCar } = carSlice.actions;
 export const { setUsers, setSelectedUsers } = userSlice.actions;
 
 export default store;

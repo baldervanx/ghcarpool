@@ -255,6 +255,8 @@ export function RegisterTrip() {
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
         <CarSelector disabled={isProcessing} />
+        {/* Behöver markera inmatad text som röd, eller helst inte tillåta textinmatning alls.
+            Ser ut som att värdet accepteras. */}
         <UserSelector disabled={isProcessing} />
 
         {lastTrip && canEdit && (
@@ -335,12 +337,15 @@ export function RegisterTrip() {
           />
         </div>
 
+        {/* FIXME: Använd Alert istället? */}
         {errorMessage && (
             <div className="text-red-500">
               {errorMessage}
             </div>
         )}
 
+        {/* FIXME: Bör vara enabled så att användaren får feedback på felaktig inmatning. Fast inte om "isProcessing".
+            Måste se till att errorMessage nollställs när felet korrigeras. */}
         <Button
             className="w-full"
             onClick={handleSubmit}

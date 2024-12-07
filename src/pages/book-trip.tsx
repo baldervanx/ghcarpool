@@ -11,8 +11,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CarSelector } from '../components/CarSelector';
 import { useDispatch, useSelector } from 'react-redux';
 import UserSelector from '../components/UserSelector';
-import { setSelectedUsers } from '../store';
-import { format } from 'date-fns';
+import { setSelectedUsers, setSelectedCar } from '../store';
+import { format, isSameDay } from 'date-fns';
+import { DocumentReference } from "firebase/firestore";
+
+interface Booking {
+  id?: string; // Optional, for existing bookings
+  users: DocumentReference[];
+  startTime: number;
+  endTime: number;
+  distance: number;
+  destination: string;
+  byUser: DocumentReference;
+  recurrenceId?: string;
+}
+
+// TODO: How to use this interface?
+interface DateCarBooking {
+  date: string;
+  car: DocumentReference;
+  bookings: Array<Booking>;
+}
 
 const TimeSelector = ({ value, onChange, label }) => {
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -61,6 +80,8 @@ const TimeSelector = ({ value, onChange, label }) => {
   );
 };
 
+// Should be possible to use editable combo-box to allow entering custom destination
+// Destinations could be loaded and cached locally as they rarely change.
 const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
   const [destinations, setDestinations] = useState([]);
   const [customDestination, setCustomDestination] = useState('');
@@ -74,6 +95,10 @@ const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
         ...doc.data()
       }));
       setDestinations(destinationsData);
+      // TODO: This isn't working.
+      if (value) {
+        setSelectedDestination(value);
+      }
     };
     fetchDestinations();
   }, []);
@@ -123,6 +148,21 @@ const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
   );
 };
 
+// TODO:
+// * Swap existing bookings between cars
+// * Validate overlap - give more details and better handling of recurring booking
+// * Validate range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
+// * Destination is not set when updating existing entry
+// * Use accordion (https://ui.shadcn.com/docs/components/accordion) for the advanced settings?
+// * Recurring booking should end at and including end-date
+// * Recurring booking must (optionally) delete all entries including the recurring-booking entry.
+// * Updating recurring booking - must be tested - quite complex, might need to limit for now.
+// * Support multi-day booking - i.e. a special case of recurring booking
+// * Better date selector - that fits with the theme - https://ui.shadcn.com/docs/components/date-picker
+// * Better time selector - selecting times quicker with "scroll".
+// * Lock fields while waiting - loading/saving.
+
+// * Transactional update - never overwrite external update.
 const BookTrip = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -134,6 +174,7 @@ const BookTrip = () => {
   const [bookingStartTime, setBookingStartTime] = useState('');
   const [bookingEndTime, setBookingEndTime] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
+  const [isMultiDay, setIsMultiDay] = useState(false);
   const [recurringDays, setRecurringDays] = useState([]);
   const [recurringEndDate, setRecurringEndDate] = useState('');
   const [distance, setDistance] = useState('');
@@ -148,45 +189,39 @@ const BookTrip = () => {
   // Lägg till useEffect för att hämta existerande bokning
   useEffect(() => {
     const fetchExistingBooking = async () => {
-      const params = new URLSearchParams(location.search);
-      const bookingId = params.get('id');
+      if (location.state) {
+        const { parent_id, booking_id } = location.state;
+        const dateCarDoc = await getDoc(doc(db, 'date-car-bookings', parent_id));
+        if (dateCarDoc.exists()) {
+          // TODO: Store this bookingData.
+          const bookingData = dateCarDoc.data().bookings.find(b => b.id === booking_id);
 
-      if (bookingId) {
-        const bookingDoc = await getDoc(doc(db, 'bookings', bookingId));
-        if (bookingDoc.exists()) {
-          const bookingData = bookingDoc.data();
-          setExistingBooking(bookingDoc.id);
-          // FIXME:
-          //setSelectedCar(bookingData.car.id);
-          setSelectedUsers(bookingData.users.map(u => u.id));
-          setBookingDate(bookingData.date);
-          setBookingStartTime(timeToString(bookingData.startTime));
-          setBookingEndTime(timeToString(bookingData.endTime));
-          setDistance(bookingData.distance.toString());
-          setDestination(bookingData.destination || '');
+          if (bookingData) {
+            setExistingBooking(booking_id);
+            dispatch(setSelectedCar(dateCarDoc.data().car.id));
+            setSelectedUsers(bookingData.users.map(u => u.id));
+            setBookingDate(dateCarDoc.data().date);
+            setBookingStartTime(timeToString(bookingData.startTime));
+            setBookingEndTime(timeToString(bookingData.endTime));
+            setDistance(bookingData.distance.toString());
+            setDestination(bookingData.destination || '');
 
-          if (bookingData.recurrenceId) {
-            const recurrenceDoc = await getDoc(doc(db, 'recurrence', bookingData.recurrenceId));
-            if (recurrenceDoc.exists()) {
-              const recurrenceData = recurrenceDoc.data();
-              setIsRecurring(true);
-              setRecurringDays(recurrenceData.recurringDays);
-              setRecurringEndDate(recurrenceData.recurringEndDate);
+            // Handle recurrence
+            if (bookingData.recurrenceId) {
+              const recurrenceDoc = await getDoc(doc(db, 'recurrence', bookingData.recurrenceId));
+              if (recurrenceDoc.exists()) {
+                const recurrenceData = recurrenceDoc.data();
+                if (recurrenceData.isMultiDay) {
+                  setIsMultiDay(true);
+                } else {
+                  setIsRecurring(true);
+                  setRecurringDays(recurrenceData.recurringDays);
+                }
+                setRecurringEndDate(recurrenceData.recurringEndDate);
+              }
             }
           }
         }
-      } else {
-        // Set default start time to current time rounded to nearest 15 minutes
-        const now = new Date();
-        const minutes = Math.ceil(now.getMinutes() / 15) * 15;
-        const hours = now.getHours() + Math.floor(minutes / 60);
-        const adjustedMinutes = minutes % 60;
-        setBookingStartTime(
-            `${hours.toString().padStart(2, '0')}:${adjustedMinutes.toString().padStart(2, '0')}`
-        );
-        setBookingEndTime(
-            `${(hours+2).toString().padStart(2, '0')}:00`
-        );
       }
     };
 
@@ -204,33 +239,29 @@ const BookTrip = () => {
     return hours * 60 + minutes;
   }
 
-  // Uppdatera createBookings för att hantera uppdateringar
+  function isBookingOverlapping(bookings: Booking[]) {
+    if (bookings.length === 1) {
+      return false;
+    }
+    // TODO: Present details about the overlap, and also warn when booking close to another booking.
+    for (let i = 1; i < bookings.length; i++) {
+      if (bookings[i].startTime < bookings[i - 1].endTime) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // TODO: Must fetch all existing bookings for the entire range of dates that is being booked and
+  // verify that there are no collisions BEFORE starting to book dates.
   const createOrUpdateBookings = async () => {
-    const carRef = doc(db, 'cars', selectedCar);
-    const userRefs = selectedUsers.map((u) => doc(db, 'users', u));
-    const byUser = doc(db, 'users', user.user_id);
-
-    const bookingData = {
-      car: carRef,
-      users: userRefs,
-      startTime: timeToNumber(bookingStartTime),
-      endTime: timeToNumber(bookingEndTime),
-      distance: Number(distance),
-      date: bookingDate,
-      destination,
-      byUser,
-      timestamp: serverTimestamp()
-    };
-
-    if (existingBooking) {
-      // Uppdatera existerande bokning
-      await updateDoc(doc(db, 'bookings', existingBooking), bookingData);
-    } else if (!isRecurring) {
-      // Skapa ny enskild bokning
-      await addDoc(collection(db, 'bookings'), bookingData);
+    if (!isRecurring && !isMultiDay) {
+      // Existing single booking creation logic
+      return await createSingleBooking(bookingStartTime, bookingEndTime, distance);
     } else {
-      // Skapa ny återkommande bokning
+      // Recurring booking logic
       const recurrenceDoc = await addDoc(collection(db, 'recurrence'), {
+        isMultiDay,
         recurringDays,
         recurringEndDate,
         createdAt: serverTimestamp()
@@ -238,40 +269,161 @@ const BookTrip = () => {
 
       const start = new Date(bookingDate);
       const end = new Date(recurringEndDate);
-      const currentDate = new Date(start);
+      // TODO: Must ensure end-date is set and is after start-date.
 
+      const currentDate = new Date(start);
+      let startTime = bookingStartTime;
+      let endTime = bookingEndTime;
+      let dist = distance;
       while (currentDate <= end) {
-        if (recurringDays.includes(currentDate.getDay())) {
-          await addDoc(collection(db, 'bookings'), {
-            ...bookingData,
-            date: format(currentDate, 'yyyy-MM-dd'),
-            recurrenceId: recurrenceDoc.id
-          });
+        if (isMultiDay || recurringDays.includes(currentDate.getDay())) {
+          if (isMultiDay) {
+            if (isSameDay(currentDate, start)) {
+              endTime = "24:00";
+              dist = '';
+            } else if (isSameDay(currentDate, end)) {
+              endTime = bookingEndTime;
+              dist = distance; // Should only have distance set on the last entry when multi-day.
+            } else {
+              startTime = "00:00";
+            }
+          }
+          // Create booking for each recurring day
+          const succeeded = await createSingleBooking(
+              startTime, endTime, dist,
+              format(currentDate, 'yyyy-MM-dd'),
+              recurrenceDoc.id
+          );
+          if (!succeeded) {
+            // TODO: Must check if it is OK that some updates fail due to collisions.
+            // For a multi-day booking ALL bookings MUST succeed.
+            return false;
+          }
         }
         currentDate.setDate(currentDate.getDate() + 1);
       }
     }
+    return true;
   };
 
-  const handleBooking = async () => {
-    if (!selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || !distance) {
-      setAlerts([{ type: 'error', message: 'Vänligen fyll i alla obligatoriska fält' }]);
-      return;
+  const createSingleBooking = async (startTime, endTime, dist, date = bookingDate, recurrenceId = null) => {
+    const carRef = doc(db, 'cars', selectedCar);
+    const dateCarQuery = query(
+        collection(db, 'date-car-bookings'),
+        where('date', '==', date),
+        where('car', '==', carRef)
+    );
+
+    const snapshot = await getDocs(dateCarQuery);
+
+    const newBooking = {
+      id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
+      users: selectedUsers.map(u => doc(db, 'users', u)),
+      startTime: timeToNumber(startTime),
+      endTime: timeToNumber(endTime),
+      distance: Number(dist),
+      destination,
+      byUser: doc(db, 'users', user.user_id),
+      ...(recurrenceId && { recurrenceId })
+    };
+
+    if (snapshot.empty) {
+      // First booking for this date and car
+      await addDoc(collection(db, 'date-car-bookings'), {
+        date,
+        car: carRef,
+        bookings: [newBooking]
+      });
+    } else {
+      // Existing date-car document
+      const docRef = snapshot.docs[0].ref;
+      const currentBookings = snapshot.docs[0].data().bookings;
+
+      let updatedBookings: Booking[];
+      if (existingBooking) {
+        // Update existing booking
+        updatedBookings = currentBookings.map(booking =>
+            booking.id === existingBooking ? newBooking : booking
+        );
+      } else {
+        updatedBookings = [...currentBookings, newBooking];
+      }
+      updatedBookings = updatedBookings.sort((a, b) => a.startTime - b.startTime);
+      if (isBookingOverlapping(updatedBookings)) {
+        // For recurring bookings there might be many collisions.
+        setAlerts([{ type: 'error', message: 'Vald tid krockar med annan bokning' }]);
+        return false;
+      }
+      await updateDoc(docRef, { bookings: updatedBookings });
+    }
+    return true;
+  };
+
+  // FIXME: Must handle deletion of all recurring bookings too, including the recurrence entry.
+  const deleteBooking = async () => {
+    if (!existingBooking) return;
+
+    const dateCarQuery = query(
+        collection(db, 'date-car-bookings'),
+        where('date', '==', bookingDate),
+        where('car', '==', doc(db, 'cars', selectedCar))
+    );
+
+    const snapshot = await getDocs(dateCarQuery);
+    if (!snapshot.empty) {
+      const docRef = snapshot.docs[0].ref;
+      const currentBookings = snapshot.docs[0].data().bookings;
+
+      const updatedBookings = currentBookings.filter(
+          booking => booking.id !== existingBooking
+      );
+
+      await updateDoc(docRef, { bookings: updatedBookings });
+      navigate('/booking-overview');
+    }
+  };
+
+  const validateAllFields = async () => {
+    let validations = [];
+    if (!selectedCar || selectedUsers.length === 0 || !bookingDate || !bookingStartTime || !bookingEndTime || !distance) {
+      validations.push({ type: 'error', message: 'Vänligen fyll i alla obligatoriska fält: bil, användare, datum, start- och sluttid, samt distans.' });
+    } else {
+      if (!isMultiDay && bookingStartTime >= bookingEndTime) {
+        validations.push({ type: 'error', message: 'Sluttid måste vara större än starttid' });
+      }
     }
 
     if (isRecurring && (!recurringEndDate || recurringDays.length === 0)) {
-      setAlerts([{ type: 'error', message: 'Välj veckodagar och slutdatum för återkommande bokning' }]);
-      return;
+      validations.push({ type: 'error', message: 'Välj veckodagar och slutdatum för återkommande bokning' });
     }
 
+    if (isMultiDay && !recurringEndDate) {
+      validations.push({ type: 'error', message: 'Välj slutdatum för flerdags bokning' });
+    }
+
+    setAlerts(validations);
+    return validations.length === 0;
+  }
+
+  const handleBooking = async () => {
+    if (!await validateAllFields()) {
+      return;
+    }
     try {
-      await createOrUpdateBookings();
-      navigate('/booking-overview');
+      if (await createOrUpdateBookings()) {
+        navigate('/booking-overview');
+      }
     } catch (error) {
       console.error('Error saving booking:', error);
       setAlerts([{ type: 'error', message: 'Ett fel uppstod när bokningen skulle sparas' }]);
     }
   };
+
+  function dayAfter(bookingDate: string) {
+    let nextDay = new Date(bookingDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    return format(nextDay, 'yyyy-MM-dd');
+  }
 
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
@@ -289,12 +441,12 @@ const BookTrip = () => {
             />
           </div>
           <TimeSelector
-              label="Start tid"
+              label="Starttid"
               value={bookingStartTime}
               onChange={setBookingStartTime}
           />
           <TimeSelector
-              label="Slut tid"
+              label="Sluttid"
               value={bookingEndTime}
               onChange={setBookingEndTime}
           />
@@ -304,35 +456,49 @@ const BookTrip = () => {
           <Checkbox
               id="recurring"
               checked={isRecurring}
-              onCheckedChange={setIsRecurring}
+              onCheckedChange={(checked) => {
+                  setIsRecurring(checked);
+                  if (checked) setIsMultiDay(false)}}
           />
           <Label htmlFor="recurring" className="text-sm">
             Återkommande bokning
           </Label>
+          <Checkbox
+              id="multiday"
+              checked={isMultiDay}
+              onCheckedChange={(checked) => {
+                setIsMultiDay(checked);
+                if (checked) setIsRecurring(false)}}
+          />
+          <Label htmlFor="multiday" className="text-sm">
+            Flerdags bokning
+          </Label>
         </div>
 
-        {isRecurring && (
+        {(isRecurring || isMultiDay) && (
             <div className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                {['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'].map((day, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <Checkbox
-                          id={`day-${index}`}
-                          checked={recurringDays.includes(index)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setRecurringDays([...recurringDays, index]);
-                            } else {
-                              setRecurringDays(recurringDays.filter((d) => d !== index));
-                            }
-                          }}
-                      />
-                      <Label htmlFor={`day-${index}`} className="text-sm">
-                        {day}
-                      </Label>
-                    </div>
-                ))}
-              </div>
+              {isRecurring && (
+                <div className="flex flex-wrap gap-2">
+                  {['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'].map((day, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <Checkbox
+                            id={`day-${index}`}
+                            checked={recurringDays.includes(index)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setRecurringDays([...recurringDays, index]);
+                              } else {
+                                setRecurringDays(recurringDays.filter((d) => d !== index));
+                              }
+                            }}
+                        />
+                        <Label htmlFor={`day-${index}`} className="text-sm">
+                          {day}
+                        </Label>
+                      </div>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Slutdatum</Label>
@@ -340,7 +506,7 @@ const BookTrip = () => {
                     type="date"
                     value={recurringEndDate}
                     onChange={(e) => setRecurringEndDate(e.target.value)}
-                    min={bookingDate}
+                    min={dayAfter(bookingDate)}
                 />
               </div>
             </div>
@@ -364,10 +530,11 @@ const BookTrip = () => {
           </div>
         </div>
 
+          {/* TODO: Use proper Alert elements */}
           {alerts.map((alert, index) => (
               <div
                   key={index}
-                  className={`bg-${alert.type === 'error' ? 'red' : 'green'}-100 text-${alert.type === 'error' ? 'red' : 'green'}-800 p-4 rounded`}
+                  className={`bg-${alert.type === 'error' ? 'red' : 'green'}-100 text-${alert.type === 'error' ? 'red' : 'green'}-800 p-1`}
               >
                 {alert.message}
               </div>
@@ -378,8 +545,18 @@ const BookTrip = () => {
               onClick={handleBooking}
               disabled={!selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || !distance}
           >
-            Boka resa
+            { existingBooking ? 'Ändra bokning' : 'Boka resa' }
           </Button>
+
+        {existingBooking && (
+            <Button
+                variant="destructive"
+                onClick={deleteBooking}
+                className="w-full mt-2"
+            >
+              Radera bokning
+            </Button>
+        )}
       </Card>
 );
 };

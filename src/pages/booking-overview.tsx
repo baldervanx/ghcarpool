@@ -9,7 +9,7 @@ import {
 import { format, addDays, isWeekend, startOfDay, isSameDay } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { collection, query, getDocs, where, orderBy } from 'firebase/firestore';
-import { db } from '../utils/firebase';
+import { db } from '@/db/firebase';
 import {
   Table,
   TableBody,
@@ -52,6 +52,7 @@ const BookingCell = ({ bookings, onClick }) => {
   );
 };
 
+// TODO: It should be possible to show past bookings. But then as read-only.
 const BookingOverview = ({ onEditBooking }) => {
   const navigate = useNavigate();
   const { cars } = useSelector(state => state.car);

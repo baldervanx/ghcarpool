@@ -1,8 +1,10 @@
+// pages/RegisterTrip.jsx
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { db } from '../utils/firebase';
-import { collection, query, getDocs, doc, orderBy, where, addDoc, updateDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { db } from '@/db/firebase';
+import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +13,8 @@ import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
 import UserSelector from '../components/UserSelector';
 import { setSelectedUsers } from '../store';
-import { isOnline } from '@/lib/utils'; // Importera nätverkskontrollen
+import { useListenToTrips } from '@/db/use-listen-to-trips';
+import { isOnline } from '@/lib/utils';
 
 const MAX_DIST = 9999;
 let COST_PER_KM = 1;
@@ -27,13 +30,14 @@ interface Trip {
 }
 
 export function RegisterTrip() {
+  useListenToTrips();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { selectedCar } = useSelector(state => state.car);
   const { user } = useSelector(state => state.auth);
   const { selectedUsers, users } = useSelector(state => state.user);
   const { data } = useSelector(state => state.settings);
-  const [odometerLoading, setOdometerLoading] = useState(false);
+  const { trips, tripsLoading } = useSelector(state => state.trip);
   const [lastOdometer, setLastOdometer] = useState('');
   const [tripDistance, setTripDistance] = useState('');
   const [cost, setCost] = useState('');
@@ -51,15 +55,6 @@ export function RegisterTrip() {
     COST_PER_KM = data.cost_per_km;
     dispatch(setSelectedUsers([user.user_id]));
   }, [dispatch, users.length, user.user_id]);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (selectedCar) {
-        await fetchLastTrips(selectedCar);
-      }
-    };
-    fetchData();
-  }, [selectedCar]);
 
   useEffect(() => {
     const handleOnlineStatus = () => {
@@ -80,37 +75,11 @@ export function RegisterTrip() {
     };
   }, []);
 
-  const fetchLastTrips = async (carId) => {
-    if (!isOnline()) {
-      setErrorMessage('Du är offline. Kan inte hämta senaste resor.');
-      setIsProcessing(true);
-      return;
-    }
-
-    resetAllFields('');
-    setLastOdometer('');
-    setOdometerLoading(true);
-
-    try {
-      const tripsRef = collection(db, 'trips');
-      const carRef = doc(db, 'cars', carId);
-      const q = query(
-          tripsRef,
-          where('car', '==', carRef),
-          orderBy('timestamp', 'desc'),
-          limit(2)
-      );
-
-      const snapshot = await getDocs(q);
-      setOdometerLoading(false);
-
-      if (!snapshot.empty) {
-        const trips = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Trip[];
-
-        const [latestTrip, prevTrip] = trips;
+  useEffect(() => {
+    if (selectedCar) {
+      const relevantTrips = trips.filter(trip => trip.car.id === selectedCar);
+      if (relevantTrips.length > 0) {
+        const [latestTrip, prevTrip] = relevantTrips;
         setLastTrip(latestTrip);
         setPreviousTrip(prevTrip);
 
@@ -132,16 +101,10 @@ export function RegisterTrip() {
       } else {
         setErrorMessage('Kan inte hämta senaste mätarställning för vald bil.');
         setLastOdometer('');
-        setNewOdometer('');
-        setLastTrip(null);
-        setPreviousTrip(null);
-        setCanEdit(false);
+        resetAllFields('');
       }
-    } catch (error) {
-      setErrorMessage('Ett fel uppstod när resan skulle hämtas.');
-      console.error('Error fetching trips:', error);
     }
-  };
+  }, [selectedCar, trips]);
 
   const resetAllFields = (lastOdo) => {
     setEditOdometer('');
@@ -279,7 +242,7 @@ export function RegisterTrip() {
             <Input
                 type="number"
                 value={lastOdometer}
-                placeholder={odometerLoading ? 'Laddar ...' : ''}
+                placeholder={tripsLoading ? 'Laddar ...' : ''}
                 disabled
             />
           </div>
@@ -309,7 +272,7 @@ export function RegisterTrip() {
                     handleOdometerChange(value);
                   }
                 }}
-                disabled={isProcessing || odometerLoading}
+                disabled={isProcessing || tripsLoading}
             />
           </div>
           <div className="space-y-2 flex-1">

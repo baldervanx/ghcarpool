@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { db } from '../utils/firebase';
+import { db } from '@/db/firebase';
 import { collection, query, getDocs, where, addDoc, doc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -81,27 +81,29 @@ const TimeSelector = ({ value, onChange, label }) => {
 };
 
 // Should be possible to use editable combo-box to allow entering custom destination
-// Destinations could be loaded and cached locally as they rarely change.
 const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
-  const [destinations, setDestinations] = useState([]);
+  const { destinations } = useSelector(state => state.destination);
   const [customDestination, setCustomDestination] = useState('');
   const [selectedDestination, setSelectedDestination] = useState('');
 
   useEffect(() => {
     const fetchDestinations = async () => {
-      const snapshot = await getDocs(collection(db, 'destinations'));
-      const destinationsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setDestinations(destinationsData);
-      // TODO: This isn't working.
       if (value) {
-        setSelectedDestination(value);
+        setSelectedFromName(value);
       }
     };
     fetchDestinations();
-  }, []);
+  }, [value]);
+
+  const setSelectedFromName = (name) => {
+    const destObj = destinations.find(d => d.name === name);
+    if (destObj) {
+      setSelectedDestination(destObj.id);
+    } else {
+      setSelectedDestination('custom');
+      setCustomDestination(name);
+    }
+  }
 
   const handleDestinationChange = (value) => {
     setSelectedDestination(value);
@@ -152,16 +154,15 @@ const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
 // * Swap existing bookings between cars
 // * Validate overlap - give more details and better handling of recurring booking
 // * Validate range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
-// * Destination is not set when updating existing entry
+// * It shall not be possible to edit or delete past bookings, only future ones.
 // * Use accordion (https://ui.shadcn.com/docs/components/accordion) for the advanced settings?
 // * Recurring booking should end at and including end-date
 // * Recurring booking must (optionally) delete all entries including the recurring-booking entry.
 // * Updating recurring booking - must be tested - quite complex, might need to limit for now.
-// * Support multi-day booking - i.e. a special case of recurring booking
+// * Bug: Multi-day booking end-time and distance is not set correctly when editing, as the last entry must be fetched to see those settings.
 // * Better date selector - that fits with the theme - https://ui.shadcn.com/docs/components/date-picker
 // * Better time selector - selecting times quicker with "scroll".
 // * Lock fields while waiting - loading/saving.
-
 // * Transactional update - never overwrite external update.
 const BookTrip = () => {
   const navigate = useNavigate();

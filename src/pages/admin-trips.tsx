@@ -7,7 +7,7 @@ import {
   deleteDoc,
   doc
 } from 'firebase/firestore';
-import { db } from '../utils/firebase';
+import { db } from '@/db/firebase';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,

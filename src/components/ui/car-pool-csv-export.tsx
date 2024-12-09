@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
-import { db } from '../../utils/firebase';
+import { db } from '@/db/firebase';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 

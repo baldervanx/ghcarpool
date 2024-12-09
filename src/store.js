@@ -1,7 +1,11 @@
+
 import { configureStore, createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { getDocs, collection, doc, getDoc } from 'firebase/firestore';
-import { db } from './utils/firebase';
+import { getDoc, getDocs, collection, doc } from 'firebase/firestore';
+import { db } from './db/firebase.js';
+
+// FIXME: Use localStorage to store data that rarely change - but must somehow be able to detect change anyway.
+// Possible to just send a common query for all "static" information and check if any of them changed?
 
 // TODO: Should save all data to local storage, they should not have to be re-fetched very often.
 export const fetchUsers = createAsyncThunk('user/fetchUsers', async () => {
@@ -13,6 +17,11 @@ export const fetchUsers = createAsyncThunk('user/fetchUsers', async () => {
 export const fetchCars = createAsyncThunk('car/fetchCars', async () => {
     const carsSnapshot = await getDocs(collection(db, 'cars'));
     return carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+});
+
+export const fetchDestinations = createAsyncThunk('destination/fetchDestinations', async () => {
+    const destsSnapshot = await getDocs(collection(db, 'destinations'));
+    return destsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 });
 
 // Hämta inställningar
@@ -35,11 +44,10 @@ export const fetchAuthState = createAsyncThunk(
                     loading: false
                 };
                 if (user) {
-                    const [users, cars, settings] = await Promise.all([
-                        dispatch(fetchUsers()).unwrap(),
-                        dispatch(fetchCars()).unwrap(),
-                        dispatch(fetchSettings()).unwrap()
-                    ]);
+                    const users = await dispatch(fetchUsers()).unwrap();
+                    await dispatch(fetchCars());
+                    await dispatch(fetchSettings());
+                    await dispatch(fetchDestinations());
                     // Hitta användaren i den hämtade användarlistan
                     const matchedUser = users.find(u => u.email === user.email);
                     if (matchedUser) {
@@ -130,6 +138,23 @@ const userSlice = createSlice({
     }
 });
 
+const destinationSlice = createSlice({
+    name: 'destination',
+    initialState: {
+        destinations: [],
+    },
+    reducers: {
+        setDestinations: (state, action) => {
+            state.destinations = action.payload;
+        },
+    },
+    extraReducers: (builder) => {
+        builder.addCase(fetchDestinations.fulfilled, (state, action) => {
+            state.destinations = action.payload;
+        });
+    }
+});
+
 // Settings Slice
 const settingsSlice = createSlice({
     name: 'settings',
@@ -155,12 +180,31 @@ const settingsSlice = createSlice({
     }
 });
 
+// Trips Slice
+const tripSlice = createSlice({
+    name: 'trip',
+    initialState: {
+        trips: [],
+        loading: false,
+    },
+    reducers: {
+        setTrips: (state, action) => {
+            state.trips = action.payload;
+        },
+        setTripsLoading: (state, action) => {
+            state.loading = action.payload;
+        }
+    }
+});
+
 const store = configureStore({
     reducer: {
         auth: authSlice.reducer,
         car: carSlice.reducer,
         user: userSlice.reducer,
-        settings: settingsSlice.reducer
+        destination: destinationSlice.reducer,
+        settings: settingsSlice.reducer,
+        trip: tripSlice.reducer
     },
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
@@ -173,5 +217,6 @@ const store = configureStore({
 export const { setAuthState } = authSlice.actions;
 export const { setCarState, setSelectedCar } = carSlice.actions;
 export const { setUsers, setSelectedUsers } = userSlice.actions;
+export const { setTrips, setTripsLoading  } = tripSlice.actions;
 
 export default store;

@@ -1,8 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-//import firebase from 'firebase/app';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDTquDT5hvgxOSutHhbdWRLi5TKshiE_yw",
@@ -23,10 +21,3 @@ if (process.env.NODE_ENV === 'development') {
   connectAuthEmulator(auth, 'http://localhost:9099');
   connectFirestoreEmulator(db, 'localhost', 9090);
 }
-
-export const getUserDocByEmail = async (email) => {
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('email', '==', email));
-  const snapshot = await getDocs(q);
-  return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-};

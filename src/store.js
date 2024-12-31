@@ -4,6 +4,20 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getDoc, getDocs, collection, doc } from 'firebase/firestore';
 import { db } from './db/firebase.js';
 
+// const CACHE_EXPIRATION_TIME = 24 * 60 * 60 * 1000; // 24 hours
+//
+// const updateCacheIfNeeded = async () => {
+//     const lastUpdated = localStorage.getItem('cacheLastUpdated');
+//     const now = Date.now();
+//
+//     if (!lastUpdated || now - lastUpdated > CACHE_EXPIRATION_TIME) {
+//         const usersSnapshot = await getDocs(collection(db, 'users'));
+//         const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+//         localStorage.setItem('users', JSON.stringify(users));
+//         localStorage.setItem('usersLastUpdated', now.toString());
+//     }
+// };
+
 // FIXME: Use localStorage to store data that rarely change - but must somehow be able to detect change anyway.
 // Possible to just send a common query for all "static" information and check if any of them changed?
 
@@ -34,7 +48,7 @@ export const fetchSettings = createAsyncThunk('settings/fetchSettings', async ()
 export const fetchAuthState = createAsyncThunk(
     'auth/fetchAuthState',
     async (_, { dispatch }) => {
-        return new Promise(async (resolve) => {
+        return new Promise((resolve) => {
             const auth = getAuth();
 
             onAuthStateChanged(auth, async (user) => {

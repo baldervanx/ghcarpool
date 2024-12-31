@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Provider } from 'react-redux';
-import store, { fetchAuthState, fetchUsers } from './store';
+import store, { fetchAuthState } from './store';
 import { Navbar } from './components/Navbar';
 import { Login } from './pages/Login';
 import { RegisterTrip } from './pages/register-trip';
@@ -15,13 +15,14 @@ import { AccessibilityProvider } from './lib/utils';
 import { ThemeProvider } from './components/theme-context';
 import { HomePage } from './pages/home';
 import PropTypes from "prop-types";
+import {useListenToTrips} from "@/db/use-listen-to-trips";
 
 function App() {
+  useListenToTrips();
   const dispatch = useDispatch();
   const authState = useSelector(state => state.auth);
 
   useEffect(() => {
-    dispatch(fetchUsers());
     dispatch(fetchAuthState());
   }, [dispatch]);
 

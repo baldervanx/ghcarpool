@@ -36,9 +36,6 @@ const convertTrip = (doc) => {
   };
 };
 
-//FIXME: Genererar fortfarande multipla requests varje gång jag byter sida
-//FIXME: Mina lokala uppdateringar borde givetvis uppdatera listan, men gör det inte.
-// Grejar emulatorn att hantera onSnapshot korrekt?
 export function useListenToTrips() {
   const dispatch = useDispatch();
   const existingTrips = useSelector(state => state.trip.trips);
@@ -54,7 +51,14 @@ export function useListenToTrips() {
       switch (change.type) {
         case 'added':
           if (!existingTrips.some(t => t.id === trip.id)) {
-            dispatch(setTrips([...existingTrips, trip]));
+            const updatedTrips = [...existingTrips, trip];
+            if (existingTrips.length > 0 && existingTrips.at(-1).odo < trip.odo) {
+              // The most common invocation will be with entrys that are already sorted,
+              // but not when adding a new entry.
+              updatedTrips.sort((a, b) => b.odo - a.odo);
+            }
+            console.log('Trip added to existingTrips:', trip);
+            dispatch(setTrips(updatedTrips));
           }
           break;
         case 'modified':
@@ -77,13 +81,12 @@ export function useListenToTrips() {
 
     const tripsRef = collection(db, 'trips');
 
-    // Skapa ett timestamp för 20 dagar sedan
-    const twentyDaysAgo = new Date();
-    twentyDaysAgo.setDate(twentyDaysAgo.getDate() - 20);
+    const lastMonth = new Date();
+    lastMonth.setDate(lastMonth.getDate() - 30);
 
     const q = query(
       tripsRef,
-      where('timestamp', '>=', Timestamp.fromDate(twentyDaysAgo)),
+      where('timestamp', '>=', Timestamp.fromDate(lastMonth)),
       orderBy('odo', 'asc')
     );
 

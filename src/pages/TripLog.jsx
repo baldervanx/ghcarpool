@@ -7,10 +7,9 @@ import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
 import CarPoolCSVExporter from '@/components/ui/car-pool-csv-export';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useListenToTrips } from '@/db/use-listen-to-trips';
 
 export function TripLog() {
-  useListenToTrips();
+
   const { trips, loading: tripsLoading } = useSelector(state => state.trip);
   const [ carTrips, setCarTrips ] = useState([]);
   const { selectedCar } = useSelector(state => state.car);

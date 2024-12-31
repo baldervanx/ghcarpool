@@ -13,7 +13,6 @@ import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
 import UserSelector from '../components/UserSelector';
 import { setSelectedUsers } from '../store';
-import { useListenToTrips } from '@/db/use-listen-to-trips';
 import { isOnline } from '@/lib/utils';
 
 const MAX_DIST = 9999;
@@ -30,7 +29,6 @@ interface Trip {
 }
 
 export function RegisterTrip() {
-  useListenToTrips();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { selectedCar } = useSelector(state => state.car);
@@ -76,6 +74,7 @@ export function RegisterTrip() {
   }, []);
 
   useEffect(() => {
+    setErrorMessage('');
     if (selectedCar) {
       const relevantTrips = trips.filter(trip => trip.car.id === selectedCar);
       if (relevantTrips.length > 0) {
@@ -191,6 +190,7 @@ export function RegisterTrip() {
           editedAt: serverTimestamp()
         });
       } else {
+        console.log('Submitting trip:', tripData);
         await addDoc(collection(db, 'trips'), {
           ...tripData,
           timestamp: serverTimestamp()

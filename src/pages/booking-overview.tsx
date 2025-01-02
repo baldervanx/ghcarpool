@@ -19,12 +19,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {ChevronDown, ChevronLeft, ChevronRight} from "lucide-react";
 import { cn } from "@/lib/utils";
 import {useSelector} from "react-redux";
 
-// TODO: Add short-name of destination, when the destinations are cached in store.
-const BookingCell = ({ bookings, onClick }) => {
+const BookingCell = ({ bookings, destinations, onClick, readOnly}) => {
   if (!bookings || bookings.length === 0) return null;
 
   function timeToString(minutes: number): string {
@@ -39,12 +38,12 @@ const BookingCell = ({ bookings, onClick }) => {
       {bookings.map((booking) => (
         <div
           key={booking.id}
-          onClick={() => onClick(booking)}
-          className="min-w-[16ch] bg-primary/10 dark:bg-primary/20 p-1 rounded text-xs cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors"
+          onClick={() => !readOnly && onClick(booking)}
+          className={cn("min-w-[16ch] bg-primary/10 dark:bg-primary/20 p-1 rounded text-xs cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors")}
         >
           {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}` +
               (booking.distance ? ` (${Math.round(booking.distance/10)})` : ``) +
-              (booking.destination ? ` ${booking.destination}` : ``)
+              ` ${booking.destination ? (destinations.find(d => d.id === booking.destination)?.shortName || booking.destination) : ''}`
           }
         </div>
       ))}
@@ -52,23 +51,28 @@ const BookingCell = ({ bookings, onClick }) => {
   );
 };
 
-// TODO: It should be possible to show past bookings. But then as read-only.
 const BookingOverview = ({ onEditBooking }) => {
   const navigate = useNavigate();
   const { cars } = useSelector(state => state.car);
+  const { destinations } = useSelector(state => state.destination);
   const [bookings, setBookings] = useState([]);
-  const [currentPage, setCurrentPage] = useState(0);
   const daysPerPage = 14;
+
+  const [pagination, setPagination] = useState({
+    pageIndex: 1, //initial page index
+    pageSize: daysPerPage, //default page size
+  });
 
   useEffect(() => {
     const fetchBookings = async () => {
-      const startDate = startOfDay(new Date());
-      const endDate = addDays(startDate, daysPerPage);
+      const startDate = addDays(startOfDay(new Date()), (pagination.pageIndex - 1) * pagination.pageSize - 1);
+      const endDate = addDays(startDate, pagination.pageSize);
 
       const q = query(
           collection(db, 'date-car-bookings'),
           where('date', '>=', format(startDate, 'yyyy-MM-dd')),
-          where('date', '<', format(endDate, 'yyyy-MM-dd'))
+          where('date', '<', format(endDate, 'yyyy-MM-dd')),
+          orderBy('date')
       );
 
       const snapshot = await getDocs(q);
@@ -80,18 +84,18 @@ const BookingOverview = ({ onEditBooking }) => {
           car,
           parent_id: doc.id
         }));
-      }).sort((a, b) => a.startTime - b.startTime);
+      });
 
       setBookings(bookingsData);
     };
     fetchBookings();
-  }, [currentPage]);
+  }, [pagination]);
 
   const dates = useMemo(() =>
-    Array.from({ length: daysPerPage }, (_, i) =>
-      addDays(new Date(), i + (currentPage * daysPerPage))
+    Array.from({ length: pagination.pageSize }, (_, i) =>
+      addDays(new Date(), i + ((pagination.pageIndex - 1) * pagination.pageSize) - 1)
     ),
-    [currentPage, daysPerPage]
+    [pagination]
   );
 
   const handleBookingClick = (booking) => {
@@ -102,11 +106,18 @@ const BookingOverview = ({ onEditBooking }) => {
     {
       header: 'Datum',
       accessorKey: 'date',
-      cell: ({ row }) => (
-        <div className="font-medium whitespace-nowrap">
-          {format(row.original, 'dd/MM E',  {locale: sv})}
-        </div>
-      ),
+      cell: ({ row }) => {
+        const todayStyle = isSameDay(new Date(), row.original) ? 'darkorange' : undefined;
+        return (
+          <div className="font-medium whitespace-nowrap"
+               style={{
+                 backgroundColor: todayStyle
+               }}
+            >
+            {format(row.original, 'dd/MM E', {locale: sv})}
+          </div>
+        );
+      },
       meta: {
         isSticky: true,
         width: '10ch'
@@ -123,7 +134,9 @@ const BookingOverview = ({ onEditBooking }) => {
         return (
           <BookingCell
             bookings={dateBookings}
+            destinations={destinations}
             onClick={handleBookingClick}
+            readOnly={pagination.pageIndex < 1}
           />
         );
       }
@@ -135,6 +148,12 @@ const BookingOverview = ({ onEditBooking }) => {
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    manualPagination: true,
+    pageCount: 7, //One with past 2 weeks and 3 future months
+    onPaginationChange: setPagination,
+    state: {
+      pagination,
+    },
   });
 
   return (
@@ -204,16 +223,25 @@ const BookingOverview = ({ onEditBooking }) => {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-          disabled={currentPage === 0}
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
         >
           <ChevronLeft className="h-4 w-4" />
           Föregående
         </Button>
         <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.setPageIndex(1)}
+        >
+          <ChevronDown className="h-4 w-4" />
+          Idag
+        </Button>
+        <Button
           variant="outline"
           size="sm"
-          onClick={() => setCurrentPage(p => p + 1)}
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
         >
           Nästa
           <ChevronRight className="h-4 w-4" />

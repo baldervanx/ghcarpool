@@ -5,7 +5,6 @@ import React, {useEffect, useState} from 'react';
 import { useSelector } from 'react-redux';
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '../components/CarSelector';
-import CarPoolCSVExporter from '@/components/ui/car-pool-csv-export';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export function TripLog() {
@@ -83,7 +82,6 @@ export function TripLog() {
             <div className="flex items-center justify-center min-h-screen">Laddar...</div>
         )}
 
-        <CarPoolCSVExporter />
       </div>
   );
 }

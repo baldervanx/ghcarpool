@@ -3,9 +3,10 @@ import { getAuth, signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAccessibility } from '../lib/utils';
+import { useAccessibility } from '@/lib/utils';
 import { useTheme } from '@/components/theme-context';
 import { Sun, Moon } from 'lucide-react';
+import CarPoolCSVExporter from "@/components/ui/car-pool-csv-export";
 
 export const HomePage = () => {
   const { settings, updateSettings } = useAccessibility();
@@ -16,8 +17,8 @@ export const HomePage = () => {
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-2xl mx-auto">
         <div className="flex gap-4 mb-8">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => signOut(auth)}
           >
             Logga ut
@@ -58,7 +59,7 @@ export const HomePage = () => {
 
             <div className="flex items-center justify-between">
               <span className="font-medium">Mörkt/Ljust läge</span>
-              <Button 
+              <Button
                 variant="outline"
                 onClick={toggleDarkMode}
                 size="icon"
@@ -68,6 +69,8 @@ export const HomePage = () => {
             </div>
           </CardContent>
         </Card>
+
+        <CarPoolCSVExporter />
       </div>
     </div>
   );

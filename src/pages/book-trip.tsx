@@ -80,19 +80,15 @@ const TimeSelector = ({ value, onChange, label }) => {
   );
 };
 
-// Should be possible to use editable combo-box to allow entering custom destination
 const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
   const { destinations } = useSelector(state => state.destination);
   const [customDestination, setCustomDestination] = useState('');
   const [selectedDestination, setSelectedDestination] = useState('');
 
   useEffect(() => {
-    const fetchDestinations = async () => {
       if (value) {
         setSelectedFromName(value);
       }
-    };
-    fetchDestinations();
   }, [value]);
 
   const setSelectedFromName = (name) => {
@@ -150,27 +146,13 @@ const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
   );
 };
 
-// TODO:
-// * Swap existing bookings between cars
-// * Validate overlap - give more details and better handling of recurring booking
-// * Validate range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
-// * It shall not be possible to edit or delete past bookings, only future ones.
-// * Use accordion (https://ui.shadcn.com/docs/components/accordion) for the advanced settings?
-// * Recurring booking should end at and including end-date
-// * Recurring booking must (optionally) delete all entries including the recurring-booking entry.
-// * Updating recurring booking - must be tested - quite complex, might need to limit for now.
-// * Bug: Multi-day booking end-time and distance is not set correctly when editing, as the last entry must be fetched to see those settings.
-// * Better date selector - that fits with the theme - https://ui.shadcn.com/docs/components/date-picker
-// * Better time selector - selecting times quicker with "scroll".
-// * Lock fields while waiting - loading/saving.
-// * Transactional update - never overwrite external update.
 const BookTrip = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const location = useLocation();
   const { selectedCar } = useSelector(state => state.car);
   const { user } = useSelector(state => state.auth);
-  const { selectedUsers, users } = useSelector(state => state.user);
+  const { selectedUsers } = useSelector(state => state.user);
   const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [bookingStartTime, setBookingStartTime] = useState('');
   const [bookingEndTime, setBookingEndTime] = useState('');
@@ -187,14 +169,12 @@ const BookTrip = () => {
     dispatch(setSelectedUsers([user.user_id]));
   }, [user.user_id]);
 
-  // Lägg till useEffect för att hämta existerande bokning
   useEffect(() => {
     const fetchExistingBooking = async () => {
       if (location.state) {
         const { parent_id, booking_id } = location.state;
         const dateCarDoc = await getDoc(doc(db, 'date-car-bookings', parent_id));
         if (dateCarDoc.exists()) {
-          // TODO: Store this bookingData.
           const bookingData = dateCarDoc.data().bookings.find(b => b.id === booking_id);
 
           if (bookingData) {
@@ -209,10 +189,12 @@ const BookTrip = () => {
 
             // Handle recurrence
             if (bookingData.recurrenceId) {
+              // TODO: Should store the recurrenceDoc - for deletion
               const recurrenceDoc = await getDoc(doc(db, 'recurrence', bookingData.recurrenceId));
               if (recurrenceDoc.exists()) {
                 const recurrenceData = recurrenceDoc.data();
                 if (recurrenceData.isMultiDay) {
+                  // TODO: Fetch all related bookings for the recurrence
                   setIsMultiDay(true);
                 } else {
                   setIsRecurring(true);
@@ -270,7 +252,6 @@ const BookTrip = () => {
 
       const start = new Date(bookingDate);
       const end = new Date(recurringEndDate);
-      // TODO: Must ensure end-date is set and is after start-date.
 
       const currentDate = new Date(start);
       let startTime = bookingStartTime;
@@ -360,7 +341,6 @@ const BookTrip = () => {
     return true;
   };
 
-  // FIXME: Must handle deletion of all recurring bookings too, including the recurrence entry.
   const deleteBooking = async () => {
     if (!existingBooking) return;
 
@@ -379,6 +359,7 @@ const BookTrip = () => {
           booking => booking.id !== existingBooking
       );
 
+      // TODO: Only update if the doc has not been modified since it was fetched.
       await updateDoc(docRef, { bookings: updatedBookings });
       navigate('/booking-overview');
     }

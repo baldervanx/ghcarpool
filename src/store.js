@@ -1,50 +1,81 @@
-
 import { configureStore, createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { getDoc, getDocs, collection, doc } from 'firebase/firestore';
 import { db } from './db/firebase.js';
 
-// const CACHE_EXPIRATION_TIME = 24 * 60 * 60 * 1000; // 24 hours
-//
-// const updateCacheIfNeeded = async () => {
-//     const lastUpdated = localStorage.getItem('cacheLastUpdated');
-//     const now = Date.now();
-//
-//     if (!lastUpdated || now - lastUpdated > CACHE_EXPIRATION_TIME) {
-//         const usersSnapshot = await getDocs(collection(db, 'users'));
-//         const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-//         localStorage.setItem('users', JSON.stringify(users));
-//         localStorage.setItem('usersLastUpdated', now.toString());
-//     }
-// };
+const CACHE_DURATION = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
 
-// FIXME: Use localStorage to store data that rarely change - but must somehow be able to detect change anyway.
-// Possible to just send a common query for all "static" information and check if any of them changed?
+const getCachedData = (key) => {
+    const cached = localStorage.getItem(key);
+    if (!cached) return null;
 
-// TODO: Should save all data to local storage, they should not have to be re-fetched very often.
-export const fetchUsers = createAsyncThunk('user/fetchUsers', async () => {
+    const { data, timestamp } = JSON.parse(cached);
+    const age = Date.now() - timestamp;
+
+    return {
+        data,
+        isStale: age > CACHE_DURATION,
+        timestamp
+    };
+};
+
+const setCachedData = (key, data) => {
+    localStorage.setItem(key, JSON.stringify({
+        data,
+        timestamp: Date.now()
+    }));
+};
+
+const createCachedThunk = (key, fetchFunction) => {
+    return createAsyncThunk(`${key}/fetch`, async (_, { dispatch }) => {
+        const cached = getCachedData(key);
+
+        if (cached) {
+            // If cache exists, dispatch it immediately
+            dispatch({
+                type: `${key}/fetch/fulfilled`,
+                payload: cached.data
+            });
+
+            // If cache is stale, fetch new data in background
+            if (cached.isStale) {
+                const freshData = await fetchFunction();
+                setCachedData(key, freshData);
+                return freshData;
+            }
+
+            return cached.data;
+        }
+
+        // If no cache exists, fetch and cache the data
+        const freshData = await fetchFunction();
+        setCachedData(key, freshData);
+        return freshData;
+    });
+};
+
+// Updated fetch functions using cache
+export const fetchUsers = createCachedThunk('user', async () => {
     const usersSnapshot = await getDocs(collection(db, 'users'));
     return usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 });
 
-// Hämta bilar
-export const fetchCars = createAsyncThunk('car/fetchCars', async () => {
+export const fetchCars = createCachedThunk('car', async () => {
     const carsSnapshot = await getDocs(collection(db, 'cars'));
     return carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 });
 
-export const fetchDestinations = createAsyncThunk('destination/fetchDestinations', async () => {
+export const fetchDestinations = createCachedThunk('destination', async () => {
     const destsSnapshot = await getDocs(collection(db, 'destinations'));
     return destsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 });
 
-// Hämta inställningar
-export const fetchSettings = createAsyncThunk('settings/fetchSettings', async () => {
+export const fetchSettings = createCachedThunk('settings', async () => {
     const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
     return settingsSnap.exists() ? settingsSnap.data() : null;
 });
 
-// Förbättrad autentiseringshantering
+// Modified auth state handling with cache awareness
 export const fetchAuthState = createAsyncThunk(
     'auth/fetchAuthState',
     async (_, { dispatch }) => {
@@ -57,12 +88,31 @@ export const fetchAuthState = createAsyncThunk(
                     isMember: false,
                     loading: false
                 };
+
                 if (user) {
+                    // Check if we need to wait for fresh data
+                    const needsFreshData = !getCachedData('user') &&
+                        !getCachedData('car') &&
+                        !getCachedData('settings') &&
+                        !getCachedData('destination');
+
+                    // Fetch all required data
                     const users = await dispatch(fetchUsers()).unwrap();
-                    await dispatch(fetchCars());
-                    await dispatch(fetchSettings());
-                    await dispatch(fetchDestinations());
-                    // Hitta användaren i den hämtade användarlistan
+
+                    // Only wait for these if we need fresh data
+                    if (needsFreshData) {
+                        await Promise.all([
+                            dispatch(fetchCars()),
+                            dispatch(fetchSettings()),
+                            dispatch(fetchDestinations())
+                        ]);
+                    } else {
+                        // Otherwise fetch in background
+                        dispatch(fetchCars());
+                        dispatch(fetchSettings());
+                        dispatch(fetchDestinations());
+                    }
+
                     const matchedUser = users.find(u => u.email === user.email);
                     if (matchedUser) {
                         authState = {
@@ -211,6 +261,37 @@ const tripSlice = createSlice({
     }
 });
 
+const bookingSlice = createSlice({
+    name: 'booking',
+    initialState: {
+        bookings: [],
+        loading: false,
+    },
+    reducers: {
+        setBookings: (state, action) => {
+            state.bookings = action.payload;
+        },
+        setBookingsLoading: (state, action) => {
+            state.loading = action.payload;
+        },
+        addOrUpdateBooking: (state, action) => {
+            const index = state.bookings.findIndex(b =>
+                b.parent_id === action.payload.parent_id
+            );
+            if (index >= 0) {
+                state.bookings[index] = action.payload;
+            } else {
+                state.bookings.push(action.payload);
+            }
+        },
+        removeBooking: (state, action) => {
+            state.bookings = state.bookings.filter(
+                b => b.parent_id !== action.payload.parent_id
+            );
+        }
+    }
+});
+
 const store = configureStore({
     reducer: {
         auth: authSlice.reducer,
@@ -218,7 +299,8 @@ const store = configureStore({
         user: userSlice.reducer,
         destination: destinationSlice.reducer,
         settings: settingsSlice.reducer,
-        trip: tripSlice.reducer
+        trip: tripSlice.reducer,
+        booking: bookingSlice.reducer,
     },
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
@@ -232,5 +314,11 @@ export const { setAuthState } = authSlice.actions;
 export const { setCarState, setSelectedCar } = carSlice.actions;
 export const { setUsers, setSelectedUsers } = userSlice.actions;
 export const { setTrips, setTripsLoading  } = tripSlice.actions;
+export const {
+    setBookings,
+    setBookingsLoading,
+    addOrUpdateBooking,
+    removeBooking
+} = bookingSlice.actions;
 
 export default store;

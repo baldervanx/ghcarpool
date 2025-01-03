@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   flexRender,
@@ -8,8 +8,6 @@ import {
 } from '@tanstack/react-table';
 import { format, addDays, isWeekend, startOfDay, isSameDay } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import { collection, query, getDocs, where, orderBy } from 'firebase/firestore';
-import { db } from '@/db/firebase';
 import {
   Table,
   TableBody,
@@ -20,10 +18,11 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import {ChevronDown, ChevronLeft, ChevronRight} from "lucide-react";
-import { cn } from "@/lib/utils";
+import {cn, useAccessibleCn} from "@/lib/utils";
 import {useSelector} from "react-redux";
+import {useListenToBookings} from "@/db/use-listen-to-bookings";
 
-const BookingCell = ({ bookings, destinations, onClick, readOnly}) => {
+const BookingCell = ({ bookings, destinations, onClick, readOnly, accessibleCn}) => {
   if (!bookings || bookings.length === 0) return null;
 
   function timeToString(minutes: number): string {
@@ -39,7 +38,7 @@ const BookingCell = ({ bookings, destinations, onClick, readOnly}) => {
         <div
           key={booking.id}
           onClick={() => !readOnly && onClick(booking)}
-          className={cn("min-w-[16ch] bg-primary/10 dark:bg-primary/20 p-1 rounded text-xs cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors")}
+          className={accessibleCn("min-w-[16ch] bg-primary/10 dark:bg-primary/20 p-1 rounded text-xs cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors")}
         >
           {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}` +
               (booking.distance ? ` (${Math.round(booking.distance/10)})` : ``) +
@@ -51,11 +50,11 @@ const BookingCell = ({ bookings, destinations, onClick, readOnly}) => {
   );
 };
 
-const BookingOverview = ({ onEditBooking }) => {
+const BookingOverview = () => {
   const navigate = useNavigate();
   const { cars } = useSelector(state => state.car);
   const { destinations } = useSelector(state => state.destination);
-  const [bookings, setBookings] = useState([]);
+  const accessibleCn = useAccessibleCn();
   const daysPerPage = 14;
 
   const [pagination, setPagination] = useState({
@@ -63,39 +62,26 @@ const BookingOverview = ({ onEditBooking }) => {
     pageSize: daysPerPage, //default page size
   });
 
-  useEffect(() => {
-    const fetchBookings = async () => {
-      const startDate = addDays(startOfDay(new Date()), (pagination.pageIndex - 1) * pagination.pageSize - 1);
-      const endDate = addDays(startDate, pagination.pageSize);
+// Calculate date range based on pagination
+  const startDate = format(
+      addDays(startOfDay(new Date()),
+          (pagination.pageIndex - 1) * pagination.pageSize - 1),
+      'yyyy-MM-dd'
+  );
 
-      const q = query(
-          collection(db, 'date-car-bookings'),
-          where('date', '>=', format(startDate, 'yyyy-MM-dd')),
-          where('date', '<', format(endDate, 'yyyy-MM-dd')),
-          orderBy('date')
-      );
+  const endDate = format(
+      addDays(new Date(startDate), pagination.pageSize),
+      'yyyy-MM-dd'
+  );
 
-      const snapshot = await getDocs(q);
-      const bookingsData = snapshot.docs.flatMap(doc => {
-        const { date, car, bookings } = doc.data();
-        return bookings.map(booking => ({
-          ...booking,
-          date,
-          car,
-          parent_id: doc.id
-        }));
-      });
-
-      setBookings(bookingsData);
-    };
-    fetchBookings();
-  }, [pagination]);
+  // Use the new hook
+  const { bookings, loading } = useListenToBookings(startDate, endDate);
 
   const dates = useMemo(() =>
-    Array.from({ length: pagination.pageSize }, (_, i) =>
-      addDays(new Date(), i + ((pagination.pageIndex - 1) * pagination.pageSize) - 1)
-    ),
-    [pagination]
+          Array.from({ length: pagination.pageSize }, (_, i) =>
+              addDays(new Date(), i + ((pagination.pageIndex - 1) * pagination.pageSize) - 1)
+          ),
+      [pagination]
   );
 
   const handleBookingClick = (booking) => {
@@ -130,13 +116,14 @@ const BookingOverview = ({ onEditBooking }) => {
         const dateBookings = bookings.filter(booking =>
           booking.car.id === car.id &&
           isSameDay(new Date(booking.date), row.original)
-        );
+        ).flatMap(b => b.bookings);
         return (
           <BookingCell
             bookings={dateBookings}
             destinations={destinations}
             onClick={handleBookingClick}
             readOnly={pagination.pageIndex < 1}
+            accessibleCn={accessibleCn}
           />
         );
       }
@@ -155,6 +142,14 @@ const BookingOverview = ({ onEditBooking }) => {
       pagination,
     },
   });
+
+  if (loading) {
+    return (
+        <div className="w-full h-64 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+    );
+  }
 
   return (
     <div className="w-full">

@@ -13,7 +13,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import UserSelector from '../components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '../store';
 import { format, isSameDay } from 'date-fns';
-import { DocumentReference } from "firebase/firestore";
+import { writeBatch, deleteDoc, DocumentReference } from "firebase/firestore";
 
 interface Booking {
   id?: string; // Optional, for existing bookings
@@ -203,6 +203,18 @@ const BookTrip = () => {
       const recurrenceData = recurrenceDoc.data();
       if (recurrenceData.isMultiDay) {
         setIsMultiDay(true);
+        // Find the last booking in the sequence to get end time and distance
+        const endDateBooking = bookings.find(b =>
+            b.date === recurrenceData.recurringEndDate &&
+            b.car.id === selectedCar
+        );
+        if (endDateBooking) {
+          const lastMultiDayBooking = endDateBooking.bookings.find(b => b.recurrenceId === recurrenceId);
+          if (lastMultiDayBooking) {
+            setBookingEndTime(timeToString(lastMultiDayBooking.endTime));
+            setDistance(lastMultiDayBooking.distance.toString());
+          }
+        }
       } else {
         setIsRecurring(true);
         setRecurringDays(recurrenceData.recurringDays);
@@ -236,9 +248,78 @@ const BookTrip = () => {
     return false;
   }
 
+  const validateRecurringBookings = async (startDate, endDate, recurringDays, isMultiDay) => {
+    const currentDate = new Date(startDate);
+    const endDateObj = new Date(endDate);
+    const validationBookings = [];
+
+    const startDateStr = format(startDate, 'yyyy-MM-dd');
+    const endDateStr = format(endDate, 'yyyy-MM-dd');
+    const carRangeBookings = bookings.filter(b =>
+        b.car.id === selectedCar && b.date >= startDateStr && b.date <= endDateStr
+    );
+
+    while (currentDate <= endDateObj) {
+      if (isMultiDay || recurringDays.includes(currentDate.getDay())) {
+        let startTime = bookingStartTime;
+        let endTime = bookingEndTime;
+
+        if (isMultiDay) {
+          if (isSameDay(currentDate, new Date(startDate))) {
+            endTime = "24:00";
+          } else if (isSameDay(currentDate, endDateObj)) {
+            startTime = "00:00";
+            endTime = bookingEndTime;
+          } else {
+            startTime = "00:00";
+            endTime = "24:00";
+          }
+        }
+
+        const dateStr = format(currentDate, 'yyyy-MM-dd');
+
+        const dateBookings = carRangeBookings.find(b =>
+            b.car.id === selectedCar && b.date === dateStr
+        );
+
+        const newBooking = {
+          startTime: timeToNumber(startTime),
+          endTime: timeToNumber(endTime),
+        };
+
+        if (dateBookings && isBookingOverlapping(dateBookings.bookings, newBooking, existingBooking)) {
+          setAlerts([{
+            type: 'error',
+            message: `Bokning krockar med existerande bokning ${dateStr}`
+          }]);
+          return false;
+        }
+
+        validationBookings.push({
+          date: dateStr,
+          booking: newBooking
+        });
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return true;
+  };
+
   const createOrUpdateBookings = async () => {
     if (!isRecurring && !isMultiDay) {
       return await createSingleBooking(bookingStartTime, bookingEndTime, distance);
+    }
+
+    // Validate all bookings before creating any
+    const isValid = await validateRecurringBookings(
+        bookingDate,
+        recurringEndDate,
+        recurringDays,
+        isMultiDay
+    );
+
+    if (!isValid) {
+      return false;
     }
 
     const recurrenceDoc = await addDoc(collection(db, 'recurrence'), {
@@ -341,13 +422,50 @@ const BookTrip = () => {
     );
 
     if (dateBooking) {
-      const updatedBookings = dateBooking.bookings.filter(
-          b => b.id !== existingBooking
-      );
+      const bookingToDelete = dateBooking.bookings.find(b => b.id === existingBooking);
 
-      await updateDoc(doc(db, 'date-car-bookings', dateBooking.parent_id), {
-        bookings: updatedBookings
-      });
+      if (bookingToDelete?.recurrenceId) {
+        // Delete all related recurring bookings
+        const batch = writeBatch(db);
+
+        // Delete the recurrence document
+        batch.delete(doc(db, 'recurrence', bookingToDelete.recurrenceId));
+
+        // Find and delete all related bookings
+        const dateCarBookingsToUpdate = bookings.filter(dcb =>
+            dcb.bookings.some(b => b.recurrenceId === bookingToDelete.recurrenceId)
+        );
+
+        for (const dcb of dateCarBookingsToUpdate) {
+          const updatedBookings = dcb.bookings.filter(
+              b => b.recurrenceId !== bookingToDelete.recurrenceId
+          );
+
+          if (updatedBookings.length === 0) {
+            batch.delete(doc(db, 'date-car-bookings', dcb.parent_id));
+          } else {
+            batch.update(doc(db, 'date-car-bookings', dcb.parent_id), {
+              bookings: updatedBookings
+            });
+          }
+        }
+
+        await batch.commit();
+      } else {
+        // Delete single booking
+        const updatedBookings = dateBooking.bookings.filter(
+            b => b.id !== existingBooking
+        );
+
+        if (updatedBookings.length === 0) {
+          await deleteDoc(doc(db, 'date-car-bookings', dateBooking.parent_id));
+        } else {
+          await updateDoc(doc(db, 'date-car-bookings', dateBooking.parent_id), {
+            bookings: updatedBookings
+          });
+        }
+      }
+
       navigate('/booking-overview');
     }
   };

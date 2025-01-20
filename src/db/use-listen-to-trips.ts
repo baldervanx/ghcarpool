@@ -45,6 +45,8 @@ export function useListenToTrips() {
     // Stoppa loading-state när första snapshot har kommit
     dispatch(setTripsLoading(false));
 
+    // TODO: "Added" is called many times, better collect all those
+    // changes together and dispatch them all at once.
     snapshot.docChanges().forEach((change) => {
       const trip = convertTrip(change.doc);
 

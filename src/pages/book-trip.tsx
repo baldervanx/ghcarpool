@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '@/db/firebase';
-import { collection, addDoc, doc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, getDoc, runTransaction, DocumentReference } from 'firebase/firestore';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import UserSelector from '../components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '../store';
 import { format, isSameDay } from 'date-fns';
-import { writeBatch, deleteDoc, DocumentReference } from "firebase/firestore";
 
 interface Booking {
   id?: string; // Optional, for existing bookings
@@ -203,6 +202,19 @@ const BookTrip = () => {
       const recurrenceData = recurrenceDoc.data();
       if (recurrenceData.isMultiDay) {
         setIsMultiDay(true);
+        // Find the first booking in the sequence to get start time and distance
+        const startDateBooking = bookings.find(b =>
+            b.date === recurrenceData.recurringStartDate &&
+            b.car.id === selectedCar
+        );
+        if (startDateBooking) {
+          const firstMultiDayBooking = startDateBooking.bookings.find(b => b.recurrenceId === recurrenceId);
+          if (firstMultiDayBooking) {
+            setExistingBooking(firstMultiDayBooking.id);
+            setBookingDate(recurrenceData.recurringStartDate);
+            setBookingStartTime(timeToString(firstMultiDayBooking.startTime));
+          }
+        }
         // Find the last booking in the sequence to get end time and distance
         const endDateBooking = bookings.find(b =>
             b.date === recurrenceData.recurringEndDate &&
@@ -248,225 +260,237 @@ const BookTrip = () => {
     return false;
   }
 
-  const validateRecurringBookings = async (startDate, endDate, recurringDays, isMultiDay) => {
-    const currentDate = new Date(startDate);
-    const endDateObj = new Date(endDate);
-    const validationBookings = [];
-
-    const startDateStr = format(startDate, 'yyyy-MM-dd');
-    const endDateStr = format(endDate, 'yyyy-MM-dd');
-    const carRangeBookings = bookings.filter(b =>
-        b.car.id === selectedCar && b.date >= startDateStr && b.date <= endDateStr
-    );
-
-    while (currentDate <= endDateObj) {
-      if (isMultiDay || recurringDays.includes(currentDate.getDay())) {
-        let startTime = bookingStartTime;
-        let endTime = bookingEndTime;
-
-        if (isMultiDay) {
-          if (isSameDay(currentDate, new Date(startDate))) {
-            endTime = "24:00";
-          } else if (isSameDay(currentDate, endDateObj)) {
-            startTime = "00:00";
-            endTime = bookingEndTime;
-          } else {
-            startTime = "00:00";
-            endTime = "24:00";
-          }
-        }
-
-        const dateStr = format(currentDate, 'yyyy-MM-dd');
-
-        const dateBookings = carRangeBookings.find(b =>
-            b.car.id === selectedCar && b.date === dateStr
-        );
-
-        const newBooking = {
-          startTime: timeToNumber(startTime),
-          endTime: timeToNumber(endTime),
-        };
-
-        if (dateBookings && isBookingOverlapping(dateBookings.bookings, newBooking, existingBooking)) {
-          setAlerts([{
-            type: 'error',
-            message: `Bokning krockar med existerande bokning ${dateStr}`
-          }]);
-          return false;
-        }
-
-        validationBookings.push({
-          date: dateStr,
-          booking: newBooking
-        });
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    return true;
-  };
-
   const createOrUpdateBookings = async () => {
     if (!isRecurring && !isMultiDay) {
       return await createSingleBooking(bookingStartTime, bookingEndTime, distance);
     }
 
-    // Validate all bookings before creating any
-    const isValid = await validateRecurringBookings(
-        bookingDate,
-        recurringEndDate,
-        recurringDays,
-        isMultiDay
-    );
+    try {
+      // Collect all dates that need booking before starting transaction
+      const start = new Date(bookingDate);
+      const end = new Date(recurringEndDate);
+      const currentDate = new Date(start);
+      const bookingValidations = [];
 
-    if (!isValid) {
-      return false;
-    }
+      while (currentDate <= end) {
+        if (isMultiDay || recurringDays.includes(currentDate.getDay())) {
+          let startTime = bookingStartTime;
+          let endTime = bookingEndTime;
+          let dist = distance;
 
-    const recurrenceDoc = await addDoc(collection(db, 'recurrence'), {
-      isMultiDay,
-      recurringDays,
-      recurringEndDate,
-      createdAt: serverTimestamp()
-    });
+          if (isMultiDay) {
+            if (isSameDay(currentDate, start)) {
+              endTime = "24:00";
+              dist = '';
+            } else if (isSameDay(currentDate, end)) {
+              startTime = "00:00";
+              endTime = bookingEndTime;
+              dist = distance;
+            } else {
+              startTime = "00:00";
+              endTime = "24:00";
+              dist = '';
+            }
+          }
 
-    const start = new Date(bookingDate);
-    const end = new Date(recurringEndDate);
-    const currentDate = new Date(start);
+          const dateStr = format(currentDate, 'yyyy-MM-dd');
+          const dateBookings = bookings.find(b =>
+              b.car.id === selectedCar && b.date === dateStr
+          );
 
-    let startTime = bookingStartTime;
-    let endTime = bookingEndTime;
-    let dist = distance;
+          bookingValidations.push({
+            date: dateStr,
+            startTime,
+            endTime,
+            distance: dist,
+            docRef: dateBookings?.parent_ref
+          });
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
 
-    while (currentDate <= end) {
-      if (isMultiDay || recurringDays.includes(currentDate.getDay())) {
-        if (isMultiDay) {
-          if (isSameDay(currentDate, start)) {
-            endTime = "24:00";
-            dist = '';
-          } else if (isSameDay(currentDate, end)) {
-            startTime = "00:00";
-            endTime = bookingEndTime;
-            dist = distance;
-          } else {
-            startTime = "00:00";
-            endTime = "24:00";
-            dist = '';
+      return await runTransaction(db, async (transaction) => {
+        // Check all dates for conflicts within the transaction
+        for (const validation of bookingValidations) {
+          if (validation.docRef) {
+            const dateBookingsDoc = await transaction.get(validation.docRef);
+            if (dateBookingsDoc.exists()) {
+              const existingBookings = dateBookingsDoc.data().bookings;
+              validation.bookings = existingBookings;
+              const newBooking = {
+                startTime: timeToNumber(validation.startTime),
+                endTime: timeToNumber(validation.endTime)
+              };
+
+              if (isBookingOverlapping(existingBookings, newBooking, existingBooking)) {
+                throw new Error(`Bokning krockar med existerande bokning ${validation.date}`);
+              }
+            }
           }
         }
 
-        const succeeded = await createSingleBooking(
-            startTime,
-            endTime,
-            dist,
-            format(currentDate, 'yyyy-MM-dd'),
-            recurrenceDoc.id
-        );
+        // If we get here, all validations passed. Create the recurrence document
+        const recurrenceRef = doc(collection(db, 'recurrence'));
+        transaction.set(recurrenceRef, {
+          isMultiDay,
+          recurringDays,
+          recurringStartDate: bookingDate,
+          recurringEndDate,
+          createdAt: serverTimestamp()
+        });
 
-        if (!succeeded) {
-          return false;
+        // Create or update all bookings
+        for (const bookingData of bookingValidations) {
+          const newBooking = {
+            id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
+            users: selectedUsers.map(u => doc(db, 'users', u)),
+            startTime: timeToNumber(bookingData.startTime),
+            endTime: timeToNumber(bookingData.endTime),
+            distance: Number(bookingData.distance),
+            destination,
+            byUser: doc(db, 'users', user.user_id),
+            recurrenceId: recurrenceRef.id
+          };
+
+          if (bookingData.bookings) {
+            const existingBookings = bookingData.bookings;
+
+            const updatedBookings = existingBooking
+                ? existingBookings.map(b => b.id === existingBooking ? newBooking : b)
+                : [...existingBookings, newBooking];
+
+            transaction.update(bookingData.docRef, { bookings: updatedBookings });
+          } else {
+            const newDateBookingRef = doc(collection(db, 'date-car-bookings'));
+            const carRef = doc(db, 'cars', selectedCar);
+            transaction.set(newDateBookingRef, {
+              date: bookingData.date,
+              car: carRef,
+              bookings: [newBooking]
+            });
+          }
         }
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
+
+        return true;
+      });
+    } catch (error) {
+      console.error('Transaction failed:', error);
+      setAlerts([{ type: 'error', message: error.message }]);
+      return false;
     }
-    return true;
   };
 
-  const createSingleBooking = async (startTime, endTime, dist, date = bookingDate, recurrenceId = null) => {
-    const carRef = doc(db, 'cars', selectedCar);
+  const createSingleBooking = async (startTime: string, endTime: string, dist: string) => {
     const dateBookings = bookings.find(b =>
-        b.date === date && b.car.id === selectedCar
+        b.car.id === selectedCar && b.date === bookingDate
     );
 
-    const newBooking = {
-      id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
-      users: selectedUsers.map(u => doc(db, 'users', u)),
-      startTime: timeToNumber(startTime),
-      endTime: timeToNumber(endTime),
-      distance: Number(dist),
-      destination,
-      byUser: doc(db, 'users', user.user_id),
-      ...(recurrenceId && { recurrenceId })
-    };
+    try {
+      return await runTransaction(db, async (transaction) => {
+        const dateBookingsDoc = dateBookings ? await transaction.get(dateBookings.parent_ref) : undefined;
 
-    // Check for overlapping bookings
-    if (dateBookings) {
-      if (isBookingOverlapping(dateBookings.bookings, newBooking, existingBooking)) {
-        setAlerts([{ type: 'error', message: 'Vald tid krockar med annan bokning' }]);
-        return false;
-      }
+        const newBooking = {
+          id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
+          users: selectedUsers.map(u => doc(db, 'users', u)),
+          startTime: timeToNumber(startTime),
+          endTime: timeToNumber(endTime),
+          distance: Number(dist),
+          destination,
+          byUser: doc(db, 'users', user.user_id)
+        };
 
-      // Update existing document
-      const updatedBookings = existingBooking
-          ? dateBookings.bookings.map(b => b.id === existingBooking ? newBooking : b)
-          : [...dateBookings.bookings, newBooking];
+        if (dateBookingsDoc && dateBookingsDoc.exists()) {
+          const existingBookings = dateBookingsDoc.data().bookings;
 
-      await updateDoc(doc(db, 'date-car-bookings', dateBookings.parent_id), {
-        bookings: updatedBookings
+          // Check for overlapping bookings
+          if (isBookingOverlapping(existingBookings, newBooking, existingBooking)) {
+            throw new Error('Vald tid krockar med annan bokning');
+          }
+
+
+          // Update existing document
+          const updatedBookings = existingBooking
+              ? existingBookings.map(b => b.id === existingBooking ? newBooking : b)
+              : [...existingBookings, newBooking];
+
+          transaction.update(dateBookingsDoc.ref, { bookings: updatedBookings });
+        } else {
+          // Create new document
+          const carRef = doc(db, 'cars', selectedCar);
+          const newDateBookingRef = doc(collection(db, 'date-car-bookings'));
+          transaction.set(newDateBookingRef, {
+            date: bookingDate,
+            car: carRef,
+            bookings: [newBooking]
+          });
+        }
+
+        return true;
       });
-    } else {
-      // Create new document
-      await addDoc(collection(db, 'date-car-bookings'), {
-        date,
-        car: carRef,
-        bookings: [newBooking]
-      });
+    } catch (error) {
+      console.error('Transaction failed:', error);
+      setAlerts([{ type: 'error', message: error.message }]);
+      return false;
     }
-    return true;
   };
 
   const deleteBooking = async () => {
     if (!existingBooking) return;
 
-    const dateBooking = bookings.find(b =>
-        b.date === bookingDate && b.car.id === selectedCar
+    const dateBookings = bookings.find(b =>
+        b.car.id === selectedCar && b.date === bookingDate
     );
 
-    if (dateBooking) {
-      const bookingToDelete = dateBooking.bookings.find(b => b.id === existingBooking);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const dateBookingsDoc = dateBookings ? await transaction.get(dateBookings.parent_ref) : undefined;
+        if (!dateBookingsDoc || !dateBookingsDoc.exists()) return;
 
-      if (bookingToDelete?.recurrenceId) {
-        // Delete all related recurring bookings
-        const batch = writeBatch(db);
+        const bookingData = dateBookingsDoc.data();
+        const bookingToDelete = bookingData.bookings.find(b => b.id === existingBooking);
 
-        // Delete the recurrence document
-        batch.delete(doc(db, 'recurrence', bookingToDelete.recurrenceId));
+        if (!bookingToDelete) return;
 
-        // Find and delete all related bookings
-        const dateCarBookingsToUpdate = bookings.filter(dcb =>
-            dcb.bookings.some(b => b.recurrenceId === bookingToDelete.recurrenceId)
-        );
+        if (bookingToDelete.recurrenceId) {
+          // Get all bookings with this recurrence ID
+          const recurrenceRef = doc(db, 'recurrence', bookingToDelete.recurrenceId);
+          transaction.delete(recurrenceRef);
 
-        for (const dcb of dateCarBookingsToUpdate) {
-          const updatedBookings = dcb.bookings.filter(
-              b => b.recurrenceId !== bookingToDelete.recurrenceId
+          const recurrenceBookings = bookings.filter(b =>
+              b.car.id === selectedCar && b.bookings.find(b2 => b2.recurrenceId === bookingToDelete.recurrenceId)
+          );
+
+          // FIXME: Fetch all dateBookings before updating/deleting all of them.
+          recurrenceBookings.forEach(book => {
+            const bookings = book.bookings;
+            const updatedBookings = bookings.filter(
+                b => b.recurrenceId !== bookingToDelete.recurrenceId
+            );
+
+            if (updatedBookings.length === 0) {
+              transaction.delete(book.parent_ref);
+            } else {
+              transaction.update(book.parent_ref, { bookings: updatedBookings });
+            }
+          });
+        } else {
+          // Handle single booking deletion
+          const updatedBookings = bookingData.bookings.filter(
+              b => b.id !== existingBooking
           );
 
           if (updatedBookings.length === 0) {
-            batch.delete(doc(db, 'date-car-bookings', dcb.parent_id));
+            transaction.delete(dateBookingsDoc.ref);
           } else {
-            batch.update(doc(db, 'date-car-bookings', dcb.parent_id), {
-              bookings: updatedBookings
-            });
+            transaction.update(dateBookingsDoc.ref, { bookings: updatedBookings });
           }
         }
-
-        await batch.commit();
-      } else {
-        // Delete single booking
-        const updatedBookings = dateBooking.bookings.filter(
-            b => b.id !== existingBooking
-        );
-
-        if (updatedBookings.length === 0) {
-          await deleteDoc(doc(db, 'date-car-bookings', dateBooking.parent_id));
-        } else {
-          await updateDoc(doc(db, 'date-car-bookings', dateBooking.parent_id), {
-            bookings: updatedBookings
-          });
-        }
-      }
+      });
 
       navigate('/booking-overview');
+    } catch (error) {
+      console.error('Delete transaction failed:', error);
+      setAlerts([{ type: 'error', message: 'Ett fel uppstod när bokningen skulle tas bort' }]);
     }
   };
 

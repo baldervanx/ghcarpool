@@ -19,6 +19,7 @@ const convertBooking = (doc) => {
   const data = doc.data();
   return {
     parent_id: doc.id,
+    parent_ref: doc.ref,
     date: data.date,
     car: { id: data.car.id },
     bookings: data.bookings.map(booking => ({
@@ -40,7 +41,7 @@ export function useListenToBookings(startDate, endDate) {
 
     snapshot.docChanges().forEach((change) => {
       const booking = convertBooking(change.doc);
-
+      console.log("Change %s, booking date=%s, bookings=%o", change.type, booking.date, booking.bookings);
       switch (change.type) {
         case 'added':
           dispatch(addOrUpdateBooking(booking));

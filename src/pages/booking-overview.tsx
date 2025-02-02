@@ -56,23 +56,17 @@ const BookingOverview = () => {
   const { destinations } = useSelector(state => state.destination);
   const accessibleCn = useAccessibleCn();
   const daysPerPage = 14;
+  const pageCount = 8;
+  const pastDays = daysPerPage + 1;
+  const futureDays = daysPerPage * (pageCount - 1) - 1; // About 3 months
 
   const [pagination, setPagination] = useState({
     pageIndex: 1, //initial page index
     pageSize: daysPerPage, //default page size
   });
 
-// Calculate date range based on pagination
-  const startDate = format(
-      addDays(startOfDay(new Date()),
-          (pagination.pageIndex - 1) * pagination.pageSize - 1),
-      'yyyy-MM-dd'
-  );
-
-  const endDate = format(
-      addDays(new Date(startDate), pagination.pageSize),
-      'yyyy-MM-dd'
-  );
+  const startDate = format(addDays(startOfDay(new Date()), -pastDays), 'yyyy-MM-dd');
+  const endDate = format(addDays(new Date(startDate), futureDays), 'yyyy-MM-dd');
 
   // Use the new hook
   const { bookings, loading } = useListenToBookings(startDate, endDate);
@@ -136,7 +130,7 @@ const BookingOverview = () => {
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     manualPagination: true,
-    pageCount: 7, //One with past 2 weeks and 3 future months
+    pageCount: pageCount, //One with past 2 weeks and 3 future months
     onPaginationChange: setPagination,
     state: {
       pagination,

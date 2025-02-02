@@ -12,8 +12,9 @@
 - [X] Maybe icons for all features - if accepted.
 
 ## Book-trip
-- [ ] IMPORTANT: Must support bookings outside current cache. Or, change current cache to include more data.
+- [X] IMPORTANT: Must support bookings outside current cache. Or, change current cache to include more data.
       Perhaps add a set of support functions, to transparently fetch data as needed.
+- [ ] ... limit how far into the future bookings are allowed
 - [ ] Warn when modifying a booking made by someone else.
 - [ ] Swap existing bookings between cars
 - [ ] Validate overlap - present more details about overlap and better handling of recurring booking
@@ -50,7 +51,9 @@
 - [X] Each page is not showing all dates
 
 ## Home
-- [ ] Add list of current active bookings, including "past" bookings that has not been logged
+- [X] Add list of current active bookings, 
+- [ ] ...including "past" bookings that has not been logged
+- [ ] ...make it nice to look at - car name, spacing etc.
 - [ ] Have buttons to edit, delete and log the active bookings.
 - [X] Move journal export button here, 
 - [ ] Make journal export accessible only by admins 

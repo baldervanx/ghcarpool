@@ -4,17 +4,18 @@ import { House, Calendar, CalendarPlus, FileText, FilePlus } from 'lucide-react'
 
 export function Navbar() {
   const location = useLocation();
+  const iconSize = 50;
 
   return (
     <nav className="border-b">
       <div className="container mx-auto px-2">
         <div className="flex items-center justify-between h-12">
-          <div className="flex space-x-1">
+          <div className="flex space-x-0">
             <Link to="/home">
               <Button className="flex items-center h-8 px-2"
                       variant={location.pathname === '/home' ? 'default' : 'ghost'}
               >
-                <House size={32}/>
+                <House size={iconSize}/>
                 {/*<span className="hidden md:inline">Hem</span>*/}
               </Button>
             </Link>
@@ -22,7 +23,7 @@ export function Navbar() {
               <Button className="flex items-center h-8 px-2"
                   variant={location.pathname === '/book-trip' ? 'default' : 'ghost'}
               >
-                <CalendarPlus size={32}/>
+                <CalendarPlus size={iconSize}/>
                 <span className="hidden md:inline">Boka</span>
               </Button>
             </Link>
@@ -30,7 +31,7 @@ export function Navbar() {
               <Button className="flex items-center h-8 px-2"
                       variant={location.pathname === '/book-overview' ? 'default' : 'ghost'}
               >
-                <Calendar size={32}/>
+                <Calendar size={iconSize}/>
                 <span className="hidden md:inline">Bokningar</span>
               </Button>
             </Link>
@@ -38,7 +39,7 @@ export function Navbar() {
               <Button className="flex items-center h-8 px-2"
                 variant={location.pathname === '/register-trip' ? 'default' : 'ghost'}
               >
-                <FilePlus size={32}/>
+                <FilePlus size={iconSize}/>
                 <span className="hidden md:inline">Logga</span>
               </Button>
             </Link>
@@ -46,7 +47,7 @@ export function Navbar() {
               <Button className="flex items-center h-8 px-2"
                 variant={location.pathname === '/trip-log' ? 'default' : 'ghost'}
               >
-                <FileText size={32}/>
+                <FileText size={iconSize}/>
                 <span className="hidden md:inline">Journal</span>
               </Button>
             </Link>

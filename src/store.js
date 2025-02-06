@@ -91,9 +91,9 @@ export const fetchAuthState = createAsyncThunk(
 
                 if (user) {
                     // Check if we need to wait for fresh data
-                    const needsFreshData = !getCachedData('user') &&
-                        !getCachedData('car') &&
-                        !getCachedData('settings') &&
+                    const needsFreshData = !getCachedData('user') ||
+                        !getCachedData('car') ||
+                        !getCachedData('settings') ||
                         !getCachedData('destination');
 
                     // Fetch all required data
@@ -266,8 +266,12 @@ const bookingSlice = createSlice({
     initialState: {
         bookings: [],
         loading: false,
+        range: {}
     },
     reducers: {
+        setBookingsRange: (state, action) => {
+            state.range = action.payload;
+        },
         setBookings: (state, action) => {
             state.bookings = action.payload;
         },
@@ -316,6 +320,7 @@ export const { setUsers, setSelectedUsers } = userSlice.actions;
 export const { setTrips, setTripsLoading  } = tripSlice.actions;
 export const {
     setBookings,
+    setBookingsRange,
     setBookingsLoading,
     addOrUpdateBooking,
     removeBooking

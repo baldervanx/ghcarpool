@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import {ChevronDown, ChevronLeft, ChevronRight} from "lucide-react";
 import {cn, useAccessibleCn} from "@/lib/utils";
 import {useSelector} from "react-redux";
-import {useListenToBookings} from "@/db/use-listen-to-bookings";
 
 const BookingCell = ({ bookings, destinations, onClick, readOnly, accessibleCn}) => {
   if (!bookings || bookings.length === 0) return null;
@@ -54,22 +53,15 @@ const BookingOverview = () => {
   const navigate = useNavigate();
   const { cars } = useSelector(state => state.car);
   const { destinations } = useSelector(state => state.destination);
+  const { bookings, loading } = useSelector(state => state.booking)
   const accessibleCn = useAccessibleCn();
   const daysPerPage = 14;
   const pageCount = 8;
-  const pastDays = daysPerPage + 1;
-  const futureDays = daysPerPage * (pageCount - 1) - 1; // About 3 months
 
   const [pagination, setPagination] = useState({
     pageIndex: 1, //initial page index
     pageSize: daysPerPage, //default page size
   });
-
-  const startDate = format(addDays(startOfDay(new Date()), -pastDays), 'yyyy-MM-dd');
-  const endDate = format(addDays(new Date(startDate), futureDays), 'yyyy-MM-dd');
-
-  // Use the new hook
-  const { bookings, loading } = useListenToBookings(startDate, endDate);
 
   const dates = useMemo(() =>
           Array.from({ length: pagination.pageSize }, (_, i) =>

@@ -303,7 +303,7 @@ const BookTrip = () => {
             startTime,
             endTime,
             distance: dist,
-            docRef: dateBookings?.parent_ref
+            docRef: dateBookings ? doc(db, 'date-car-bookings', dateBookings.parent_id) : null,
           });
         }
         currentDate.setDate(currentDate.getDate() + 1);
@@ -387,7 +387,7 @@ const BookTrip = () => {
 
     try {
       return await runTransaction(db, async (transaction) => {
-        const dateBookingsDoc = dateBookings ? await transaction.get(dateBookings.parent_ref) : undefined;
+        const dateBookingsDoc = dateBookings ? await transaction.get(doc(db, 'date-car-bookings', dateBookings.parent_id)) : undefined;
 
         const newBooking = {
           id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
@@ -443,7 +443,7 @@ const BookTrip = () => {
 
     try {
       await runTransaction(db, async (transaction) => {
-        const dateBookingsDoc = dateBookings ? await transaction.get(dateBookings.parent_ref) : undefined;
+        const dateBookingsDoc = dateBookings ? await transaction.get(doc(db, 'date-car-bookings', dateBookings.parent_id)) : undefined;
         if (!dateBookingsDoc || !dateBookingsDoc.exists()) return;
 
         const bookingData = dateBookingsDoc.data();
@@ -468,9 +468,9 @@ const BookTrip = () => {
             );
 
             if (updatedBookings.length === 0) {
-              transaction.delete(book.parent_ref);
+              transaction.delete(doc(db, 'date-car-bookings', book.parent_id));
             } else {
-              transaction.update(book.parent_ref, { bookings: updatedBookings });
+              transaction.update(doc(db, 'date-car-bookings', book.parent_id), { bookings: updatedBookings });
             }
           });
         } else {

@@ -1,7 +1,7 @@
 // pages/RegisterTrip.jsx
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import {useLocation, useNavigate} from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { db } from '@/db/firebase';
 import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -30,6 +30,7 @@ interface Trip {
 
 export function RegisterTrip() {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const { selectedCar } = useSelector(state => state.car);
   const { user } = useSelector(state => state.auth);
@@ -75,6 +76,9 @@ export function RegisterTrip() {
 
   useEffect(() => {
     setErrorMessage('');
+    if (location.state) {
+      // TODO: Support for editing
+    }
     if (selectedCar) {
       const relevantTrips = trips.filter(trip => trip.car.id === selectedCar);
       if (relevantTrips.length > 0) {

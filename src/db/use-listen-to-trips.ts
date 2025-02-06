@@ -59,7 +59,7 @@ export function useListenToTrips() {
               // but not when adding a new entry.
               updatedTrips.sort((a, b) => b.odo - a.odo);
             }
-            console.log('Trip added to existingTrips:', trip);
+            //console.log('Trip added to existingTrips:', trip);
             dispatch(setTrips(updatedTrips));
           }
           break;
@@ -93,6 +93,7 @@ export function useListenToTrips() {
     );
 
     // Sätt upp snapshot-lyssnaren
+    console.log("Loading trips");
     unsubscribeRef.current = onSnapshot(
       q,
       handleSnapshot,
@@ -105,6 +106,7 @@ export function useListenToTrips() {
     // Cleanup-funktion för att avregistrera när komponenten unmountas
     return () => {
       if (unsubscribeRef.current) {
+        console.log("Unsubscribing trips");
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }

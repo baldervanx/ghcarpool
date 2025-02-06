@@ -16,7 +16,7 @@ export const HomePage = () => {
   const { settings, updateSettings } = useAccessibility();
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  useSelector(state => state.car);
+  const { cars } = useSelector(state => state.car);
   const { darkMode, toggleDarkMode } = useTheme();
   //const { trips, loading: tripsLoading } = useSelector(state => state.trip);
   const { bookings, loading: bookingsLoading } = useSelector(state => state.booking);
@@ -34,7 +34,8 @@ export const HomePage = () => {
         .flatMap(dayBooking =>
             dayBooking.bookings.map(booking => ({
               ...booking,
-              carId: dayBooking.car.id
+              // Would be a bit more efficient to do this later.
+              car: cars.find(c => c.id === dayBooking.car.id)
             }))
         );
     const currentUserBookings = flatBookings
@@ -48,38 +49,48 @@ export const HomePage = () => {
   function timeToString(minutes: number): string {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
-    if (mins != 0) return `${hours}:${mins.toString().padStart(2, '0')}`;
-    return hours.toString();
+    return `${hours}:${mins.toString().padStart(2, '0')}`;
   }
 
   function logBooking(booking) {
-    dispatch(setSelectedCar(booking.carId));
+    dispatch(setSelectedCar(booking.car.id));
     navigate('/register-trip');
   }
 
-  //FIXME: Non-unique key on booking cards
+  function changeBooking(booking) {
+    navigate('/book-trip', { state: { parent_id: booking.parent_id, booking_id: booking.id } });
+  }
+
   return (
     <div className="min-h-screen bg-background p-8">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto space-y-4">
 
         {!userLoading && !bookingsLoading && (
             activeBookings.map((booking) => (
-                <Card key={booking.carId}>
+                <Card key={booking.id}>
                   <CardHeader>
-                    <CardTitle>Bokat {booking.carId}</CardTitle>
+                    <CardTitle>Bokat {booking.car.name}</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-6">
-                    <span>{`Tid: ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}`}</span>
-                    <Button
-                        variant="outline"
-                        onClick={() => logBooking(booking)}
-                    >
-                      Logga
-                    </Button>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{`Tid: ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}`}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Button variant="outline"
+                          onClick={() => logBooking(booking)}
+                      >
+                        Logga
+                      </Button>
+                      <Button variant="outline"
+                          onClick={() => changeBooking(booking)}
+                      >
+                        Ändra
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
-            ))
-        )}
+          ))
+          )}
 
         {(userLoading || bookingsLoading) && (
             <div className="flex items-center justify-center min-h-screen">Laddar...</div>

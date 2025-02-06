@@ -16,9 +16,11 @@ import { ThemeProvider } from './components/theme-context';
 import { HomePage } from './pages/home';
 import PropTypes from "prop-types";
 import {useListenToTrips} from "@/db/use-listen-to-trips";
+import {useListenToBookings} from "@/db/use-listen-to-bookings";
 
 function App() {
   useListenToTrips();
+  useListenToBookings();
   const dispatch = useDispatch();
   const authState = useSelector(state => state.auth);
 
@@ -37,7 +39,7 @@ function App() {
           <Routes>
             <Route
                 path="/login"
-                element={authState.user && authState.isMember ? <Navigate to="/register-trip" replace /> : <Login />}
+                element={authState.user && authState.isMember ? <Navigate to="/home" replace /> : <Login />}
             />
             <Route
                 path="/home"
@@ -61,7 +63,7 @@ function App() {
             />
             <Route
                 path="*"
-                element={<Navigate to="/register-trip" replace />}
+                element={<Navigate to="/home" replace />}
             />
           </Routes>
         </div>

@@ -11,15 +11,16 @@ import {
 import { db } from '@/db/firebase';
 import {
   setBookingsLoading,
+  setBookingsRange,
   addOrUpdateBooking,
   removeBooking
 } from '../store';
+import {addDays, format, startOfDay} from "date-fns";
 
 const convertBooking = (doc) => {
   const data = doc.data();
   return {
     parent_id: doc.id,
-    parent_ref: doc.ref,
     date: data.date,
     car: { id: data.car.id },
     bookings: data.bookings.map(booking => ({
@@ -31,7 +32,7 @@ const convertBooking = (doc) => {
   };
 };
 
-export function useListenToBookings(startDate, endDate) {
+export function useListenToBookings() {
   const dispatch = useDispatch();
   const existingBookings = useSelector(state => state.booking.bookings);
   const unsubscribeRef = useRef(null);
@@ -58,6 +59,14 @@ export function useListenToBookings(startDate, endDate) {
 
   useEffect(() => {
     dispatch(setBookingsLoading(true));
+    const daysPerPage = 14;
+    const pageCount = 8;
+    const pastDays = daysPerPage + 1;
+    const futureDays = daysPerPage * (pageCount - 1) - 1; // About 3 months
+
+    const startDate = format(addDays(startOfDay(new Date()), -pastDays), 'yyyy-MM-dd');
+    const endDate = format(addDays(new Date(startDate), futureDays), 'yyyy-MM-dd');
+    dispatch(setBookingsRange({startDate, endDate}));
 
     const bookingsRef = collection(db, 'date-car-bookings');
 
@@ -68,6 +77,7 @@ export function useListenToBookings(startDate, endDate) {
       orderBy('date', 'asc')
     );
 
+    console.log("Loading bookings");
     unsubscribeRef.current = onSnapshot(
       q,
       handleSnapshot,
@@ -79,11 +89,12 @@ export function useListenToBookings(startDate, endDate) {
 
     return () => {
       if (unsubscribeRef.current) {
+        console.log("Unsubscribing bookings");
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
     };
-  }, [startDate, endDate, handleSnapshot, dispatch]);
+  }, [handleSnapshot, dispatch]);
 
   return {
     bookings: existingBookings,

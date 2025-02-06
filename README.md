@@ -7,6 +7,17 @@ This is initially just an app for registering a trip log for a carpool in order 
 Emulator for the database:
 `firebase emulators:start --import ./emulated_database --export-on-exit`
 
-Run the app:
+Run the app locally:
 `npm run dev`
 
+Run tests:
+`npm run test`
+
+Build the app for deployment:
+`npm run build`
+
+Deploy to preview channel:
+`firebase hosting:channel:deploy <preview_name>`
+
+Deploy to production:
+`firebase deploy`

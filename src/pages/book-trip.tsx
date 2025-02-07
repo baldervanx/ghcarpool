@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '@/db/firebase';
-import { collection, doc, serverTimestamp, getDoc, runTransaction, DocumentReference } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, getDoc, runTransaction } from 'firebase/firestore';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,9 +14,10 @@ import UserSelector from '../components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '../store';
 import { format, isSameDay } from 'date-fns';
 
+/*
 interface Booking {
   id?: string; // Optional, for existing bookings
-  users: DocumentReference[];
+  users: DocumentReference[]; // Import DocumentReference from firebase/firestore
   startTime: number;
   endTime: number;
   distance: number;
@@ -31,6 +32,7 @@ interface DateCarBooking {
   car: DocumentReference;
   bookings: Array<Booking>;
 }
+*/
 
 const TimeSelector = ({ value, onChange, label }) => {
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -51,7 +53,7 @@ const TimeSelector = ({ value, onChange, label }) => {
       <Label>{label}</Label>
       <div className="flex gap-1">
         <Select value={selectedHour} onValueChange={handleHourChange}>
-          <SelectTrigger className="flex-1 time-select-trigger">
+          <SelectTrigger className="flex-1 px-2 time-select-trigger">
             <SelectValue placeholder="--" />
           </SelectTrigger>
           <SelectContent>
@@ -63,7 +65,7 @@ const TimeSelector = ({ value, onChange, label }) => {
           </SelectContent>
         </Select>
         <Select value={selectedMinute} onValueChange={handleMinuteChange}>
-          <SelectTrigger className="flex-1 time-select-trigger">
+          <SelectTrigger className="flex-1 px-2 time-select-trigger">
             <SelectValue placeholder="00" />
           </SelectTrigger>
           <SelectContent>
@@ -170,7 +172,7 @@ const BookTrip = () => {
   }, [user.user_id]);
 
   useEffect(() => {
-    if (location.state) {
+    if (location.state && location.state.parent_id) {
       const { parent_id, booking_id } = location.state;
       const dateCarBooking = bookings.find(b => b.parent_id === parent_id);
 
@@ -193,6 +195,10 @@ const BookTrip = () => {
           }
         }
       }
+    } else if (location.state && location.state.car) {
+      const { car, date } = location.state;
+      dispatch(setSelectedCar(car));
+      setBookingDate(format(date, 'yyyy-MM-dd'));
     }
   }, [location.state, bookings]);
 
@@ -572,7 +578,7 @@ const BookTrip = () => {
                   if (checked) setIsMultiDay(false)}}
           />
           <Label htmlFor="recurring" className="text-sm">
-            Återkommande bokning
+            Återkommande
           </Label>
           <Checkbox
               id="multiday"
@@ -582,7 +588,7 @@ const BookTrip = () => {
                 if (checked) setIsRecurring(false)}}
           />
           <Label htmlFor="multiday" className="text-sm">
-            Flerdags bokning
+            Flerdagars
           </Label>
         </div>
 

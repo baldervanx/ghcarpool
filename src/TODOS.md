@@ -22,7 +22,7 @@
 - [ ] Swap existing bookings between cars
 - [ ] Validate overlap - present more details about overlap and better handling of recurring booking
 - [ ] Validate driving-range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
-- [ ] Ensure validation after update never detect collisions with "itself". 
+- [ ] *NB* Ensure validation of multi-day booking after update never report collisions with "itself". 
 - [X] Validate recurringEndDate - is set and is after start-date
 - [X] It shall not be possible to edit or delete past bookings, only future ones.
 - [ ] Use accordion (https:ui.shadcn.com/docs/components/accordion) for the advanced settings?
@@ -55,6 +55,9 @@
 - [X] Use onSnapshot() to cache at least one page
 - [X] Loading state to avoid showing incomplete calendar
 - [X] Each page is not showing all dates
+- [X] Sort bookings for a car/day, by start-time.
+- [X] Add buttons to book a free car/day
+- [X] ... and add a "Add" button when wanting to book the same car/cay with an additional booking
 
 ## Home
 - [X] Add list of current active bookings, 

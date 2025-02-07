@@ -6,7 +6,7 @@ import {
   useReactTable,
   getPaginationRowModel,
 } from '@tanstack/react-table';
-import { format, addDays, isWeekend, startOfDay, isSameDay } from 'date-fns';
+import { format, addDays, isWeekend, isSameDay } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import {
   Table,
@@ -20,34 +20,7 @@ import { Button } from "@/components/ui/button";
 import {ChevronDown, ChevronLeft, ChevronRight} from "lucide-react";
 import {cn, useAccessibleCn} from "@/lib/utils";
 import {useSelector} from "react-redux";
-
-const BookingCell = ({ bookings, destinations, onClick, readOnly, accessibleCn}) => {
-  if (!bookings || bookings.length === 0) return null;
-
-  function timeToString(minutes: number): string {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (mins != 0) return `${hours}:${mins.toString().padStart(2, '0')}`;
-    return hours.toString();
-  }
-
-  return (
-    <div className="space-y-0.5">
-      {bookings.map((booking) => (
-        <div
-          key={booking.id}
-          onClick={() => !readOnly && onClick(booking)}
-          className={accessibleCn("min-w-[16ch] bg-primary/10 dark:bg-primary/20 p-1 rounded text-xs cursor-pointer hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors")}
-        >
-          {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}` +
-              (booking.distance ? ` (${Math.round(booking.distance/10)})` : ``) +
-              ` ${booking.destination ? (destinations.find(d => d.id === booking.destination)?.shortName || booking.destination) : ''}`
-          }
-        </div>
-      ))}
-    </div>
-  );
-};
+import BookingCell from "@/components/booking-cell"
 
 const BookingOverview = () => {
   const navigate = useNavigate();
@@ -71,7 +44,11 @@ const BookingOverview = () => {
   );
 
   const handleBookingClick = (booking) => {
-    navigate('/book-trip', { state: { parent_id: booking.parent_id, booking_id: booking.id } });
+    if (booking.id && booking.parent_id) {
+      navigate('/book-trip', {state: {parent_id: booking.parent_id, booking_id: booking.id}});
+    } else if (booking.car && booking.date) {
+      navigate('/book-trip', {state: booking});
+    }
   };
 
   const columns = useMemo(() => [
@@ -102,10 +79,12 @@ const BookingOverview = () => {
         const dateBookings = bookings.filter(booking =>
           booking.car.id === car.id &&
           isSameDay(new Date(booking.date), row.original)
-        ).flatMap(b => b.bookings);
+        ).flatMap(b => b.bookings).sort((a, b) => a.startTime - b.startTime);
         return (
           <BookingCell
             bookings={dateBookings}
+            car={car.id}
+            date={row.original}
             destinations={destinations}
             onClick={handleBookingClick}
             readOnly={pagination.pageIndex < 1}

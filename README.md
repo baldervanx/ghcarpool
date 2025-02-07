@@ -7,6 +7,9 @@ This is initially just an app for registering a trip log for a carpool in order 
 Emulator for the database:
 `firebase emulators:start --import ./emulated_database --export-on-exit`
 
+Export data, if "export-on-exit" isn't used:
+`firebase emulators:export ./emulated_database`
+
 Run the app locally:
 `npm run dev`
 

@@ -20,15 +20,14 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
 
     const preventScroll = (e: TouchEvent) => {
       if (isDragging) {
-        e.preventDefault();
         e.stopPropagation();
+        e.preventDefault();
         const currentX = e.touches[0].clientX;
         const diff = startX.current - currentX;
 
         const maxDrag = 60; // pixels
         const offset = Math.min(Math.max(diff, 0), maxDrag);
         setDragOffset(offset);
-        //console.log("Dragging in prevent " + diff);
       }
     };
 
@@ -43,13 +42,11 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
     if (readOnly) return;
     startX.current = e.touches[0].clientX;
     setIsDragging(true);
-    //console.log("Dragging start");
   }, [readOnly]);
 
   const handleTouchEnd = useCallback(() => {
     if (readOnly) return;
     setIsDragging(false);
-    //console.log("Dragging end");
   }, [dragOffset, onClick, car, date, readOnly]);
 
   if (!bookings || bookings.length === 0) {

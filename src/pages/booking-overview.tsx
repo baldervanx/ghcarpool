@@ -6,7 +6,7 @@ import {
   useReactTable,
   getPaginationRowModel,
 } from '@tanstack/react-table';
-import { format, addDays, isWeekend, isSameDay } from 'date-fns';
+import { format, addDays, isWeekend, isSameDay, startOfDay } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import {
   Table,
@@ -51,7 +51,7 @@ const BookingOverview = () => {
     }
   };
 
-  const today = new Date();
+  const today = startOfDay(new Date());
 
   const columns = useMemo(() => [
     {

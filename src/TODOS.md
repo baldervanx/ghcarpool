@@ -50,19 +50,20 @@
 
 ## Booking-overview
 - [X] Font-size of bookings should adjust with accessibility settings.
-- [X] Past bookings shall be read-only.
+- [X] *BUG* Past bookings shall be read-only.
 - [X] Maybe: Have yesterday as top row, to easily see which cars was used recently
 - [X] Use onSnapshot() to cache at least one page
 - [X] Loading state to avoid showing incomplete calendar
 - [X] Each page is not showing all dates
 - [X] Sort bookings for a car/day, by start-time.
 - [X] Add buttons to book a free car/day
-- [X] ... and add a "Add" button when wanting to book the same car/cay with an additional booking
+- [X] ... and add a "Add" button when wanting to book the same car/cay with an additional booking 
 
 ## Home
 - [X] Add list of current active bookings, 
 - [ ] ...including "past" bookings that has not been logged
 - [ ] ...showing booking logging status
+- [ ] ...support multi-day better
 - [X] ...make it nice to look at - car name, spacing etc.
 - [X] Have buttons to edit, delete and log the active bookings.
 - [X] Move journal export button here, 

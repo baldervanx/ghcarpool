@@ -1,9 +1,10 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, accessibleCn}) => {
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const startX = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   function timeToString(minutes: number): string {
     const hours = Math.floor(minutes / 60);
@@ -12,31 +13,43 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
     return hours.toString();
   }
 
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const preventScroll = (e: TouchEvent) => {
+      if (isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentX = e.touches[0].clientX;
+        const diff = startX.current - currentX;
+
+        const maxDrag = 60; // pixels
+        const offset = Math.min(Math.max(diff, 0), maxDrag);
+        setDragOffset(offset);
+        //console.log("Dragging in prevent " + diff);
+      }
+    };
+
+    container.addEventListener('touchmove', preventScroll, { passive: false });
+
+    return () => {
+      container.removeEventListener('touchmove', preventScroll);
+    };
+  }, [isDragging]);
+
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (readOnly) return;
     startX.current = e.touches[0].clientX;
     setIsDragging(true);
+    //console.log("Dragging start");
   }, [readOnly]);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isDragging || readOnly) return;
-    const currentX = e.touches[0].clientX;
-    const diff = startX.current - currentX;
-
-    const maxDrag = 60; // pixels
-    const offset = Math.min(Math.max(diff, 0), maxDrag);
-    setDragOffset(offset);
-  }, [isDragging, readOnly]);
 
   const handleTouchEnd = useCallback(() => {
     if (readOnly) return;
     setIsDragging(false);
-
-    /*if (dragOffset > 50) {
-      onClick({car, date});
-      setDragOffset(0);
-    }*/
-
+    //console.log("Dragging end");
   }, [dragOffset, onClick, car, date, readOnly]);
 
   if (!bookings || bookings.length === 0) {
@@ -52,8 +65,8 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
 
   return (
     <div
+      ref={containerRef}
       onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       className="relative overflow-hidden"
     >

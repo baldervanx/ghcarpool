@@ -51,6 +51,8 @@ const BookingOverview = () => {
     }
   };
 
+  const today = new Date();
+
   const columns = useMemo(() => [
     {
       header: 'Datum',
@@ -87,7 +89,7 @@ const BookingOverview = () => {
             date={row.original}
             destinations={destinations}
             onClick={handleBookingClick}
-            readOnly={pagination.pageIndex < 1}
+            readOnly={row.original < today}
             accessibleCn={accessibleCn}
           />
         );
@@ -128,7 +130,7 @@ const BookingOverview = () => {
                     key={header.id}
                     className={cn(
                       "bg-background",
-                      header.column.columnDef.meta?.isSticky && "sticky left-0 z-20"
+                      header.column.columnDef.meta?.isSticky && "sticky left-0 z-30"
                     )}
                     style={{
                       left: header.column.columnDef.meta?.isSticky ? 0 : undefined,
@@ -156,7 +158,7 @@ const BookingOverview = () => {
                     <TableCell
                       key={cell.id}
                       className={cn(
-                        cell.column.columnDef.meta?.isSticky ? "sticky left-0" : "min-w-[16ch]"
+                        cell.column.columnDef.meta?.isSticky ? "sticky left-0 z-30" : "min-w-[16ch]"
                       )}
                       style={{
                         left: cell.column.columnDef.meta?.isSticky ? 0 : undefined,

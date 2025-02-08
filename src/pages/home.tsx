@@ -61,6 +61,13 @@ export const HomePage = () => {
     navigate('/book-trip', { state: { parent_id: booking.parent_id, booking_id: booking.id } });
   }
 
+  // TODO: Must check if the booking is multi-day and then display that properly,
+  //  also see if the booking is past, ongoing or in the future.
+  //  The bookings should be sorted:
+  //      1. past booking that hasn't been logged at the top (include such bookings from yesterday)
+  //      2. ongoing booking that will need to be logged soon
+  //      3. coming bookings later the same day
+  //      4. past bookings that has been logged, just remaining there to confirm that it was booked.
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-2xl mx-auto space-y-4">

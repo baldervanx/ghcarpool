@@ -20,7 +20,7 @@ import {addDays, format, startOfDay} from "date-fns";
 const convertBooking = (doc) => {
   const data = doc.data();
   return {
-    parent_id: doc.id,
+    id: doc.id,
     date: data.date,
     car: { id: data.car.id },
     bookings: data.bookings.map(booking => ({

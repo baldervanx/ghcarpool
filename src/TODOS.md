@@ -5,6 +5,7 @@
 - [ ] Fix bugs in initial tests
 - [ ] Create test data generator that adds many bookings 
 - [ ] Do performance test with > 200 bookings
+- [ ] Add cleanup of old trip and booking entries, possibly with some archiving logic.
 
 ## Store
 - [X] Add the caching functionality, must always return the cached copy first 
@@ -14,15 +15,24 @@
 - [X] Possibly use icon for bookings (calendar symbol)
 - [X] Maybe icons for all features - if accepted.
 
+## Register-trip
+- [ ] Make it possible to edit log entries, other than the last one
+-     ... Should only allow limited changes, as it can be assumed that the last entry has correct odo
+-     ... Allow inserting another log-line, by splitting one log-line in two entries
+-     ... Allow adjusting the odo of one line and with this also changing the next line.
+-     ... Show a warning, telling exactly what is being changed so the user can confirm
+
 ## Book-trip
 - [X] IMPORTANT: Must support bookings outside current cache. Or, change current cache to include more data.
       Perhaps add a set of support functions, to transparently fetch data as needed.
 - [ ] ... limit how far into the future bookings are allowed
-- [ ] Warn when modifying a booking made by someone else.
+- [ ] Warn with pop-up confirmation when modifying a booking made by someone else. 
+-     ...Also have an alert message from the very beginning of modification
+-     ...Also send message to the original creator?
 - [ ] Swap existing bookings between cars
-- [ ] Validate overlap - present more details about overlap and better handling of recurring booking
+- [X] Validate overlap - present more details about overlap and better handling of recurring booking
 - [ ] Validate driving-range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
-- [ ] *NB* Ensure validation of multi-day booking after update never report collisions with "itself". 
+- [X] *NB* Ensure validation of multi-day booking after update never report collisions with "itself". 
 - [X] Validate recurringEndDate - is set and is after start-date
 - [X] It shall not be possible to edit or delete past bookings, only future ones.
 - [ ] Use accordion (https:ui.shadcn.com/docs/components/accordion) for the advanced settings?

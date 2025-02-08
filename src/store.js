@@ -280,7 +280,7 @@ const bookingSlice = createSlice({
         },
         addOrUpdateBooking: (state, action) => {
             const index = state.bookings.findIndex(b =>
-                b.parent_id === action.payload.parent_id
+                b.id === action.payload.id
             );
             if (index >= 0) {
                 state.bookings[index] = action.payload;
@@ -290,7 +290,7 @@ const bookingSlice = createSlice({
         },
         removeBooking: (state, action) => {
             state.bookings = state.bookings.filter(
-                b => b.parent_id !== action.payload.parent_id
+                b => b.id !== action.payload.id
             );
         }
     }

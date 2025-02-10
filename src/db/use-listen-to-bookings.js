@@ -77,7 +77,7 @@ export function useListenToBookings() {
       orderBy('date', 'asc')
     );
 
-    console.log("Loading bookings");
+    console.log(`Loading bookings for ${startDate}-${endDate}`);
     unsubscribeRef.current = onSnapshot(
       q,
       handleSnapshot,

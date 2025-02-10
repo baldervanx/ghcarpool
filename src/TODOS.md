@@ -25,11 +25,13 @@
 ## Book-trip
 - [X] IMPORTANT: Must support bookings outside current cache. Or, change current cache to include more data.
       Perhaps add a set of support functions, to transparently fetch data as needed.
-- [ ] ... limit how far into the future bookings are allowed
+- [OK?] ... limit how far into the future bookings are allowed
+- [ ] ... *BUG* bookings on last page not showing up.
 - [ ] Warn with pop-up confirmation when modifying a booking made by someone else. 
--     ...Also have an alert message from the very beginning of modification
--     ...Also send message to the original creator?
-- [ ] Swap existing bookings between cars
+- [OK?] ...Also have an alert message from the very beginning of modification
+- [ ]   ...Also send message to the original creator?
+- [ ] ONGOING! - Swap existing bookings between cars
+- [X] *BUG* Changing car produces duplicate entry
 - [X] Validate overlap - present more details about overlap and better handling of recurring booking
 - [ ] Validate driving-range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
 - [X] *NB* Ensure validation of multi-day booking after update never report collisions with "itself". 

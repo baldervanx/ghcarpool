@@ -1,12 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, {useState, useMemo, useEffect} from 'react';
+import {useLocation, useNavigate} from 'react-router-dom';
 import {
   flexRender,
   getCoreRowModel,
   useReactTable,
   getPaginationRowModel,
 } from '@tanstack/react-table';
-import { format, addDays, isWeekend, isSameDay, startOfDay } from 'date-fns';
+import { format, addDays, isWeekend, isSameDay, startOfDay, differenceInDays } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import {
   Table,
@@ -24,17 +24,25 @@ import BookingCell from "@/components/booking-cell"
 
 const BookingOverview = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { cars } = useSelector(state => state.car);
   const { destinations } = useSelector(state => state.destination);
   const { bookings, loading } = useSelector(state => state.booking)
   const accessibleCn = useAccessibleCn();
   const daysPerPage = 14;
   const pageCount = 8;
-
   const [pagination, setPagination] = useState({
     pageIndex: 1, //initial page index
     pageSize: daysPerPage, //default page size
   });
+
+  useEffect(() => {
+    if (location.state && location.state.date) {
+      const daysAway = differenceInDays(location.state.date, startOfDay(new Date()));
+      const pageIx = Math.floor(daysAway/daysPerPage) + 1;
+      setPagination({pageIndex: pageIx, pageSize: daysPerPage});
+    }
+  }, [location.state]);
 
   const dates = useMemo(() =>
           Array.from({ length: pagination.pageSize }, (_, i) =>

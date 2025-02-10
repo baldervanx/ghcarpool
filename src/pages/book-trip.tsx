@@ -8,12 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CarSelector } from '../components/CarSelector';
+import { CarSelector } from '@/components/CarSelector';
 import { useDispatch, useSelector } from 'react-redux';
 import UserSelector from '../components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '../store';
 import { format, isSameDay } from 'date-fns';
-
+import { Info, TriangleAlert, OctagonAlert } from 'lucide-react';
 
 const TimeSelector = ({ value, onChange, label }) => {
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -21,11 +21,11 @@ const TimeSelector = ({ value, onChange, label }) => {
 
   const [selectedHour, selectedMinute] = value ? value.split(':') : ['', ''];
 
-  const handleHourChange = (hour) => {
+  const handleHourChange = (hour: string) => {
     onChange(`${hour}:${selectedMinute || '00'}`);
   };
 
-  const handleMinuteChange = (minute) => {
+  const handleMinuteChange = (minute: string) => {
     onChange(`${selectedHour || '00'}:${minute}`);
   };
 
@@ -135,7 +135,7 @@ const BookTrip = () => {
   const { selectedCar } = useSelector(state => state.car);
   const { user } = useSelector(state => state.auth);
   const { selectedUsers } = useSelector(state => state.user);
-  const bookings = useSelector(state => state.booking.bookings);
+  const { bookings, range:bookingsRange } = useSelector(state => state.booking);
   const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [bookingStartTime, setBookingStartTime] = useState('');
   const [bookingEndTime, setBookingEndTime] = useState('');
@@ -148,11 +148,8 @@ const BookTrip = () => {
   const [alerts, setAlerts] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [existingBooking, setExistingBooking] = useState(null);
+  const [storedDateCarBooking, setStoredDateCarBooking] = useState(null);
   const [recurrenceId, setRecurrenceId] = useState(null);
-
-  useEffect(() => {
-    dispatch(setSelectedUsers([user.user_id]));
-  }, [user.user_id]);
 
   useEffect(() => {
     if (location.state && location.state.parent_id) {
@@ -163,9 +160,14 @@ const BookTrip = () => {
         const bookingData = dateCarBooking.bookings.find(b => b.id === booking_id);
 
         if (bookingData) {
+          setStoredDateCarBooking(dateCarBooking);
           setIsEditing(true);
+          // Should warn if editing someone else booking
+          if (bookingData.byUser.id !== user.user_id) {
+            setAlerts([{type: "warn", message: "Du håller på att ändra bokning av " + bookingData.byUser.id}]);
+          }
           dispatch(setSelectedCar(dateCarBooking.car.id));
-          setSelectedUsers(bookingData.users.map(u => u.id));
+          dispatch(setSelectedUsers(bookingData.users.map(u => u.id)));
           setBookingDate(dateCarBooking.date);
           setBookingStartTime(timeToString(bookingData.startTime));
           setBookingEndTime(timeToString(bookingData.endTime));
@@ -185,8 +187,11 @@ const BookTrip = () => {
       const { car, date } = location.state;
       dispatch(setSelectedCar(car));
       setBookingDate(format(date, 'yyyy-MM-dd'));
+      dispatch(setSelectedUsers([user.user_id]));
+    } else {
+      dispatch(setSelectedUsers([user.user_id]));
     }
-  }, [location.state, bookings]);
+  }, [location.state, bookings, user.user_id]);
 
   const fetchRecurrenceData = async (recurrenceId) => {
     const recurrenceDoc = await getDoc(doc(db, 'recurrence', recurrenceId));
@@ -237,7 +242,12 @@ const BookTrip = () => {
     return hours * 60 + minutes;
   }
 
-  function checkBookingOverlapping(bookings, newBooking, existingBookingId, recurrenceId, date = null) {
+  interface BookingTimes {
+    startTime: number;
+    endTime: number;
+  }
+
+  function findOverlappingBooking(bookings, newBooking: BookingTimes, existingBookingId?: string, recurrenceId?: string) {
     // Filter out any old version of the booking, add the new one and sort.
     const sortedBookings = [...bookings]
         .filter(b => b.id !== existingBookingId && b.recurrenceId !== recurrenceId)
@@ -248,15 +258,25 @@ const BookTrip = () => {
     // then this should be pointed out in the message.
     for (let i = 1; i < sortedBookings.length; i++) {
       if (sortedBookings[i].startTime < sortedBookings[i - 1].endTime) {
-
         if (sortedBookings[i] === newBooking) {
           // Start-time of newBooking overlaps with end time of existing booking
-          throw new Error(`${date ? date + ": ":""}Vald starttid krockar med bokning som slutar ${timeToString(sortedBookings[i - 1].endTime)}`);
+          return { booking: sortedBookings[i - 1], type: "startTime"};
         } else {
           // End-time of newBooking overlaps with start time of existing booking
-          throw new Error(`${date ? date + ": ":""}Vald sluttid krockar med bokning som börjar ${timeToString(sortedBookings[i].startTime)}`);
+          return { booking: sortedBookings[i], type: "endTime"};
         }
       }
+    }
+    return {};
+  }
+
+  function checkBookingOverlapping(bookings, newBooking: BookingTimes, existingBookingId, recurrenceId, date = null) {
+    const { booking, type } = findOverlappingBooking(bookings, newBooking, existingBookingId, recurrenceId);
+    if (!type) return;
+    if (type === "startTime") {
+       throw new Error(`${date ? date + ": ":""}Vald starttid krockar med bokning som slutar ${timeToString(booking.endTime)}`);
+    } else {
+       throw new Error(`${date ? date + ": ":""}Vald sluttid krockar med bokning som börjar ${timeToString(booking.startTime)}`);
     }
   }
 
@@ -379,13 +399,23 @@ const BookTrip = () => {
   };
 
   const createSingleBooking = async (startTime: string, endTime: string, dist: string) => {
-    const dateBooking = bookings.find(dcb =>
-        dcb.car.id === selectedCar && dcb.date === bookingDate
-    );
+    // If the car or date has changed in editing mode we need to do things a little differently
+    // otherwise it will leave the old booking and create the new one with the same id.
+    let movingBooking = storedDateCarBooking &&
+        (storedDateCarBooking.car.id != selectedCar || storedDateCarBooking.date !== bookingDate);
+    let sourceDateBooking = storedDateCarBooking;
+    let targetDateBooking = storedDateCarBooking;
+    if (!targetDateBooking || movingBooking) {
+      targetDateBooking = bookings.find(dcb =>
+          dcb.car.id === selectedCar && dcb.date === bookingDate
+      );
+    }
 
     try {
       return await runTransaction(db, async (transaction) => {
-        const dateBookingsDoc = dateBooking ? await transaction.get(doc(db, 'date-car-bookings', dateBooking.id)) : undefined;
+        // Fetching these docs within the transaction, to both read and update within the transaction.
+        const targetDateBookingsDoc = targetDateBooking ? await transaction.get(doc(db, 'date-car-bookings', targetDateBooking.id)) : undefined;
+        let sourceDateBookingsDoc =  movingBooking ? await transaction.get(doc(db, 'date-car-bookings', sourceDateBooking.id)) : undefined;
 
         const newBooking = {
           id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
@@ -397,18 +427,18 @@ const BookTrip = () => {
           byUser: doc(db, 'users', user.user_id)
         };
 
-        if (dateBookingsDoc && dateBookingsDoc.exists()) {
-          const existingBookings = dateBookingsDoc.data().bookings;
+        if (targetDateBookingsDoc && targetDateBookingsDoc.exists()) {
+          const existingBookings = targetDateBookingsDoc.data().bookings;
 
           // Check for overlapping bookings
           checkBookingOverlapping(existingBookings, newBooking, existingBooking, null);
 
           // Update existing document
-          const updatedBookings = existingBooking
+          const updatedBookings = existingBooking && !movingBooking
               ? existingBookings.map(b => b.id === existingBooking ? newBooking : b)
               : [...existingBookings, newBooking];
 
-          transaction.update(dateBookingsDoc.ref, { bookings: updatedBookings });
+          transaction.update(targetDateBookingsDoc.ref, { bookings: updatedBookings });
         } else {
           // Create new document
           const carRef = doc(db, 'cars', selectedCar);
@@ -419,6 +449,12 @@ const BookTrip = () => {
             bookings: [newBooking]
           });
         }
+        // Now it is safe to delete the old booking, if moving
+        if (sourceDateBookingsDoc && sourceDateBookingsDoc.exists()) {
+          const sourceBookings = sourceDateBookingsDoc.data().bookings;
+          const updatedSourceBookings = sourceBookings.filter(b => b.id !== existingBooking);
+          updateOrDeleteDateBooking(transaction, sourceDateBookingsDoc.ref, updatedSourceBookings);
+        }
 
         return true;
       });
@@ -426,6 +462,14 @@ const BookTrip = () => {
       console.error('Transaction failed:', error);
       setAlerts([{ type: 'error', message: error.message }]);
       return false;
+    }
+  };
+
+  const updateOrDeleteDateBooking = (transaction, dateBookingRef, updatedBookings)=> {
+    if (updatedBookings.length === 0) {
+      transaction.delete(dateBookingRef);
+    } else {
+      transaction.update(dateBookingRef, { bookings: updatedBookings });
     }
   };
 
@@ -447,33 +491,17 @@ const BookTrip = () => {
           // FIXME: Fetch all dateBookings before updating/deleting all of them.
           recurrenceBookings.forEach(book => {
             const bookings = book.bookings;
-            const updatedBookings = bookings.filter(
+            updateOrDeleteDateBooking(transaction, doc(db, 'date-car-bookings', book.id), bookings.filter(
                 b => b.recurrenceId !== recurrenceId
-            );
-
-            if (updatedBookings.length === 0) {
-              transaction.delete(doc(db, 'date-car-bookings', book.id));
-            } else {
-              transaction.update(doc(db, 'date-car-bookings', book.id), { bookings: updatedBookings });
-            }
+            ));
           });
         } else {
           const dateBooking = bookings.find(dcb =>
               dcb.car.id === selectedCar && dcb.date === bookingDate
           );
-          const bookingToDelete = dateBooking.bookings.find(b => b.id === existingBooking);
-          // Would only happen if someone else has deleted it already.
-          if (!bookingToDelete) return;
-          // Handle single booking deletion
-          const updatedBookings = dateBooking.bookings.filter(
+          updateOrDeleteDateBooking(transaction, doc(db, 'date-car-bookings', dateBooking.id), dateBooking.bookings.filter(
               b => b.id !== existingBooking
-          );
-
-          if (updatedBookings.length === 0) {
-            transaction.delete(doc(db, 'date-car-bookings', dateBooking.id));
-          } else {
-            transaction.update(doc(db, 'date-car-bookings', dateBooking.id), { bookings: updatedBookings });
-          }
+          ));
         }
       });
 
@@ -512,7 +540,8 @@ const BookTrip = () => {
     }
     try {
       if (await createOrUpdateBookings()) {
-        navigate('/booking-overview');
+        // Navigate to the page where the first booking appears
+        navigate('/booking-overview', {state: {date: new Date(bookingDate)}});
       }
     } catch (error) {
       console.error('Error saving booking:', error);
@@ -520,15 +549,43 @@ const BookTrip = () => {
     }
   };
 
-  function dayAfter(bookingDate: string) {
-    let nextDay = new Date(bookingDate);
-    nextDay.setDate(nextDay.getDate() + 1);
-    return format(nextDay, 'yyyy-MM-dd');
+  function getBookingDate(bookingDate: string = undefined, plusDays: number = 0) {
+    let date = bookingDate ? new Date(bookingDate) : new Date();
+    date.setDate(date.getDate() + plusDays);
+    return format(date, 'yyyy-MM-dd');
+  }
+
+  function acceptCarChange(currentCar: string, newCar: string): boolean {
+    if (isEditing) {
+      if (isRecurring || isMultiDay) {
+        // Currently not supported, complex scenario
+        setAlerts([{ type: 'info', message: 'Byte av bil på en upprepande bokning stöds ej' }]);
+        return false;
+      }
+      // Check if newCar is available at the selected date and time
+      const dateBooking = bookings.find(dcb =>
+          dcb.car.id === newCar && dcb.date === bookingDate
+      );
+      if (dateBooking) {
+        const newBooking = {
+          startTime: timeToNumber(bookingStartTime),
+          endTime: timeToNumber(bookingEndTime),
+        };
+        const {booking, type} = findOverlappingBooking(dateBooking.bookings, newBooking);
+        if (booking) {
+          // Overlap found - check if it would be possible to swap bookings
+          setAlerts([{type: 'info', message: 'Byte av bil krockar med annan bokning'}]);
+          return false; // TODO: Implement swapping support
+        }
+      }
+    }
+    // If not editing it should always be OK to change
+    return true;
   }
 
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
-        <CarSelector/>
+        <CarSelector acceptChange={acceptCarChange}/>
         <UserSelector />
 
         <div className="flex gap-2">
@@ -538,7 +595,8 @@ const BookTrip = () => {
                 type="date"
                 value={bookingDate}
                 onChange={(e) => setBookingDate(e.target.value)}
-                min={new Date().toISOString().slice(0, 10)}
+                min={getBookingDate()}
+                max={getBookingDate(undefined, 90)}
             />
           </div>
           <TimeSelector
@@ -613,7 +671,8 @@ const BookTrip = () => {
                       type="date"
                       value={recurringEndDate}
                       onChange={(e) => setRecurringEndDate(e.target.value)}
-                      min={dayAfter(bookingDate)}
+                      min={getBookingDate(bookingDate, 1)}
+                      max={getBookingDate(undefined, 90)}
                   />
                 </div>
               </div>
@@ -643,7 +702,10 @@ const BookTrip = () => {
                   key={index}
                   className={`bg-${alert.type === 'error' ? 'red' : 'green'}-100 text-${alert.type === 'error' ? 'red' : 'green'}-800 p-1`}
               >
-                {alert.message}
+                {alert.type === 'info' && (<Info size={32}/>)}
+                {alert.type === 'warn' && (<TriangleAlert size={32}/>)}
+                {alert.type === 'error' && (<OctagonAlert size={32}/>)}
+                <span>{alert.message}</span>
               </div>
           ))}
 

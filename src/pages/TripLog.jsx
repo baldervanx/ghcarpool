@@ -18,6 +18,8 @@ export function TripLog() {
       // The trips in the store are trips for all the cars
       const relevantTrips = trips.filter(trip => trip.car.id === selectedCar);
       setCarTrips(relevantTrips);
+    } else {
+      setCarTrips([]);
     }
   }, [selectedCar, trips]);
 

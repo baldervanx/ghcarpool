@@ -2,7 +2,7 @@
 import { Car } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDispatch, useSelector } from 'react-redux';
-import { setCarState } from '../store';
+import { setSelectedCar } from '../store';
 import React from 'react';
 
 interface CarSelectorProps {
@@ -20,7 +20,7 @@ export function CarSelector({ disable = false, acceptChange }: CarSelectorProps)
           doDispatch = acceptChange(selectedCar, carId);
       }
       if (doDispatch) {
-          dispatch(setCarState({selectedCar: carId}));
+          dispatch(setSelectedCar(carId));
       }
   };
 

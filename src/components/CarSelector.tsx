@@ -15,7 +15,7 @@ export function CarSelector({ disable = false, acceptChange }: CarSelectorProps)
   const { cars, selectedCar } = useSelector(state => state.car);
 
   const handleCarChange = (carId: string) => {
-      let doDispatch = acceptChange != undefined;
+      let doDispatch = acceptChange == undefined;
       if (acceptChange) {
           doDispatch = acceptChange(selectedCar, carId);
       }

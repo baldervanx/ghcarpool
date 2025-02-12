@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import {
   collection,
   query,
@@ -9,7 +9,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '@/db/firebase';
-import { setTrips, setTripsLoading } from '../store';
+import { setTripsLoading, addMultipleTrips, addOrUpdateTrip, removeTrip } from '../store';
 
 const formatDate = (date) => {
   if (!date) return '';
@@ -38,44 +38,42 @@ const convertTrip = (doc) => {
 
 export function useListenToTrips() {
   const dispatch = useDispatch();
-  const existingTrips = useSelector(state => state.trip.trips);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   const handleSnapshot = useCallback((snapshot) => {
-    // Stoppa loading-state när första snapshot har kommit
     dispatch(setTripsLoading(false));
 
-    // TODO: "Added" is called many times, better collect all those
-    // changes together and dispatch them all at once.
+    const addedTrips = [];
+    const modifiedTrips = [];
+    const removedTrips = [];
+
     snapshot.docChanges().forEach((change) => {
       const trip = convertTrip(change.doc);
 
       switch (change.type) {
         case 'added':
-          if (!existingTrips.some(t => t.id === trip.id)) {
-            const updatedTrips = [...existingTrips, trip];
-            if (existingTrips.length > 0 && existingTrips.at(-1).odo < trip.odo) {
-              // The most common invocation will be with entrys that are already sorted,
-              // but not when adding a new entry.
-              updatedTrips.sort((a, b) => b.odo - a.odo);
-            }
-            //console.log('Trip added to existingTrips:', trip);
-            dispatch(setTrips(updatedTrips));
-          }
+          addedTrips.push(trip);
           break;
         case 'modified':
-          dispatch(setTrips(existingTrips.map(t =>
-            t.id === trip.id ? trip : t
-          )));
+          modifiedTrips.push(trip);
           break;
         case 'removed':
-          dispatch(setTrips(existingTrips.filter(t =>
-            t.id !== trip.id
-          )));
+          removedTrips.push(trip);
           break;
       }
     });
-  }, [dispatch, existingTrips]);
+
+    if (addedTrips.length > 0) {
+      dispatch(addMultipleTrips(addedTrips));
+    }
+    if (modifiedTrips.length > 0) {
+      modifiedTrips.forEach(trip => dispatch(addOrUpdateTrip(trip)));
+    }
+    if (removedTrips.length > 0) {
+      removedTrips.forEach(trip => dispatch(removeTrip(trip)));
+    }
+  }, [dispatch]);
+
 
   useEffect(() => {
     // Sätt loading-state när lyssnaren startar
@@ -111,5 +109,5 @@ export function useListenToTrips() {
         unsubscribeRef.current = null;
       }
     };
-  }, [handleSnapshot, dispatch]);
+  });
 }

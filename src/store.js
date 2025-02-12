@@ -257,6 +257,26 @@ const tripSlice = createSlice({
         },
         setTripsLoading: (state, action) => {
             state.loading = action.payload;
+        },
+        addMultipleTrips: (state, action) => {
+            if (state.trips.length > 0) {
+                // Do I need to check if any of the added ones already exist?
+                state.trips = [...state.trips, ...action.payload].sort((a,b) => b.odo - a.odo);
+            } else {
+                state.trips = action.payload.sort((a,b) => b.odo - a.odo);
+            }
+        },
+        addOrUpdateTrip: (state, action) => {
+            const index = state.trips.findIndex(t => t.id === action.payload.id);
+            if (index >= 0) {
+                state.trips[index] = action.payload;
+            } else {
+                // Should typically be coming in at the end anyway
+                state.trips = [...state.trips, action.payload].sort((a,b) => b.odo - a.odo);
+            }
+        },
+        removeTrip: (state, action) => {
+            state.trips = state.trips.filter(trip => trip.id !== action.payload.id);
         }
     }
 });
@@ -277,6 +297,9 @@ const bookingSlice = createSlice({
         },
         setBookingsLoading: (state, action) => {
             state.loading = action.payload;
+        },
+        addMultipleBookings: (state, action) => {
+            state.bookings = [...state.bookings, ...action.payload];
         },
         addOrUpdateBooking: (state, action) => {
             const index = state.bookings.findIndex(b =>
@@ -317,11 +340,17 @@ const store = configureStore({
 export const { setAuthState } = authSlice.actions;
 export const { setCarState, setSelectedCar } = carSlice.actions;
 export const { setUsers, setSelectedUsers } = userSlice.actions;
-export const { setTrips, setTripsLoading  } = tripSlice.actions;
+export const { setTrips,
+    setTripsLoading,
+    addMultipleTrips,
+    addOrUpdateTrip,
+    removeTrip
+} = tripSlice.actions;
 export const {
     setBookings,
     setBookingsRange,
     setBookingsLoading,
+    addMultipleBookings,
     addOrUpdateBooking,
     removeBooking
 } = bookingSlice.actions;

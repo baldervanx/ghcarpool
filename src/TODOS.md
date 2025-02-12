@@ -25,11 +25,11 @@
 ## Book-trip
 - [X] IMPORTANT: Must support bookings outside current cache. Or, change current cache to include more data.
       Perhaps add a set of support functions, to transparently fetch data as needed.
-- [OK?] ... limit how far into the future bookings are allowed
-- [ ] ... *BUG* bookings on last page not showing up.
-- [ ] Warn with pop-up confirmation when modifying a booking made by someone else. 
-- [OK?] ...Also have an alert message from the very beginning of modification
-- [ ]   ...Also send message to the original creator?
+- [X] ... limit how far into the future bookings are allowed
+- [X] ... *BUG* bookings on last page not showing up.
+- [X] Warn with pop-up confirmation when modifying a booking made by someone else. 
+- [X] ...Also have an alert message from the very beginning of modification
+- [ ] ...Also send message to the original creator using Slack: https://api.slack.com/methods/chat.postMessage
 - [ ] ONGOING! - Swap existing bookings between cars
 - [X] *BUG* Changing car produces duplicate entry
 - [X] Validate overlap - present more details about overlap and better handling of recurring booking

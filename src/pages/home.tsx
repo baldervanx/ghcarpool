@@ -103,6 +103,7 @@ export const HomePage = () => {
             <div className="flex items-center justify-center min-h-screen">Laddar...</div>
         )}
 
+        {/* This card should be collapsed (accordion?) by default, as it is not that frequently used. */}
         <Card>
           <CardHeader>
             <CardTitle>Inställningar</CardTitle>

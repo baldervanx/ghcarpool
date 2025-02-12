@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
-import { CarSelector } from '../components/CarSelector';
+import { CarSelector } from '@/components/CarSelector';
 import UserSelector from '../components/UserSelector';
 import { setSelectedUsers } from '../store';
 import { isOnline } from '@/lib/utils';

@@ -14,6 +14,7 @@ import UserSelector from '../components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '../store';
 import { format, isSameDay } from 'date-fns';
 import { Info, TriangleAlert, OctagonAlert } from 'lucide-react';
+import ConfirmationDialog from '@/components/confirmation-dialog';
 
 const TimeSelector = ({ value, onChange, label }) => {
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -134,7 +135,7 @@ const BookTrip = () => {
   const location = useLocation();
   const { selectedCar } = useSelector(state => state.car);
   const { user } = useSelector(state => state.auth);
-  const { selectedUsers } = useSelector(state => state.user);
+  const { selectedUsers, users } = useSelector(state => state.user);
   const { bookings, range:bookingsRange } = useSelector(state => state.booking);
   const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [bookingStartTime, setBookingStartTime] = useState('');
@@ -150,6 +151,13 @@ const BookTrip = () => {
   const [existingBooking, setExistingBooking] = useState(null);
   const [storedDateCarBooking, setStoredDateCarBooking] = useState(null);
   const [recurrenceId, setRecurrenceId] = useState(null);
+  const [dialogState, setDialogState] = useState({
+      isOpen: false,
+      title: '',
+      description: '',
+      onConfirm: null,
+      onCancel: null
+    });
 
   useEffect(() => {
     if (location.state && location.state.parent_id) {
@@ -160,6 +168,7 @@ const BookTrip = () => {
         const bookingData = dateCarBooking.bookings.find(b => b.id === booking_id);
 
         if (bookingData) {
+          setExistingBooking(booking_id);
           setStoredDateCarBooking(dateCarBooking);
           setIsEditing(true);
           // Should warn if editing someone else booking
@@ -178,8 +187,6 @@ const BookTrip = () => {
           if (bookingData.recurrenceId) {
             setRecurrenceId(bookingData.recurrenceId);
             fetchRecurrenceData(bookingData.recurrenceId);
-          } else {
-            setExistingBooking(booking_id);
           }
         }
       }
@@ -473,13 +480,46 @@ const BookTrip = () => {
     }
   };
 
-  const deleteBooking = async () => {
+  const showConfirmDialog = async (title, description): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setDialogState({
+        isOpen: true,
+        title,
+        description,
+        onConfirm: () => {
+          setDialogState(prev => ({ ...prev, isOpen: false }));
+          resolve(true);
+        },
+        onCancel: () => {
+          setDialogState(prev => ({ ...prev, isOpen: false }));
+          resolve(false);
+        }
+      });
+    });
+  };
+
+  const confirmChangeByOther = async (type: string): Promise<boolean> => {
+    // This confirmation is currently only about editing a booking made by someone else
+    if (!isEditing) return true;
+    const bookingData = storedDateCarBooking.bookings.find(b => b.id === existingBooking);
+    if (bookingData.byUser.id === user.user_id) return true;
+    const name = users.find(u => u.id === bookingData.byUser.id)?.shortName || bookingData.byUser.id;
+    const action = type === "delete" ? "Raderar" : "Ändrar"
+    return await showConfirmDialog(
+        `${action} bokning av ${name}`,
+        `Har du bekräftat med ${name} att du kan göra denna åtgärd?`
+    );
+  }
+
+  const deleteBooking = async (single:boolean = false) => {
     // Should not happen, but an extra check
     if (!isEditing || (!recurrenceId && !existingBooking)) return;
 
+    if (!await confirmChangeByOther("delete")) return;
+
     try {
       await runTransaction(db, async (transaction) => {
-        if (recurrenceId) {
+        if (recurrenceId && !single) {
           // Get all bookings with this recurrence ID
           const recurrenceRef = doc(db, 'recurrence', recurrenceId);
           transaction.delete(recurrenceRef);
@@ -535,9 +575,10 @@ const BookTrip = () => {
   }
 
   const handleBooking = async () => {
-    if (!await validateAllFields()) {
+    if (!await validateAllFields() || !await confirmChangeByOther("update")) {
       return;
     }
+
     try {
       if (await createOrUpdateBookings()) {
         // Navigate to the page where the first booking appears
@@ -562,6 +603,9 @@ const BookTrip = () => {
         setAlerts([{ type: 'info', message: 'Byte av bil på en upprepande bokning stöds ej' }]);
         return false;
       }
+      // Note that "swap" scenario is only possible for the same date, if the
+      // date has been changed before the car-change, then we should just accept.
+      if (storedDateCarBooking.date !== bookingDate) return true;
       // Check if newCar is available at the selected date and time
       const dateBooking = bookings.find(dcb =>
           dcb.car.id === newCar && dcb.date === bookingDate
@@ -571,6 +615,7 @@ const BookTrip = () => {
           startTime: timeToNumber(bookingStartTime),
           endTime: timeToNumber(bookingEndTime),
         };
+        // TODO: Must also detect if the booking overlaps with multiple bookings
         const {booking, type} = findOverlappingBooking(dateBooking.bookings, newBooking);
         if (booking) {
           // Overlap found - check if it would be possible to swap bookings
@@ -585,6 +630,14 @@ const BookTrip = () => {
 
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
+        <ConfirmationDialog
+            isOpen={dialogState.isOpen}
+            title={dialogState.title}
+            description={dialogState.description}
+            onConfirm={dialogState.onConfirm}
+            onCancel={dialogState.onCancel}
+        />
+
         <CarSelector acceptChange={acceptCarChange}/>
         <UserSelector />
 
@@ -596,7 +649,7 @@ const BookTrip = () => {
                 value={bookingDate}
                 onChange={(e) => setBookingDate(e.target.value)}
                 min={getBookingDate()}
-                max={getBookingDate(undefined, 90)}
+                max={getBookingDate(undefined, 96)}
             />
           </div>
           <TimeSelector
@@ -616,8 +669,9 @@ const BookTrip = () => {
             <Checkbox
                 id="recurring"
                 checked={isRecurring}
+                disabled={isEditing}
                 onCheckedChange={(checked) => {
-                  setIsRecurring(checked);
+                  setIsRecurring(checked === true);
                   if (checked) setIsMultiDay(false)
                 }}
             />
@@ -629,8 +683,9 @@ const BookTrip = () => {
             <Checkbox
                 id="multiday"
                 checked={isMultiDay}
+                disabled={isEditing}
                 onCheckedChange={(checked) => {
-                  setIsMultiDay(checked);
+                  setIsMultiDay(checked === true);
                   if (checked) setIsRecurring(false)
                 }}
             />
@@ -672,7 +727,7 @@ const BookTrip = () => {
                       value={recurringEndDate}
                       onChange={(e) => setRecurringEndDate(e.target.value)}
                       min={getBookingDate(bookingDate, 1)}
-                      max={getBookingDate(undefined, 90)}
+                      max={getBookingDate(undefined, 96)}
                   />
                 </div>
               </div>
@@ -700,7 +755,7 @@ const BookTrip = () => {
           {alerts.map((alert, index) => (
               <div
                   key={index}
-                  className={`bg-${alert.type === 'error' ? 'red' : 'green'}-100 text-${alert.type === 'error' ? 'red' : 'green'}-800 p-1`}
+                  className={`bg-${alert.type === 'error' ? 'red' : 'green'}-100 text-${alert.type === 'error' ? 'red' : 'green'}-800 flex gap-2`}
               >
                 {alert.type === 'info' && (<Info size={32}/>)}
                 {alert.type === 'warn' && (<TriangleAlert size={32}/>)}
@@ -717,10 +772,29 @@ const BookTrip = () => {
             {isEditing ? 'Ändra bokning' : 'Boka resa'}
           </Button>
 
-          {isEditing && (
+          {isEditing && isRecurring && (
+              <div className="space-y-2">
+                <Button
+                    variant="destructive"
+                    onClick={() => deleteBooking(false)}
+                    className="w-full mt-2"
+                >
+                  Radera alla
+                </Button>
+                <Button
+                    variant="destructive"
+                    onClick={() => deleteBooking(true)}
+                    className="w-full mt-2"
+                >
+                  Radera vald
+                </Button>
+              </div>
+          )}
+
+          {isEditing && !isRecurring && (
               <Button
                   variant="destructive"
-                  onClick={deleteBooking}
+                  onClick={() => deleteBooking(false)}
                   className="w-full mt-2"
               >
                 Radera bokning

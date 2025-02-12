@@ -1,6 +1,6 @@
 // Create a new hook: use-listen-to-bookings.ts
 import { useEffect, useRef, useCallback } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import {
   collection,
   query,
@@ -13,7 +13,7 @@ import {
   setBookingsLoading,
   setBookingsRange,
   addOrUpdateBooking,
-  removeBooking
+  removeBooking, addMultipleBookings
 } from '../store';
 import {addDays, format, startOfDay} from "date-fns";
 
@@ -34,38 +34,52 @@ const convertBooking = (doc) => {
 
 export function useListenToBookings() {
   const dispatch = useDispatch();
-  const existingBookings = useSelector(state => state.booking.bookings);
   const unsubscribeRef = useRef(null);
 
   const handleSnapshot = useCallback((snapshot) => {
     dispatch(setBookingsLoading(false));
 
+    const addedBookings = [];
+    const modifiedBookings = [];
+    const removedBookings = [];
+
     snapshot.docChanges().forEach((change) => {
       const booking = convertBooking(change.doc);
-      console.log("Change %s, booking date=%s, bookings=%o", change.type, booking.date, booking.bookings);
+
       switch (change.type) {
         case 'added':
-          dispatch(addOrUpdateBooking(booking));
+          addedBookings.push(booking);
           break;
         case 'modified':
-          dispatch(addOrUpdateBooking(booking));
+          modifiedBookings.push(booking);
           break;
         case 'removed':
-          dispatch(removeBooking(booking));
+          removedBookings.push(booking);
           break;
       }
     });
+
+    if (addedBookings.length > 0) {
+      dispatch(addMultipleBookings(addedBookings));
+    }
+    if (modifiedBookings.length > 0) {
+      modifiedBookings.forEach(booking => dispatch(addOrUpdateBooking(booking)));
+    }
+    if (removedBookings.length > 0) {
+      removedBookings.forEach(booking => dispatch(removeBooking(booking)));
+    }
   }, [dispatch]);
 
   useEffect(() => {
     dispatch(setBookingsLoading(true));
     const daysPerPage = 14;
     const pageCount = 8;
-    const pastDays = daysPerPage + 1;
-    const futureDays = daysPerPage * (pageCount - 1) - 1; // About 3 months
+    const pastDays = daysPerPage + 1; // Currently only showing 2 weeks of history
+    const totalDays = daysPerPage * pageCount; // About 3 months
 
-    const startDate = format(addDays(startOfDay(new Date()), -pastDays), 'yyyy-MM-dd');
-    const endDate = format(addDays(new Date(startDate), futureDays), 'yyyy-MM-dd');
+    const startDateAsDate = addDays(startOfDay(new Date()), -pastDays);
+    const startDate = format(startDateAsDate, 'yyyy-MM-dd');
+    const endDate = format(addDays(startDateAsDate, totalDays), 'yyyy-MM-dd');
     dispatch(setBookingsRange({startDate, endDate}));
 
     const bookingsRef = collection(db, 'date-car-bookings');
@@ -94,10 +108,5 @@ export function useListenToBookings() {
         unsubscribeRef.current = null;
       }
     };
-  }, [handleSnapshot, dispatch]);
-
-  return {
-    bookings: existingBookings,
-    loading: useSelector(state => state.booking.loading)
-  };
+  });
 }

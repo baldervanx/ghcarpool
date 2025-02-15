@@ -8,12 +8,14 @@
 - [ ] Add cleanup of old trip and booking entries, possibly with some archiving logic.
 
 ## Store
-- [X] Add the caching functionality, must always return the cached copy first 
+- [X] Add the caching functionality, must always return the cached copy first
+- [ ] The older log entries could be cached, as they don't change, reducing the amount of entries to fetch
 
 ## Menu
 - [X] Make it scale better, shrink space between items
 - [X] Possibly use icon for bookings (calendar symbol)
 - [X] Maybe icons for all features - if accepted.
+- [X] Bigger buttons and icons
 
 ## Register-trip
 - [ ] Make it possible to edit log entries, other than the last one
@@ -21,6 +23,7 @@
 -     ... Allow inserting another log-line, by splitting one log-line in two entries
 -     ... Allow adjusting the odo of one line and with this also changing the next line.
 -     ... Show a warning, telling exactly what is being changed so the user can confirm
+-     ... Only allow chaning the last few lines, any older shall be read-only
 
 ## Book-trip
 - [X] IMPORTANT: Must support bookings outside current cache. Or, change current cache to include more data.
@@ -51,7 +54,7 @@
 - [X] *Bug*: Deleting multi-day booking does not update local cache correctly.
 - [ ] Better date selector - that fits with the theme - https:ui.shadcn.com/docs/components/date-picker
 - [ ] Better time selector - selecting times quicker with "scroll".
-- [ ] Lock fields while waiting - loading/saving.
+- [X] Lock fields while waiting - loading/saving.
 - [ ] Transactional update - never overwrite external update.
 - [ ] Should be possible to use editable combo-box to allow entering custom destination
 - [X] Multi-day booking: If selecting some other entry than the first, must locate the first entry.
@@ -69,7 +72,7 @@
 - [X] Each page is not showing all dates
 - [X] Sort bookings for a car/day, by start-time.
 - [X] Add buttons to book a free car/day
-- [X] ... and add a "Add" button when wanting to book the same car/cay with an additional booking 
+- [X] ... and add an "Add" button when wanting to book the same car/cay with an additional booking 
 
 ## Home
 - [X] Add list of current active bookings, 
@@ -81,3 +84,4 @@
 - [X] Move journal export button here, 
 - [ ] Make journal export accessible only by admins 
 - [X] Use home page as landing-page
+- [ ] Clear cache button

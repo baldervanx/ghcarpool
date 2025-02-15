@@ -1,67 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { db } from '@/db/firebase';
-import { collection, doc, serverTimestamp, getDoc, runTransaction } from 'firebase/firestore';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CarSelector } from '@/components/CarSelector';
-import { useDispatch, useSelector } from 'react-redux';
+import React, {useEffect, useState} from 'react';
+import {useLocation, useNavigate} from 'react-router-dom';
+import {db} from '@/db/firebase';
+import {collection, doc, getDoc, runTransaction, serverTimestamp} from 'firebase/firestore';
+import {Card} from '@/components/ui/card';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {Label} from '@/components/ui/label';
+import {Checkbox} from '@/components/ui/checkbox';
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import {CarSelector} from '@/components/CarSelector';
+import {useDispatch, useSelector} from 'react-redux';
 import UserSelector from '../components/UserSelector';
-import { setSelectedUsers, setSelectedCar } from '../store';
-import { format, isSameDay } from 'date-fns';
-import { Info, TriangleAlert, OctagonAlert } from 'lucide-react';
+import {setSelectedCar, setSelectedUsers} from '../store';
+import {format, isSameDay} from 'date-fns';
+import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
 import ConfirmationDialog from '@/components/confirmation-dialog';
-
-const TimeSelector = ({ value, onChange, label }) => {
-  const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-  const minutes = ['00', '15', '30', '45'];
-
-  const [selectedHour, selectedMinute] = value ? value.split(':') : ['', ''];
-
-  const handleHourChange = (hour: string) => {
-    onChange(`${hour}:${selectedMinute || '00'}`);
-  };
-
-  const handleMinuteChange = (minute: string) => {
-    onChange(`${selectedHour || '00'}:${minute}`);
-  };
-
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <div className="flex gap-1">
-        <Select value={selectedHour} onValueChange={handleHourChange}>
-          <SelectTrigger className="flex-1 px-2 time-select-trigger">
-            <SelectValue placeholder="--" />
-          </SelectTrigger>
-          <SelectContent>
-            {hours.map((hour) => (
-              <SelectItem key={hour} value={hour}>
-                {hour}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={selectedMinute} onValueChange={handleMinuteChange}>
-          <SelectTrigger className="flex-1 px-2 time-select-trigger">
-            <SelectValue placeholder="00" />
-          </SelectTrigger>
-          <SelectContent>
-            {minutes.map((minute) => (
-              <SelectItem key={minute} value={minute}>
-                {minute}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-};
+import {TimeSelector} from "@/components/time-selector";
 
 const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
   const { destinations } = useSelector(state => state.destination);
@@ -158,6 +112,7 @@ const BookTrip = () => {
       onConfirm: null,
       onCancel: null
     });
+  const [isComitting, setIsComitting] = useState(false);
 
   useEffect(() => {
     if (location.state && location.state.parent_id) {
@@ -512,12 +467,13 @@ const BookTrip = () => {
   }
 
   const deleteBooking = async (single:boolean = false) => {
-    // Should not happen, but an extra check
-    if (!isEditing || (!recurrenceId && !existingBooking)) return;
-
-    if (!await confirmChangeByOther("delete")) return;
-
     try {
+      setIsComitting(true);
+      // Should not happen, but an extra check
+      if (!isEditing || (!recurrenceId && !existingBooking)) return;
+
+      if (!await confirmChangeByOther("delete")) return;
+
       await runTransaction(db, async (transaction) => {
         if (recurrenceId && !single) {
           // Get all bookings with this recurrence ID
@@ -549,6 +505,8 @@ const BookTrip = () => {
     } catch (error) {
       console.error('Delete transaction failed:', error);
       setAlerts([{ type: 'error', message: 'Ett fel uppstod när bokningen skulle tas bort' }]);
+    } finally {
+      setIsComitting(false);
     }
   };
 
@@ -575,11 +533,12 @@ const BookTrip = () => {
   }
 
   const handleBooking = async () => {
-    if (!await validateAllFields() || !await confirmChangeByOther("update")) {
-      return;
-    }
-
     try {
+      setIsComitting(true);
+      if (!await validateAllFields() || !await confirmChangeByOther("update")) {
+        return;
+      }
+
       if (await createOrUpdateBookings()) {
         // Navigate to the page where the first booking appears
         navigate('/booking-overview', {state: {date: new Date(bookingDate)}});
@@ -587,6 +546,8 @@ const BookTrip = () => {
     } catch (error) {
       console.error('Error saving booking:', error);
       setAlerts([{ type: 'error', message: 'Ett fel uppstod när bokningen skulle sparas' }]);
+    } finally {
+      setIsComitting(false);
     }
   };
 
@@ -767,7 +728,7 @@ const BookTrip = () => {
           <Button
               className="w-full"
               onClick={handleBooking}
-              disabled={!selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || !distance}
+              disabled={isComitting || !selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || !distance}
           >
             {isEditing ? 'Ändra bokning' : 'Boka resa'}
           </Button>
@@ -777,6 +738,7 @@ const BookTrip = () => {
                 <Button
                     variant="destructive"
                     onClick={() => deleteBooking(false)}
+                    disabled={isComitting}
                     className="w-full mt-2"
                 >
                   Radera alla
@@ -784,6 +746,7 @@ const BookTrip = () => {
                 <Button
                     variant="destructive"
                     onClick={() => deleteBooking(true)}
+                    disabled={isComitting}
                     className="w-full mt-2"
                 >
                   Radera vald
@@ -795,6 +758,7 @@ const BookTrip = () => {
               <Button
                   variant="destructive"
                   onClick={() => deleteBooking(false)}
+                  disabled={isComitting}
                   className="w-full mt-2"
               >
                 Radera bokning

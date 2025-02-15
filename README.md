@@ -2,6 +2,14 @@
 
 This is initially just an app for registering a trip log for a carpool in order to debit each user for the car usage.
 
+## Documentation for used libraries
+
+* TailwindCSS https://v2.tailwindcss.com/docs
+* React
+* Vite
+* ShadCN 
+* Lucide (icons) https://lucide.dev/
+
 ## Starting development environment
 
 Emulator for the database:

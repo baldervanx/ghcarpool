@@ -4,15 +4,15 @@ import React, { useState, useEffect } from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { db } from '@/db/firebase';
-import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import {collection, doc, addDoc, updateDoc, serverTimestamp, runTransaction} from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { CarSelector } from '@/components/CarSelector';
-import UserSelector from '../components/UserSelector';
-import { setSelectedUsers } from '../store';
+import UserSelector from '@/components/UserSelector';
+import { setSelectedUsers, setSelectedCar } from '@/store';
 import { isOnline } from '@/lib/utils';
 
 const MAX_DIST = 9999;
@@ -49,9 +49,12 @@ export function RegisterTrip() {
   const [canEdit, setCanEdit] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isConnectedBooking, setIsConnectedBooking] = useState(false);
+  const [connectedBooking, setConnectedBooking] = useState(null);
 
   useEffect(() => {
     COST_PER_KM = data.cost_per_km;
+    // TODO: This should just be set once when user logs on.
     dispatch(setSelectedUsers([user.user_id]));
   }, [dispatch, users.length, user.user_id]);
 
@@ -75,10 +78,17 @@ export function RegisterTrip() {
   }, []);
 
   useEffect(() => {
-    setErrorMessage('');
-    if (location.state) {
-      // TODO: Support for editing
+    if (location.state && location.state.booking) {
+       const booking = location.state.booking;
+       setIsConnectedBooking(true);
+       setConnectedBooking(booking);
+       dispatch(setSelectedCar(booking.car.id));
+       dispatch(setSelectedUsers(booking.users.map(u => u.id)));
     }
+  }, [location.state]);
+
+  useEffect(() => {
+    setErrorMessage('');
     if (selectedCar) {
       const relevantTrips = trips.filter(trip => trip.car.id === selectedCar);
       if (relevantTrips.length > 0) {
@@ -187,20 +197,34 @@ export function RegisterTrip() {
         byUser: byUser
       };
 
+      let tripRef;
       if (isEditMode && lastTrip) {
-        const tripRef = doc(db, 'trips', lastTrip.id);
+        tripRef = doc(db, 'trips', lastTrip.id);
         await updateDoc(tripRef, {
           ...tripData,
           editedAt: serverTimestamp()
         });
       } else {
         console.log('Submitting trip:', tripData);
-        await addDoc(collection(db, 'trips'), {
+        tripRef = await addDoc(collection(db, 'trips'), {
           ...tripData,
           timestamp: serverTimestamp()
         });
       }
 
+      if (isConnectedBooking && connectedBooking) {
+        // Fetch booking and update it with the trip reference
+        const dateCarDocRef = doc(db, 'date-car-bookings', connectedBooking.parent_id);
+        return await runTransaction(db, async (transaction) => {
+          const dateBookingsDoc = await transaction.get(dateCarDocRef);
+          if (dateBookingsDoc.exists()) {
+            const existingBookings = dateBookingsDoc.data().bookings;
+            const updatedBookings =
+                existingBookings.map(b => b.id === connectedBooking.id ? {...b, logged: tripRef} : b);
+            transaction.update(dateCarDocRef, {bookings: updatedBookings});
+          }
+        });
+      }
       navigate('/trip-log');
     } catch (error) {
       console.error('Error saving trip:', error);
@@ -303,6 +327,20 @@ export function RegisterTrip() {
               disabled={isProcessing}
           />
         </div>
+
+        {connectedBooking && (
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                  id="connected-booking"
+                  checked={isConnectedBooking}
+                  onCheckedChange={setIsConnectedBooking}
+                  disabled={isProcessing}
+              />
+              <Label htmlFor="connected-booking" className="text-sm">
+                För bokning
+              </Label>
+            </div>
+        )}
 
         {/* FIXME: Använd Alert istället? */}
         {errorMessage && (

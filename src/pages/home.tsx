@@ -7,15 +7,13 @@ import { useAccessibility } from '@/lib/utils';
 import { useTheme } from '@/components/theme-context';
 import { Sun, Moon } from 'lucide-react';
 import CarPoolCSVExporter from "@/components/ui/car-pool-csv-export";
-import {useDispatch, useSelector} from "react-redux";
+import {useSelector} from "react-redux";
 import {format} from "date-fns";
 import {useNavigate} from "react-router-dom";
-import { setSelectedCar } from '../store';
 
 export const HomePage = () => {
   const { settings, updateSettings } = useAccessibility();
   const navigate = useNavigate();
-  const dispatch = useDispatch();
   const { cars } = useSelector(state => state.car);
   const { darkMode, toggleDarkMode } = useTheme();
   //const { trips, loading: tripsLoading } = useSelector(state => state.trip);
@@ -53,8 +51,7 @@ export const HomePage = () => {
   }
 
   function logBooking(booking) {
-    dispatch(setSelectedCar(booking.car.id));
-    navigate('/register-trip');
+    navigate('/register-trip', { state: { booking: booking } });
   }
 
   function changeBooking(booking) {
@@ -76,24 +73,28 @@ export const HomePage = () => {
             activeBookings.map((booking) => (
                 <Card key={booking.id}>
                   <CardHeader>
-                    <CardTitle>Bokat {booking.car.name}</CardTitle>
+                    <CardTitle>{`${booking.logged ? "Kört" : "Bokat"} ${booking.car.name}`}</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2">
+                  <CardContent className="space-y-2 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{`Tid: ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}`}</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <Button variant="outline"
-                          onClick={() => logBooking(booking)}
-                      >
-                        Logga
-                      </Button>
-                      <Button variant="outline"
-                          onClick={() => changeBooking(booking)}
-                      >
-                        Ändra
-                      </Button>
-                    </div>
+                    {!booking.logged && (
+                          <div className="flex items-center justify-between">
+                          <Button variant="outline"
+                            onClick={() => logBooking(booking)}
+                          >
+                            Logga
+                          </Button>
+                          <Button variant="outline"
+                            onClick={() => changeBooking(booking)}
+                          >
+                            Ändra
+                          </Button>
+                          </div>
+                    ) || (
+                        <span className="font-bold">Loggad</span>
+                    )}
                   </CardContent>
                 </Card>
           ))
@@ -108,7 +109,7 @@ export const HomePage = () => {
           <CardHeader>
             <CardTitle>Inställningar</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 text-sm">
             <div className="flex items-center justify-between">
               <span className="font-medium">Hög kontrast</span>
               <Button

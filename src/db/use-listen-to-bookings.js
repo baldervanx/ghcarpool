@@ -25,6 +25,7 @@ const convertBooking = (doc) => {
     car: { id: data.car.id },
     bookings: data.bookings.map(booking => ({
       ...booking,
+      logged: booking.logged?.id,
       users: booking.users.map(user => ({ id: user.id })),
       byUser: { id: booking.byUser.id },
       parent_id: doc.id

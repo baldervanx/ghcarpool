@@ -6,6 +6,7 @@
 - [ ] Create test data generator that adds many bookings 
 - [ ] Do performance test with > 200 bookings
 - [ ] Add cleanup of old trip and booking entries, possibly with some archiving logic.
+- [ ] Remove selectedCar and selectedUsers from store - should use location.state to transfer state between pages instead
 
 ## Store
 - [X] Add the caching functionality, must always return the cached copy first
@@ -24,6 +25,8 @@
 -     ... Allow adjusting the odo of one line and with this also changing the next line.
 -     ... Show a warning, telling exactly what is being changed so the user can confirm
 -     ... Only allow chaning the last few lines, any older shall be read-only
+- [ ] *ONGOING* Connect with booking, find the closest matching booking - alternatively use the one coming as argument
+
 
 ## Book-trip
 - [X] IMPORTANT: Must support bookings outside current cache. Or, change current cache to include more data.
@@ -72,12 +75,13 @@
 - [X] Each page is not showing all dates
 - [X] Sort bookings for a car/day, by start-time.
 - [X] Add buttons to book a free car/day
-- [X] ... and add an "Add" button when wanting to book the same car/cay with an additional booking 
+- [X] ... and add an "Add" button when wanting to book the same car/cay with an additional booking
+- [ ] Logged bookings shall not be editable
 
 ## Home
 - [X] Add list of current active bookings, 
 - [ ] ...including "past" bookings that has not been logged
-- [ ] ...showing booking logging status
+- [X] ...showing booking logging status
 - [ ] ...support multi-day better
 - [X] ...make it nice to look at - car name, spacing etc.
 - [X] Have buttons to edit, delete and log the active bookings.

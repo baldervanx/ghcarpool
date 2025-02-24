@@ -1,13 +1,18 @@
 import React, {useEffect, useState} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {db} from '@/db/firebase';
-import {collection, doc, getDoc, runTransaction, serverTimestamp} from 'firebase/firestore';
+import {collection, doc, DocumentData, DocumentReference,
+  getDoc,
+  runTransaction,
+  serverTimestamp,
+  Transaction
+} from 'firebase/firestore';
 import {Card} from '@/components/ui/card';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
 import {Checkbox} from '@/components/ui/checkbox';
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import { Combobox, ComboboxOptions } from '@/components/ui/combobox';
 import {CarSelector} from '@/components/CarSelector';
 import {useDispatch, useSelector} from 'react-redux';
 import UserSelector from '../components/UserSelector';
@@ -17,69 +22,57 @@ import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import {TimeSelector} from "@/components/time-selector";
 
-const DestinationSelector = ({ value, onChange, onDistanceChange }) => {
-  const { destinations } = useSelector(state => state.destination);
-  const [customDestination, setCustomDestination] = useState('');
+const DestinationSelector = ({value, onChange, onDistanceChange}) => {
+  const {destinations} = useSelector(state => state.destination);
+  const [actualDestinations, setActualDestinations] = useState(destinations);
   const [selectedDestination, setSelectedDestination] = useState('');
 
   useEffect(() => {
-      if (value) {
-        setSelectedFromName(value);
-      }
+    setSelectedFromName(value || "Annan");
   }, [value]);
 
   const setSelectedFromName = (name) => {
-    const destObj = destinations.find(d => d.name === name);
+    const destObj = actualDestinations.find(d => d.name === name);
     if (destObj) {
       setSelectedDestination(destObj.id);
     } else {
-      setSelectedDestination('custom');
-      setCustomDestination(name);
+      // Must here also create the custom destination entry
+      setActualDestinations([...actualDestinations, { id: name, name }]);
+      setSelectedDestination(name);
     }
   }
 
-  const handleDestinationChange = (value) => {
-    setSelectedDestination(value);
-    if (value === 'custom') {
-      onChange(customDestination);
+  const handleDestinationChange = (option: ComboboxOptions) => {
+    setSelectedDestination(option.value);
+    const destination = destinations.find(d => d.id === option.value);
+    if (destination) {
+      onChange(destination.name);
+      // The "Other" destination doesn't have a distance
+      onDistanceChange(destination.distance?.toString() || "");
     } else {
-      const destination = destinations.find(d => d.id === value);
-      if (destination) {
-        onChange(destination.name);
-        onDistanceChange(destination.distance.toString());
-      }
+      // This is the case when the custom added destination is selected.
+      onChange(option.value);
+      onDistanceChange("");
     }
   };
 
-  const handleCustomDestinationChange = (e) => {
-    setCustomDestination(e.target.value);
-    onChange(e.target.value);
+  const handleCustomDestinationChange = (label: string) => {
+    onChange(label); // This will actually trigger useEffect which in turn will create it.
   };
 
   return (
-    <div className="space-y-2">
-      <Label>Destination</Label>
-      <Select value={selectedDestination} onValueChange={handleDestinationChange}>
-        <SelectTrigger>
-          <SelectValue placeholder="Välj destination" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="custom">Annan destination</SelectItem>
-          {destinations.map((destination) => (
-            <SelectItem key={destination.id} value={destination.id}>
-              {destination.name} ({destination.shortName})
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {selectedDestination === 'custom' && (
-        <Input
-          value={customDestination}
-          onChange={handleCustomDestinationChange}
-          placeholder="Ange destination"
+      <div className="space-y-2">
+        <Label>Destination</Label>
+        <Combobox
+            options={actualDestinations.map((destination): ComboboxOptions => (
+                { value: destination.id, label: `${destination.name} ${destination.shortName ? "("+destination.shortName+")":""}`}
+            ))}
+            placeholder="Välj destination"
+            selected={selectedDestination}
+            onChange={handleDestinationChange}
+            onCreate={handleCustomDestinationChange}
         />
-      )}
-    </div>
+      </div>
   );
 };
 
@@ -87,10 +80,10 @@ const BookTrip = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const location = useLocation();
-  const { selectedCar } = useSelector(state => state.car);
-  const { user } = useSelector(state => state.auth);
-  const { selectedUsers, users } = useSelector(state => state.user);
-  const { bookings, range:bookingsRange } = useSelector(state => state.booking);
+  const {selectedCar} = useSelector(state => state.car);
+  const {user} = useSelector(state => state.auth);
+  const {selectedUsers, users} = useSelector(state => state.user);
+  const {bookings, range: bookingsRange} = useSelector(state => state.booking);
   const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [bookingStartTime, setBookingStartTime] = useState('');
   const [bookingEndTime, setBookingEndTime] = useState('');
@@ -106,17 +99,17 @@ const BookTrip = () => {
   const [storedDateCarBooking, setStoredDateCarBooking] = useState(null);
   const [recurrenceId, setRecurrenceId] = useState(null);
   const [dialogState, setDialogState] = useState({
-      isOpen: false,
-      title: '',
-      description: '',
-      onConfirm: null,
-      onCancel: null
-    });
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: null,
+    onCancel: null
+  });
   const [isComitting, setIsComitting] = useState(false);
 
   useEffect(() => {
     if (location.state && location.state.parent_id) {
-      const { parent_id, booking_id } = location.state;
+      const {parent_id, booking_id} = location.state;
       const dateCarBooking = bookings.find(dcb => dcb.id === parent_id);
 
       if (dateCarBooking) {
@@ -146,7 +139,7 @@ const BookTrip = () => {
         }
       }
     } else if (location.state && location.state.car) {
-      const { car, date } = location.state;
+      const {car, date} = location.state;
       dispatch(setSelectedCar(car));
       setBookingDate(format(date, 'yyyy-MM-dd'));
       dispatch(setSelectedUsers([user.user_id]));
@@ -218,27 +211,30 @@ const BookTrip = () => {
 
     // It may also happen that the new booking completely overlaps (i.e starts before and ends after) another booking
     // then this should be pointed out in the message.
+    // TODO: Must also detect if the newBooking overlaps with multiple bookings
+    // - store the result in a variable, continue looping through all bookings, then the multiple scenario is found.
     for (let i = 1; i < sortedBookings.length; i++) {
       if (sortedBookings[i].startTime < sortedBookings[i - 1].endTime) {
         if (sortedBookings[i] === newBooking) {
           // Start-time of newBooking overlaps with end time of existing booking
-          return { booking: sortedBookings[i - 1], type: "startTime"};
+          return {booking: sortedBookings[i - 1], type: "startTime"};
         } else {
-          // End-time of newBooking overlaps with start time of existing booking
-          return { booking: sortedBookings[i], type: "endTime"};
+          // End-time of newBooking overlaps with start time of an existing booking
+          return {booking: sortedBookings[i], type: "endTime"};
         }
       }
     }
+    // If variable contain multiple results, return {type: "multiple"}
     return {};
   }
 
   function checkBookingOverlapping(bookings, newBooking: BookingTimes, existingBookingId, recurrenceId, date = null) {
-    const { booking, type } = findOverlappingBooking(bookings, newBooking, existingBookingId, recurrenceId);
+    const {booking, type} = findOverlappingBooking(bookings, newBooking, existingBookingId, recurrenceId);
     if (!type) return;
     if (type === "startTime") {
-       throw new Error(`${date ? date + ": ":""}Vald starttid krockar med bokning som slutar ${timeToString(booking.endTime)}`);
+      throw new Error(`${date ? date + ": " : ""}Vald starttid krockar med bokning som slutar ${timeToString(booking.endTime)}`);
     } else {
-       throw new Error(`${date ? date + ": ":""}Vald sluttid krockar med bokning som börjar ${timeToString(booking.startTime)}`);
+      throw new Error(`${date ? date + ": " : ""}Vald sluttid krockar med bokning som börjar ${timeToString(booking.startTime)}`);
     }
   }
 
@@ -339,7 +335,7 @@ const BookTrip = () => {
                 ? existingBookings.map(b => b.id === existingBooking ? newBooking : b)
                 : [...existingBookings, newBooking];
 
-            transaction.update(bookingData.docRef, { bookings: updatedBookings });
+            transaction.update(bookingData.docRef, {bookings: updatedBookings});
           } else {
             const newDateBookingRef = doc(collection(db, 'date-car-bookings'));
             const carRef = doc(db, 'cars', selectedCar);
@@ -355,7 +351,7 @@ const BookTrip = () => {
       });
     } catch (error) {
       console.error('Transaction failed:', error);
-      setAlerts([{ type: 'error', message: error.message }]);
+      setAlerts([{type: 'error', message: error.message}]);
       return false;
     }
   };
@@ -377,7 +373,7 @@ const BookTrip = () => {
       return await runTransaction(db, async (transaction) => {
         // Fetching these docs within the transaction, to both read and update within the transaction.
         const targetDateBookingsDoc = targetDateBooking ? await transaction.get(doc(db, 'date-car-bookings', targetDateBooking.id)) : undefined;
-        let sourceDateBookingsDoc =  movingBooking ? await transaction.get(doc(db, 'date-car-bookings', sourceDateBooking.id)) : undefined;
+        let sourceDateBookingsDoc = movingBooking ? await transaction.get(doc(db, 'date-car-bookings', sourceDateBooking.id)) : undefined;
 
         const newBooking = {
           id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
@@ -400,7 +396,7 @@ const BookTrip = () => {
               ? existingBookings.map(b => b.id === existingBooking ? newBooking : b)
               : [...existingBookings, newBooking];
 
-          transaction.update(targetDateBookingsDoc.ref, { bookings: updatedBookings });
+          transaction.update(targetDateBookingsDoc.ref, {bookings: updatedBookings});
         } else {
           // Create new document
           const carRef = doc(db, 'cars', selectedCar);
@@ -422,12 +418,12 @@ const BookTrip = () => {
       });
     } catch (error) {
       console.error('Transaction failed:', error);
-      setAlerts([{ type: 'error', message: error.message }]);
+      setAlerts([{type: 'error', message: error.message}]);
       return false;
     }
   };
 
-  const updateOrDeleteDateBooking = (transaction, dateBookingRef, updatedBookings)=> {
+  const updateOrDeleteDateBooking = (transaction: Transaction, dateBookingRef: DocumentReference<DocumentData, DocumentData>, updatedBookings: string | any[])=> {
     if (updatedBookings.length === 0) {
       transaction.delete(dateBookingRef);
     } else {
@@ -435,7 +431,7 @@ const BookTrip = () => {
     }
   };
 
-  const showConfirmDialog = async (title, description): Promise<boolean> => {
+  const showConfirmDialog = async (title: string, description: string): Promise<boolean> => {
     return new Promise((resolve) => {
       setDialogState({
         isOpen: true,
@@ -457,6 +453,7 @@ const BookTrip = () => {
     // This confirmation is currently only about editing a booking made by someone else
     if (!isEditing) return true;
     const bookingData = storedDateCarBooking.bookings.find(b => b.id === existingBooking);
+    // TODO: Need to support the swapping scenario too, which also should be confirmed.
     if (bookingData.byUser.id === user.user_id) return true;
     const name = users.find(u => u.id === bookingData.byUser.id)?.shortName || bookingData.byUser.id;
     const action = type === "delete" ? "Raderar" : "Ändrar"
@@ -479,9 +476,9 @@ const BookTrip = () => {
           // Get all bookings with this recurrence ID
           const recurrenceRef = doc(db, 'recurrence', recurrenceId);
           transaction.delete(recurrenceRef);
-
+          const todayDate= format(new Date(), 'yyyy-MM-dd'); // Only allow deletion of future bookings
           const recurrenceBookings = bookings.filter(b =>
-              b.car.id === selectedCar && b.bookings.find(b2 => b2.recurrenceId === recurrenceId)
+              b.car.id === selectedCar && b.date >= todayDate && b.bookings.find(b2 => b2.recurrenceId === recurrenceId)
           );
 
           // FIXME: Fetch all dateBookings before updating/deleting all of them.
@@ -564,7 +561,7 @@ const BookTrip = () => {
         setAlerts([{ type: 'info', message: 'Byte av bil på en upprepande bokning stöds ej' }]);
         return false;
       }
-      // Note that "swap" scenario is only possible for the same date, if the
+      // Note that "swap" scenario is (of course) only possible for the same date, if the
       // date has been changed before the car-change, then we should just accept.
       if (storedDateCarBooking.date !== bookingDate) return true;
       // Check if newCar is available at the selected date and time
@@ -576,10 +573,14 @@ const BookTrip = () => {
           startTime: timeToNumber(bookingStartTime),
           endTime: timeToNumber(bookingEndTime),
         };
-        // TODO: Must also detect if the booking overlaps with multiple bookings
+
         const {booking, type} = findOverlappingBooking(dateBooking.bookings, newBooking);
         if (booking) {
           // Overlap found - check if it would be possible to swap bookings
+          // swap is only possible if
+          // - the newCar booking fits without overlaps in the currentCar
+          // - the newCar booking is not multi-day (if it is recurring it must be disconnected)
+          // - there is only a single overlapping booking in newCar
           setAlerts([{type: 'info', message: 'Byte av bil krockar med annan bokning'}]);
           return false; // TODO: Implement swapping support
         }

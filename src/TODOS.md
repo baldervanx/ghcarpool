@@ -10,7 +10,7 @@
 
 ## Store
 - [X] Add the caching functionality, must always return the cached copy first
-- [ ] The older log entries could be cached, as they don't change, reducing the amount of entries to fetch
+- [ ] The older log entries (4 entries back) could be cached, as they don't change, reducing the amount of entries to fetch
 
 ## Menu
 - [X] Make it scale better, shrink space between items
@@ -50,16 +50,18 @@
 - [ ] Recurring booking must (optionally) delete all _future_ entries including the recurring-booking entry.
 - [X] Multi-day booking must delete all entries (including the recurring-booking entry) when deleted. 
 - [ ] Updating recurring booking - must be tested - quite complex, might need to limit for now.
+-     ... for now, only allow deletion - will have to create a new booking with right values.
 - [ ] Lock fields in recurring booking that may not be edited 
-- [ ] Allow deletion only of future recurring booking entries.
-- [ ] Allow disconnecting a single booking in a recurring booking from the series 
+- [X] Allow deletion only of future recurring booking entries.
+- [ ] Allow disconnecting a single booking in a recurring booking from the series - by unchecking the recurring-checkbox and this way unlocking the edit functionality
 - [X] *Bug*: Multi-day booking end-time and distance is not set correctly when editing, as the last entry must be fetched to see those settings.
 - [X] *Bug*: Deleting multi-day booking does not update local cache correctly.
 - [ ] Better date selector - that fits with the theme - https:ui.shadcn.com/docs/components/date-picker
 - [ ] Better time selector - selecting times quicker with "scroll".
 - [X] Lock fields while waiting - loading/saving.
 - [ ] Transactional update - never overwrite external update.
-- [ ] Should be possible to use editable combo-box to allow entering custom destination
+- [X] Use editable combo-box to allow entering custom destination
+- [X] Destination "Other" should be available and selected as default, which allow anonymous destination. 
 - [X] Multi-day booking: If selecting some other entry than the first, must locate the first entry.
 - // TODO: Should store the recurrenceDoc - for deletion
 - // TODO: Fetch all related bookings for the recurrence

@@ -24,6 +24,7 @@ function App() {
   const dispatch = useDispatch();
   const authState = useSelector(state => state.auth);
 
+  // TODO: Not sure this is the right way, it tends to unsubscribe/load several times...
   useEffect(() => {
     dispatch(fetchAuthState());
   }, [dispatch]);

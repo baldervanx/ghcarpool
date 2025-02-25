@@ -159,7 +159,9 @@ export const HomePage = () => {
           </Button>
         </div>
 
-        <CarPoolCSVExporter/>
+        {(user.isAdmin) && (
+            <CarPoolCSVExporter/>
+        )}
       </div>
     </div>
   );

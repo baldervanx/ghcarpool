@@ -22,7 +22,13 @@ import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import {TimeSelector} from "@/components/time-selector";
 
-const DestinationSelector = ({value, onChange, onDistanceChange}) => {
+interface DestinationSelectorProps {
+  value: string,
+  onChange: (destination: string) => void,
+  onDistanceChange: (distance: string) => void,
+  disabled?: boolean
+}
+const DestinationSelector = ({value, onChange, onDistanceChange, disabled=false}: DestinationSelectorProps) => {
   const {destinations} = useSelector(state => state.destination);
   const [actualDestinations, setActualDestinations] = useState(destinations);
   const [selectedDestination, setSelectedDestination] = useState('');
@@ -71,6 +77,7 @@ const DestinationSelector = ({value, onChange, onDistanceChange}) => {
             selected={selectedDestination}
             onChange={handleDestinationChange}
             onCreate={handleCustomDestinationChange}
+            disabled={disabled}
         />
       </div>
   );
@@ -600,8 +607,8 @@ const BookTrip = () => {
             onCancel={dialogState.onCancel}
         />
 
-        <CarSelector acceptChange={acceptCarChange}/>
-        <UserSelector />
+        <CarSelector acceptChange={acceptCarChange} disabled={(isEditing && isRecurring) || isComitting}/>
+        <UserSelector disabled={isEditing && isRecurring}/>
 
         <div className="flex gap-2">
           <div className="space-y-2">
@@ -612,17 +619,20 @@ const BookTrip = () => {
                 onChange={(e) => setBookingDate(e.target.value)}
                 min={getBookingDate()}
                 max={getBookingDate(undefined, 96)}
+                disabled={isEditing && isRecurring}
             />
           </div>
           <TimeSelector
               label="Starttid"
               value={bookingStartTime}
               onChange={setBookingStartTime}
+              disabled={isEditing && isRecurring}
           />
           <TimeSelector
               label="Sluttid"
               value={bookingEndTime}
               onChange={setBookingEndTime}
+              disabled={isEditing && isRecurring}
           />
         </div>
 
@@ -631,7 +641,7 @@ const BookTrip = () => {
             <Checkbox
                 id="recurring"
                 checked={isRecurring}
-                disabled={isEditing}
+                disabled={isComitting}
                 onCheckedChange={(checked) => {
                   setIsRecurring(checked === true);
                   if (checked) setIsMultiDay(false)
@@ -666,6 +676,7 @@ const BookTrip = () => {
                             <Checkbox
                                 id={`day-${index}`}
                                 checked={recurringDays.includes(index)}
+                                disabled={isEditing}
                                 onCheckedChange={(checked) => {
                                   if (checked) {
                                     setRecurringDays([...recurringDays, index]);
@@ -687,6 +698,7 @@ const BookTrip = () => {
                   <Input
                       type="date"
                       value={recurringEndDate}
+                      disabled={isEditing}
                       onChange={(e) => setRecurringEndDate(e.target.value)}
                       min={getBookingDate(bookingDate, 1)}
                       max={getBookingDate(undefined, 96)}
@@ -700,6 +712,7 @@ const BookTrip = () => {
                 value={destination}
                 onChange={setDestination}
                 onDistanceChange={setDistance}
+                disabled={isEditing && isRecurring}
             />
 
             <div className="space-y-2">
@@ -707,6 +720,7 @@ const BookTrip = () => {
               <Input
                   type="number"
                   value={distance}
+                  disabled={isEditing && isRecurring}
                   onChange={(e) => setDistance(e.target.value)}
                   required
               />

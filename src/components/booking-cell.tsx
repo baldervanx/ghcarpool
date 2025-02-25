@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import {Repeat, Check} from 'lucide-react';
 
 const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, accessibleCn}) => {
   const [dragOffset, setDragOffset] = useState(0);
@@ -53,7 +54,7 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
     return (
       <div
         onClick={() => !readOnly && onClick({car, date})}
-        className={accessibleCn("min-w-[16ch] bg-opacity-100 p-1 rounded cursor-pointer hover:bg-primary/10 dark:hover:bg-primary/10 transition-colors")}
+        className={accessibleCn("min-w-[14ch] bg-opacity-100 p-1 rounded cursor-pointer hover:bg-primary/10 dark:hover:bg-primary/10 transition-colors")}
       >
         &nbsp;
       </div>
@@ -85,12 +86,20 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
             <div
               key={booking.id}
               onClick={() => !readOnly && onClick(booking)}
-              className={accessibleCn("min-w-[16ch] bg-gray-100 dark:bg-gray-700 p-1 text-xs cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors")}
+              className={accessibleCn("min-w-[14ch] bg-gray-100 dark:bg-gray-700 p-1 text-xs cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex justify-between items-center")}
             >
               {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}` +
                 (booking.distance ? ` (${Math.round(booking.distance / 10)})` : ``) +
                 ` ${booking.destination ? (destinations.find(d => d.id === booking.destination)?.shortName || booking.destination) : ''}`
               }
+              <span className="flex items-center">
+                {(booking.recurrenceId && !booking.logged) && (
+                    <Repeat size={12}/>
+                )}
+                {(booking.logged) && (
+                    <Check size={12}/>
+                )}
+              </span>
             </div>
           ))}
         </div>

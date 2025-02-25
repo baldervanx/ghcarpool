@@ -120,7 +120,7 @@ export const fetchAuthState = createAsyncThunk(
                                 uid: user.uid,
                                 email: user.email,
                                 user_id: matchedUser.id,
-                                role: matchedUser.role
+                                isAdmin: matchedUser.isAdmin
                             },
                             isMember: true,
                             loading: false

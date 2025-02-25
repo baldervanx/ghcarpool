@@ -2,7 +2,14 @@ import {Label} from "@/components/ui/label";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import React from "react";
 
-export const TimeSelector = ({value, onChange, label}) => {
+interface TimeSelectorProps {
+    value: string,
+    onChange: (time: string) => void,
+    label: string,
+    disabled?: boolean
+}
+
+export const TimeSelector = ({value, onChange, label, disabled=false}: TimeSelectorProps) => {
     const hours = Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0'));
     const minutes = ['00', '15', '30', '45'];
 
@@ -20,7 +27,7 @@ export const TimeSelector = ({value, onChange, label}) => {
         <div className="space-y-2">
             <Label>{label}</Label>
             <div className="flex gap-1">
-                <Select value={selectedHour} onValueChange={handleHourChange}>
+                <Select value={selectedHour} onValueChange={handleHourChange} disabled={disabled}>
                     <SelectTrigger className="flex-1 px-2 time-select-trigger">
                         <SelectValue placeholder="--"/>
                     </SelectTrigger>
@@ -32,7 +39,7 @@ export const TimeSelector = ({value, onChange, label}) => {
                         ))}
                     </SelectContent>
                 </Select>
-                <Select value={selectedMinute} onValueChange={handleMinuteChange}>
+                <Select value={selectedMinute} onValueChange={handleMinuteChange} disabled={disabled}>
                     <SelectTrigger className="flex-1 px-2 time-select-trigger">
                         <SelectValue placeholder="00"/>
                     </SelectTrigger>

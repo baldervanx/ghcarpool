@@ -7,6 +7,7 @@
 - [ ] Do performance test with > 200 bookings
 - [ ] Add cleanup of old trip and booking entries, possibly with some archiving logic.
 - [ ] Remove selectedCar and selectedUsers from store - should use location.state to transfer state between pages instead
+- [ ] *BUG* Logga ut + logga in - alla bokningar har tripplerats. Försvinner vid omladdning. Vad händer?
 
 ## Store
 - [X] Add the caching functionality, must always return the cached copy first
@@ -26,6 +27,10 @@
 -     ... Show a warning, telling exactly what is being changed so the user can confirm
 -     ... Only allow chaning the last few lines, any older shall be read-only
 - [ ] *ONGOING* Connect with booking, find the closest matching booking - alternatively use the one coming as argument
+- [ ] ... Add destination as a default comment
+- [ ] ... Soft-validate that the distance is approximately what was booked
+- [ ] ... *BUG* Not showing details about which booking the log is made
+- [ ] ... *BUG* Not navigating to Log after logging a booking
 
 
 ## Book-trip
@@ -47,26 +52,26 @@
 - [X] Recurring booking should end at and including end-date
 - [X] Must fetch all existing bookings for the entire range of dates that is being booked and
       verify that there are no collisions BEFORE starting to book dates.
-- [ ] Recurring booking must (optionally) delete all _future_ entries including the recurring-booking entry.
 - [X] Multi-day booking must delete all entries (including the recurring-booking entry) when deleted. 
 - [ ] Updating recurring booking - must be tested - quite complex, might need to limit for now.
 -     ... for now, only allow deletion - will have to create a new booking with right values.
-- [ ] Lock fields in recurring booking that may not be edited 
+-     ... should allow some limited changes, e.g. extending end-date. Could simplify it by having a change 
+          become a delete + new booking action. But requires validation first.
+- [X] Lock fields in recurring booking that may not be edited 
 - [X] Allow deletion only of future recurring booking entries.
-- [ ] Allow disconnecting a single booking in a recurring booking from the series - by unchecking the recurring-checkbox and this way unlocking the edit functionality
+- [X] Allow deletion of single recurring booking
+- [X] Allow disconnecting a single booking in a recurring booking from the series - by unchecking the recurring-checkbox and this way unlocking the edit functionality
 - [X] *Bug*: Multi-day booking end-time and distance is not set correctly when editing, as the last entry must be fetched to see those settings.
 - [X] *Bug*: Deleting multi-day booking does not update local cache correctly.
 - [ ] Better date selector - that fits with the theme - https:ui.shadcn.com/docs/components/date-picker
+-     ... maybe quite OK as it is?
 - [ ] Better time selector - selecting times quicker with "scroll".
 - [X] Lock fields while waiting - loading/saving.
 - [ ] Transactional update - never overwrite external update.
 - [X] Use editable combo-box to allow entering custom destination
 - [X] Destination "Other" should be available and selected as default, which allow anonymous destination. 
 - [X] Multi-day booking: If selecting some other entry than the first, must locate the first entry.
-- // TODO: Should store the recurrenceDoc - for deletion
-- // TODO: Fetch all related bookings for the recurrence
-- // TODO: Must check if it is OK that some updates fail due to collisions.
-- //       But for a multi-day booking ALL bookings MUST succeed.
+- [ ] *IMPORTANT* Confirmation when deleting all recurring bookings
 
 ## Booking-overview
 - [X] Font-size of bookings should adjust with accessibility settings.
@@ -79,6 +84,8 @@
 - [X] Add buttons to book a free car/day
 - [X] ... and add an "Add" button when wanting to book the same car/cay with an additional booking
 - [ ] Logged bookings shall not be editable
+- [X] ... and should be shown as logged with a check-box
+- [X] Recurring bookings should be shown as such with a round arrow
 
 ## Home
 - [X] Add list of current active bookings, 
@@ -88,6 +95,7 @@
 - [X] ...make it nice to look at - car name, spacing etc.
 - [X] Have buttons to edit, delete and log the active bookings.
 - [X] Move journal export button here, 
-- [ ] Make journal export accessible only by admins 
+- [X] *BUG* Export function shall use ";" separator to work properly with comma in cost column.
+- [X] Make journal export accessible only by admins 
 - [X] Use home page as landing-page
 - [ ] Clear cache button

@@ -6,11 +6,11 @@ import { setSelectedCar } from '../store';
 import React from 'react';
 
 interface CarSelectorProps {
-    disable?: boolean;
+    disabled?: boolean;
     acceptChange?: (currentCar: string, newCar: string) => boolean;
 }
 
-export function CarSelector({ disable = false, acceptChange }: CarSelectorProps) {
+export function CarSelector({ disabled = false, acceptChange }: CarSelectorProps) {
   const dispatch = useDispatch();
   const { cars, selectedCar } = useSelector(state => state.car);
 
@@ -27,7 +27,7 @@ export function CarSelector({ disable = false, acceptChange }: CarSelectorProps)
   return (
       <div className="flex items-center gap-2">
         <Car size={32} />
-        <Select value={selectedCar} onValueChange={handleCarChange} disabled={disable}>
+        <Select value={selectedCar} onValueChange={handleCarChange} disabled={disabled}>
           <SelectTrigger>
             <SelectValue placeholder="Välj bil..." />
           </SelectTrigger>

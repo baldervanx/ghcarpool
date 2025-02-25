@@ -48,7 +48,7 @@ const CarPoolCSVExporter = () => {
         currentCar = car;
       }
       const userIds = users.map(user => user.id).concat(fillArray).slice(0, 3);
-      csvData += `${odo},${distance || ''},${userIds.join(',')},${cost?.toFixed(2).replace('.', ',') || ''},"${comment || ''}",${timestamp.toDate().toISOString()},${byUser?.id}\n`;
+      csvData += `${odo};${distance || ''};${userIds.join(';')};${cost?.toFixed(2).replace('.', ',') || ''};"${comment || ''}";${timestamp.toDate().toISOString()};${byUser?.id}\n`;
     }
 
     const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });

@@ -87,7 +87,7 @@ const BookTrip = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const location = useLocation();
-  const {selectedCar} = useSelector(state => state.car);
+  const {selectedCar, cars} = useSelector(state => state.car);
   const {user} = useSelector(state => state.auth);
   const {selectedUsers, users} = useSelector(state => state.user);
   const {bookings, range: bookingsRange} = useSelector(state => state.booking);
@@ -516,8 +516,9 @@ const BookTrip = () => {
 
   const validateAllFields = async () => {
     let validations = [];
-    if (!selectedCar || selectedUsers.length === 0 || !bookingDate || !bookingStartTime || !bookingEndTime || !distance) {
-      validations.push({ type: 'error', message: 'Vänligen fyll i alla obligatoriska fält: bil, användare, datum, start- och sluttid, samt distans.' });
+    const distanceReq = isDistanceRequired();
+    if (!selectedCar || selectedUsers.length === 0 || !bookingDate || !bookingStartTime || !bookingEndTime || (!distance && distanceReq)) {
+      validations.push({ type: 'error', message: `Vänligen fyll i alla obligatoriska fält: bil, användare, datum, start- och sluttid${distanceReq?", samt distans":""}.` });
     } else {
       if (!isMultiDay && bookingStartTime >= bookingEndTime) {
         validations.push({ type: 'error', message: 'Sluttid måste vara större än starttid' });
@@ -595,6 +596,11 @@ const BookTrip = () => {
     }
     // If not editing it should always be OK to change
     return true;
+  }
+
+  function isDistanceRequired(): boolean {
+    const range = cars.find(c => c.id == selectedCar)?.range;
+    return range && range > 0;
   }
 
   return (
@@ -722,7 +728,7 @@ const BookTrip = () => {
                   value={distance}
                   disabled={isEditing && isRecurring}
                   onChange={(e) => setDistance(e.target.value)}
-                  required
+                  required={isDistanceRequired()}
               />
             </div>
           </div>
@@ -743,7 +749,7 @@ const BookTrip = () => {
           <Button
               className="w-full"
               onClick={handleBooking}
-              disabled={isComitting || !selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || !distance}
+              disabled={isComitting || !selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || (!distance && isDistanceRequired())}
           >
             {isEditing ? 'Ändra bokning' : 'Boka resa'}
           </Button>

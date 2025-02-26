@@ -62,7 +62,8 @@ export const fetchUsers = createCachedThunk('user', async () => {
 
 export const fetchCars = createCachedThunk('car', async () => {
     const carsSnapshot = await getDocs(collection(db, 'cars'));
-    return carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    let cars = carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return cars.sort((a,b)=> a.order-b.order);
 });
 
 export const fetchDestinations = createCachedThunk('destination', async () => {

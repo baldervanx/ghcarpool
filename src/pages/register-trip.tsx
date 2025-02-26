@@ -124,7 +124,7 @@ export function RegisterTrip() {
     setTripDistance('');
     setCost('');
     setNewOdometer(lastOdo);
-    setComment('');
+    setComment(connectedBooking?.destination || '');
   };
 
   const handleOdometerChange = (value) => {
@@ -337,7 +337,7 @@ export function RegisterTrip() {
                   disabled={isProcessing}
               />
               <Label htmlFor="connected-booking" className="text-sm">
-                För bokning
+                {`För bokning`}
               </Label>
             </div>
         )}

@@ -1,13 +1,16 @@
 
 # TODOs 
 ## General
-- [ ] Add unit tests or similar, complexity is starting to get big. Need to cover all scenarios.
-- [ ] Fix bugs in initial tests
+- [ ] Add unit tests or similar, complexity is quite high. Need to cover all scenarios.
+- [ ] ... Fix bugs in initial tests
 - [ ] Create test data generator that adds many bookings 
 - [ ] Do performance test with > 200 bookings
 - [ ] Add cleanup of old trip and booking entries, possibly with some archiving logic.
-- [ ] Remove selectedCar and selectedUsers from store - should use location.state to transfer state between pages instead
-- [ ] *BUG* Logga ut + logga in - alla bokningar har tripplerats. Försvinner vid omladdning. Vad händer?
+- [ ] Maybe: Remove selectedCar and selectedUsers from store - should use location.state to transfer state between pages instead
+- [ ] *IMPORTANT* *BUG* Logga ut + logga in - alla bokningar har tripplerats. Försvinner vid omladdning. Vad händer?
+- [ ] Show offline status in all pages - trigger a refresh when getting online
+- [ ] Align "loading" view across the pages - use animated version
+- [ ] Use TypeScript version of store.js.
 
 ## Store
 - [X] Add the caching functionality, must always return the cached copy first
@@ -26,8 +29,8 @@
 -     ... Allow adjusting the odo of one line and with this also changing the next line.
 -     ... Show a warning, telling exactly what is being changed so the user can confirm
 -     ... Only allow chaning the last few lines, any older shall be read-only
-- [ ] *ONGOING* Connect with booking, find the closest matching booking - alternatively use the one coming as argument
-- [ ] ... Add destination as a default comment
+- [ ] *IMPORTANT* *ONGOING* Connect with booking, find the closest matching booking - alternatively use the one coming as argument
+- [X] ... Add destination as a default comment
 - [ ] ... Soft-validate that the distance is approximately what was booked
 - [ ] ... *BUG* Not showing details about which booking the log is made
 - [ ] ... *BUG* Not navigating to Log after logging a booking
@@ -41,8 +44,8 @@
 - [X] Warn with pop-up confirmation when modifying a booking made by someone else. 
 - [X] ...Also have an alert message from the very beginning of modification
 - [ ] ...Also send message to the original creator using Slack: https://api.slack.com/methods/chat.postMessage
-- [ ] ONGOING! - Swap existing bookings between cars
-- [X] *BUG* Changing car produces duplicate entry
+- [ ] *IMPORTANT* ONGOING! - Swap existing bookings between cars
+- [X] *BUG* Changing car/date produces duplicate entry
 - [X] Validate overlap - present more details about overlap and better handling of recurring booking
 - [ ] Validate driving-range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
 - [X] *NB* Ensure validation of multi-day booking after update never report collisions with "itself". 
@@ -72,6 +75,8 @@
 - [X] Destination "Other" should be available and selected as default, which allow anonymous destination. 
 - [X] Multi-day booking: If selecting some other entry than the first, must locate the first entry.
 - [ ] *IMPORTANT* Confirmation when deleting all recurring bookings
+- [X] *IMPORTANT* Support booking trailer 
+- [X] *IMPORTANT* Only require distance for electric cars, not for trailer or volvo. Use "range" setting.
 
 ## Booking-overview
 - [X] Font-size of bookings should adjust with accessibility settings.
@@ -86,6 +91,7 @@
 - [ ] Logged bookings shall not be editable
 - [X] ... and should be shown as logged with a check-box
 - [X] Recurring bookings should be shown as such with a round arrow
+- [X] *IMPORTANT* Sort car-columns on priority
 
 ## Home
 - [X] Add list of current active bookings, 
@@ -99,3 +105,4 @@
 - [X] Make journal export accessible only by admins 
 - [X] Use home page as landing-page
 - [ ] Clear cache button
+- [ ] Use accordion for settings, so that it is collapsed by default

@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {db} from '@/db/firebase';
-import {collection, doc, DocumentData, DocumentReference,
+import {collection, doc, DocumentReference,
   getDoc,
   runTransaction,
   serverTimestamp,
@@ -15,12 +15,14 @@ import {Checkbox} from '@/components/ui/checkbox';
 import { Combobox, ComboboxOptions } from '@/components/ui/combobox';
 import {CarSelector} from '@/components/CarSelector';
 import {useDispatch, useSelector} from 'react-redux';
-import UserSelector from '../components/UserSelector';
-import {setSelectedCar, setSelectedUsers} from '../store';
+import UserSelector from '@/components/UserSelector';
+import {setSelectedCar, setSelectedUsers} from '@/store';
+import type { AppStore } from '@/store';
 import {format, isSameDay} from 'date-fns';
 import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import {TimeSelector} from "@/components/time-selector";
+
 
 interface DestinationSelectorProps {
   value: string,
@@ -29,7 +31,7 @@ interface DestinationSelectorProps {
   disabled?: boolean
 }
 const DestinationSelector = ({value, onChange, onDistanceChange, disabled=false}: DestinationSelectorProps) => {
-  const {destinations} = useSelector(state => state.destination);
+  const {destinations} = useSelector((state: AppStore) => state.destination);
   const [actualDestinations, setActualDestinations] = useState(destinations);
   const [selectedDestination, setSelectedDestination] = useState('');
 
@@ -37,13 +39,13 @@ const DestinationSelector = ({value, onChange, onDistanceChange, disabled=false}
     setSelectedFromName(value || "Annan");
   }, [value]);
 
-  const setSelectedFromName = (name) => {
+  const setSelectedFromName = (name: string) => {
     const destObj = actualDestinations.find(d => d.name === name);
     if (destObj) {
       setSelectedDestination(destObj.id);
     } else {
       // Must here also create the custom destination entry
-      setActualDestinations([...actualDestinations, { id: name, name }]);
+      setActualDestinations([...actualDestinations, { id: name, name, shortName: "" }]);
       setSelectedDestination(name);
     }
   }
@@ -87,10 +89,10 @@ const BookTrip = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const location = useLocation();
-  const {selectedCar, cars} = useSelector(state => state.car);
-  const {user} = useSelector(state => state.auth);
-  const {selectedUsers, users} = useSelector(state => state.user);
-  const {bookings, range: bookingsRange} = useSelector(state => state.booking);
+  const {selectedCar, cars} = useSelector((state: AppStore) => state.car);
+  const {user} = useSelector((state: AppStore) => state.auth);
+  const {selectedUsers, users} = useSelector((state: AppStore) => state.user);
+  const {bookings, range: bookingsRange} = useSelector((state: AppStore) => state.booking);
   const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [bookingStartTime, setBookingStartTime] = useState('');
   const [bookingEndTime, setBookingEndTime] = useState('');
@@ -430,7 +432,7 @@ const BookTrip = () => {
     }
   };
 
-  const updateOrDeleteDateBooking = (transaction: Transaction, dateBookingRef: DocumentReference<DocumentData, DocumentData>, updatedBookings: string | any[])=> {
+  const updateOrDeleteDateBooking = (transaction: Transaction, dateBookingRef: DocumentReference, updatedBookings: string | any[])=> {
     if (updatedBookings.length === 0) {
       transaction.delete(dateBookingRef);
     } else {

@@ -4,21 +4,23 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAccessibility } from '@/lib/utils';
+import type { TextSize } from "@/lib/utils";
 import { useTheme } from '@/components/theme-context';
 import { Sun, Moon } from 'lucide-react';
 import CarPoolCSVExporter from "@/components/ui/car-pool-csv-export";
 import {useSelector} from "react-redux";
 import {format} from "date-fns";
 import {useNavigate} from "react-router-dom";
+import type { AppStore } from '@/store';
 
 export const HomePage = () => {
   const { settings, updateSettings } = useAccessibility();
   const navigate = useNavigate();
-  const { cars } = useSelector(state => state.car);
+  const { cars } = useSelector((state: AppStore) => state.car);
   const { darkMode, toggleDarkMode } = useTheme();
-  //const { trips, loading: tripsLoading } = useSelector(state => state.trip);
-  const { bookings, loading: bookingsLoading } = useSelector(state => state.booking);
-  const { user, loading: userLoading } = useSelector(state => state.auth);
+  //const { trips, loading: tripsLoading } = useSelector((state: AppStore) => state.trip);
+  const { bookings, loading: bookingsLoading } = useSelector((state: AppStore) => state.booking);
+  const { user, loading: userLoading } = useSelector((state: AppStore) => state.auth);
   const [ activeBookings, setActiveBookings ] = useState([]);
   const auth = getAuth();
 
@@ -101,7 +103,9 @@ export const HomePage = () => {
           )}
 
         {(userLoading || bookingsLoading) && (
-            <div className="flex items-center justify-center min-h-screen">Laddar...</div>
+            <div className="w-full h-64 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
         )}
 
         {/* This card should be collapsed (accordion?) by default, as it is not that frequently used. */}

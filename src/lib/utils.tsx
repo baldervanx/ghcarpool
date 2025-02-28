@@ -1,12 +1,13 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { createContext, useContext, useEffect, useState, useMemo } from 'react'
+import React from 'react'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-type TextSize = 'normal' | 'large' | 'larger'
+export type TextSize = 'normal' | 'large' | 'larger'
 
 type AccessibilitySettings = {
   isHighContrast: boolean

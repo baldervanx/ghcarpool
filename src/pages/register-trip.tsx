@@ -13,30 +13,22 @@ import { Card } from '@/components/ui/card';
 import { CarSelector } from '@/components/CarSelector';
 import UserSelector from '@/components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '@/store';
+import type { AppStore } from '@/store';
 import { isOnline } from '@/lib/utils';
 
 const MAX_DIST = 9999;
 let COST_PER_KM = 1;
 
-interface Trip {
-  id: string;
-  odo: number;
-  distance: number;
-  cost: number;
-  comment?: string;
-  users: { id: string }[];
-  byUser: { id: string };
-}
 
 export function RegisterTrip() {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
-  const { selectedCar } = useSelector(state => state.car);
-  const { user } = useSelector(state => state.auth);
-  const { selectedUsers, users } = useSelector(state => state.user);
-  const { data } = useSelector(state => state.settings);
-  const { trips, tripsLoading } = useSelector(state => state.trip);
+  const { selectedCar } = useSelector((state: AppStore) => state.car);
+  const { user } = useSelector((state: AppStore) => state.auth);
+  const { selectedUsers, users } = useSelector((state: AppStore) => state.user);
+  const { data } = useSelector((state: AppStore) => state.settings);
+  const { trips, loading: tripsLoading } = useSelector((state: AppStore) => state.trip);
   const [lastOdometer, setLastOdometer] = useState('');
   const [tripDistance, setTripDistance] = useState('');
   const [cost, setCost] = useState('');
@@ -44,8 +36,8 @@ export function RegisterTrip() {
   const [editOdometer, setEditOdometer] = useState('');
   const [comment, setComment] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
-  const [lastTrip, setLastTrip] = useState<Trip | null>(null);
-  const [previousTrip, setPreviousTrip] = useState<Trip | null>(null);
+  const [lastTrip, setLastTrip] = useState(null);
+  const [previousTrip, setPreviousTrip] = useState(null);
   const [canEdit, setCanEdit] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -165,6 +157,12 @@ export function RegisterTrip() {
     }
   };
 
+  function distanceSimilarToBooking() {
+    if (!isConnectedBooking || !connectedBooking) return true;
+
+    return (connectedBooking.distance - 5 < tripDistance) && (connectedBooking.distance + 5 > tripDistance);
+  }
+
   const handleSubmit = async () => {
     if (!selectedCar || selectedUsers.length === 0 || !newOdometer) {
       setErrorMessage('Vänligen fyll i alla fält');
@@ -176,6 +174,11 @@ export function RegisterTrip() {
     if (comment === "" && userCommentMandatory) {
       setErrorMessage('Kommentar krävs för ' + userCommentMandatory.shortName);
       return;
+    }
+
+    if (!distanceSimilarToBooking()) {
+      setErrorMessage('Angiven sträcka skiljer sig från bokningen ' + connectedBooking.distance);
+      return; // TODO: This should be made to a soft validation - confirmation dialog?
     }
 
     if (isProcessing) return;
@@ -333,7 +336,11 @@ export function RegisterTrip() {
               <Checkbox
                   id="connected-booking"
                   checked={isConnectedBooking}
-                  onCheckedChange={setIsConnectedBooking}
+                  onCheckedChange={(state) => {
+                    if (state !== 'indeterminate') {
+                      setIsConnectedBooking(state);
+                    }
+                  }}
                   disabled={isProcessing}
               />
               <Label htmlFor="connected-booking" className="text-sm">

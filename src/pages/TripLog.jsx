@@ -81,7 +81,9 @@ export function TripLog() {
         )}
 
         {tripsLoading && (
-            <div className="flex items-center justify-center min-h-screen">Laddar...</div>
+            <div className="w-full h-64 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
         )}
 
       </div>

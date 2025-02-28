@@ -2,7 +2,8 @@
 import { Car } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDispatch, useSelector } from 'react-redux';
-import { setSelectedCar } from '../store';
+import { setSelectedCar } from '@/store';
+import type { AppStore } from '@/store';
 import React from 'react';
 
 interface CarSelectorProps {
@@ -12,7 +13,7 @@ interface CarSelectorProps {
 
 export function CarSelector({ disabled = false, acceptChange }: CarSelectorProps) {
   const dispatch = useDispatch();
-  const { cars, selectedCar } = useSelector(state => state.car);
+  const { cars, selectedCar } = useSelector((state: AppStore) => state.car);
 
   const handleCarChange = (carId: string) => {
       let doDispatch = acceptChange == undefined;

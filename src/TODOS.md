@@ -9,8 +9,9 @@
 - [ ] Maybe: Remove selectedCar and selectedUsers from store - should use location.state to transfer state between pages instead
 - [ ] *IMPORTANT* *BUG* Logga ut + logga in - alla bokningar har tripplerats. Försvinner vid omladdning. Vad händer?
 - [ ] Show offline status in all pages - trigger a refresh when getting online
-- [ ] Align "loading" view across the pages - use animated version
-- [ ] Use TypeScript version of store.js.
+- [X] Align "loading" view across the pages - use animated version
+- [X] Use TypeScript version of store.js.
+- [ ] *IMPORTANT* Trailers do not have a log -> should not show up for logging in Home or Register-trip.
 
 ## Store
 - [X] Add the caching functionality, must always return the cached copy first
@@ -34,6 +35,10 @@
 - [ ] ... Soft-validate that the distance is approximately what was booked
 - [ ] ... *BUG* Not showing details about which booking the log is made
 - [ ] ... *BUG* Not navigating to Log after logging a booking
+- [ ] Move the alert-functionality to a component, supporting different life-times of the alerts, 
+-     ... connect to monitor that checks if the source-value changes?
+-     ... use this alert component in both book-trip and register-trip
+- [ ] *IMPORTANT* Ensure to always find the last trips for the car, even if it hasn't been used for a long time.
 
 
 ## Book-trip
@@ -95,9 +100,9 @@
 
 ## Home
 - [X] Add list of current active bookings, 
-- [ ] ...including "past" bookings that has not been logged
+- [ ] ...including yesterday's bookings that has not been logged
 - [X] ...showing booking logging status
-- [ ] ...support multi-day better
+- [ ] ...support multi-day better, showing the entire trip and not showing log-button unless it is the last day.
 - [X] ...make it nice to look at - car name, spacing etc.
 - [X] Have buttons to edit, delete and log the active bookings.
 - [X] Move journal export button here, 

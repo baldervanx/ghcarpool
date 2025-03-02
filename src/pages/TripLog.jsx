@@ -36,7 +36,7 @@ export function TripLog() {
   return (
       <div className="max-w-4xl mx-auto space-y-2">
         <Card className="p-2 space-y-2">
-          <CarSelector />
+          <CarSelector carFilter={(cars) => cars.filter(c => c.hasLog ?? true)}/>
           <OfflineStatus />
         </Card>
         {!tripsLoading && carTrips.length > 0 && (

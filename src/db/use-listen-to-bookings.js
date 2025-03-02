@@ -109,5 +109,5 @@ export function useListenToBookings() {
         unsubscribeRef.current = null;
       }
     };
-  });
+  }, []);
 }

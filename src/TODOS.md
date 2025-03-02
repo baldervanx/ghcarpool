@@ -7,11 +7,11 @@
 - [ ] Do performance test with > 200 bookings
 - [ ] Add cleanup of old trip and booking entries, possibly with some archiving logic.
 - [ ] Maybe: Remove selectedCar and selectedUsers from store - should use location.state to transfer state between pages instead
-- [ ] *IMPORTANT* *BUG* Logga ut + logga in - alla bokningar har tripplerats. Försvinner vid omladdning. Vad händer?
+- [X] *IMPORTANT* *BUG* Logga ut + logga in - alla bokningar har tripplerats. Försvinner vid omladdning. Vad händer?
 - [ ] Show offline status in all pages - trigger a refresh when getting online
 - [X] Align "loading" view across the pages - use animated version
 - [X] Use TypeScript version of store.js.
-- [ ] *IMPORTANT* Trailers do not have a log -> should not show up for logging in Home or Register-trip.
+- [X] *IMPORTANT* Trailers do not have a log -> should not show up for logging in Home or Register-trip.
 
 ## Store
 - [X] Add the caching functionality, must always return the cached copy first

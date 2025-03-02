@@ -2,6 +2,7 @@ import { configureStore, createSlice, createAsyncThunk, PayloadAction } from '@r
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { getDoc, getDocs, collection, doc, DocumentData } from 'firebase/firestore';
 import { db } from './db/firebase.js';
+import { mergeAndRemoveDuplicates } from "@/lib/utils";
 
 const CACHE_DURATION = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
 
@@ -181,11 +182,12 @@ const authSlice = createSlice({
     }
 });
 
-interface Car {
+export interface Car {
     id: string;
     name: string;
     range: number;
     order: number;
+    hasLog: boolean;
 }
 
 // Car Slice
@@ -312,7 +314,7 @@ const settingsSlice = createSlice({
 
 interface Trip {
     id: IdObject,
-    byUser: string,
+    byUser: IdObject,
     car: IdObject,
     comment?: string,
     cost: number,
@@ -328,6 +330,7 @@ interface TripState {
     loading: boolean;
 }
 
+const tripSorter = (a:Trip,b:Trip) => b.odo - a.odo;
 const tripSlice = createSlice({
     name: 'trip',
     initialState: {
@@ -343,24 +346,27 @@ const tripSlice = createSlice({
         },
         addMultipleTrips: (state, action) => {
             if (state.trips.length > 0) {
-                // Do I need to check if any of the added ones already exist?
-                state.trips = [...state.trips, ...action.payload].sort((a,b) => b.odo - a.odo);
+                // Unfortunately happens that this is called on trips that are already stored.
+                // Must merge over id and sort over odo.
+                state.trips = mergeAndRemoveDuplicates(state.trips, action.payload, "id", tripSorter);
             } else {
-                state.trips = action.payload.sort((a,b) => b.odo - a.odo);
+                state.trips = action.payload.sort(tripSorter);
         }
         },
-        addOrUpdateTrip: (state, action) => {
+        addOrUpdateTrip: (state, action: PayloadAction<Trip>) => {
             const index = state.trips.findIndex(t => t.id === action.payload.id);
             if (index >= 0) {
                 state.trips[index] = action.payload;
             } else {
                 // Should typically be coming in at the end anyway
-                state.trips = [...state.trips, action.payload].sort((a,b) => b.odo - a.odo);
+                state.trips = [...state.trips, action.payload].sort(tripSorter);
             }
         },
         removeTrip: (state, action) => {
             state.trips = state.trips.filter(trip => trip.id !== action.payload.id);
-}}});
+        }
+    }
+});
 
 interface IdObject {
     id: string;
@@ -400,6 +406,17 @@ const initialState: BookingState = {
     range: {}
 };
 
+const bookingsMapRebuilder = (bookings: DateCarBooking[]): Record<string, DateCarBooking[]> => {
+    let bookingsByDate: Record<string, DateCarBooking[]> = {};
+    bookings.forEach(bcd => {
+        if (!bookingsByDate[bcd.date]) {
+            bookingsByDate[bcd.date] = [];
+        }
+        bookingsByDate[bcd.date].push(bcd);
+    });
+    return bookingsByDate;
+};
+
 const bookingSlice = createSlice({
     name: 'booking',
     initialState,
@@ -410,18 +427,14 @@ const bookingSlice = createSlice({
         setBookings: (state, action: PayloadAction<DateCarBooking[]>) => {
             state.bookings = action.payload;
             // Rebuild the lookup map
-            state.bookingsByDate = action.payload.reduce((acc, booking) => {
-                if (!acc[booking.date]) acc[booking.date] = [];
-                acc[booking.date].push(booking);
-                return acc;
-            }, {} as Record<string, DateCarBooking[]>);
+            state.bookingsByDate = bookingsMapRebuilder(state.bookings);
         },
         setBookingsLoading: (state, action: PayloadAction<boolean>) => {
             state.loading = action.payload;
         },
         addMultipleBookings: (state, action: PayloadAction<DateCarBooking[]>) => {
-            // FIXME: Also update bookingsByDate
-            state.bookings = [...state.bookings, ...action.payload];
+            state.bookings = mergeAndRemoveDuplicates(state.bookings, action.payload, "id");
+            state.bookingsByDate = bookingsMapRebuilder(state.bookings);
         },
         addOrUpdateBooking: (state, action: PayloadAction<DateCarBooking>) => {
             const index = state.bookings.findIndex(b => b.id === action.payload.id);

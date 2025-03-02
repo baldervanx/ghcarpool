@@ -9,7 +9,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '@/db/firebase';
-import { setTripsLoading, addMultipleTrips, addOrUpdateTrip, removeTrip } from '../store';
+import { setTripsLoading, addMultipleTrips, addOrUpdateTrip, removeTrip } from '@/store';
 
 const formatDate = (date) => {
   if (!date) return '';
@@ -109,5 +109,5 @@ export function useListenToTrips() {
         unsubscribeRef.current = null;
       }
     };
-  });
+  }, []);
 }

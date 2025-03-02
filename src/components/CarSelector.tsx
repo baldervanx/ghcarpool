@@ -1,17 +1,17 @@
-// components/CarSelector.jsx
-import { Car } from 'lucide-react';
+import { Car as CarIcon } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDispatch, useSelector } from 'react-redux';
 import { setSelectedCar } from '@/store';
-import type { AppStore } from '@/store';
+import type { AppStore, Car } from '@/store';
 import React from 'react';
 
 interface CarSelectorProps {
     disabled?: boolean;
     acceptChange?: (currentCar: string, newCar: string) => boolean;
+    carFilter?: (cars: any[]) => any[];
 }
 
-export function CarSelector({ disabled = false, acceptChange }: CarSelectorProps) {
+export function CarSelector({ disabled = false, acceptChange, carFilter = undefined }: CarSelectorProps) {
   const dispatch = useDispatch();
   const { cars, selectedCar } = useSelector((state: AppStore) => state.car);
 
@@ -25,15 +25,22 @@ export function CarSelector({ disabled = false, acceptChange }: CarSelectorProps
       }
   };
 
-  return (
+    function doFilter(cars: Car[]): Car[] {
+        if (carFilter) {
+            return carFilter(cars);
+        }
+        return cars;
+    }
+
+    return (
       <div className="flex items-center gap-2">
-        <Car size={32} />
+        <CarIcon size={32} />
         <Select value={selectedCar} onValueChange={handleCarChange} disabled={disabled}>
           <SelectTrigger>
             <SelectValue placeholder="Välj bil..." />
           </SelectTrigger>
           <SelectContent>
-            {cars.map(car => (
+            {doFilter(cars).map(car => (
                 <SelectItem key={car.id} value={car.id}>
                   {car.name} ({car.id})
                 </SelectItem>

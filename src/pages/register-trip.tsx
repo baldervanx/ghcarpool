@@ -30,7 +30,7 @@ export function RegisterTrip() {
   const { data } = useSelector((state: AppStore) => state.settings);
   const { trips, loading: tripsLoading } = useSelector((state: AppStore) => state.trip);
   const [lastOdometer, setLastOdometer] = useState('');
-  const [tripDistance, setTripDistance] = useState('');
+  const [tripDistance, setTripDistance] = useState(0);
   const [cost, setCost] = useState('');
   const [newOdometer, setNewOdometer] = useState('');
   const [editOdometer, setEditOdometer] = useState('');
@@ -111,9 +111,9 @@ export function RegisterTrip() {
     }
   }, [selectedCar, trips]);
 
-  const resetAllFields = (lastOdo) => {
+  const resetAllFields = (lastOdo: string) => {
     setEditOdometer('');
-    setTripDistance('');
+    setTripDistance(0);
     setCost('');
     setNewOdometer(lastOdo);
     setComment(connectedBooking?.destination || '');
@@ -121,7 +121,7 @@ export function RegisterTrip() {
 
   const handleOdometerChange = (value) => {
     setEditOdometer(value);
-    let newOdo: any = lastOdometer;
+    let newOdo = lastOdometer;
     if (value.length > 0) {
       let prefix = lastOdometer.slice(0, -value.length);
       newOdo = prefix + value;
@@ -129,10 +129,10 @@ export function RegisterTrip() {
         newOdo = (parseInt(prefix) + 1).toString() + value;
       }
     }
-    let dist: any = newOdo - lastOdometer;
-    if (dist <= 0 || dist > MAX_DIST) dist = '';
+    let dist: number = parseInt(newOdo) - parseInt(lastOdometer);
+    if (dist <= 0 || dist > MAX_DIST) dist = 0;
     setTripDistance(dist);
-    setCost(dist !== '' ? (dist * COST_PER_KM).toFixed(2) : '');
+    setCost(dist !== 0 ? (dist * COST_PER_KM).toFixed(2) : '');
     setNewOdometer(newOdo);
   };
 
@@ -248,7 +248,7 @@ export function RegisterTrip() {
 
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
-        <CarSelector disabled={isProcessing} />
+        <CarSelector disabled={isProcessing} carFilter={(cars) => cars.filter(c => c.hasLog ?? true)} />
         {/* Behöver markera inmatad text som röd, eller helst inte tillåta textinmatning alls.
             Ser ut som att värdet accepteras. */}
         <UserSelector disabled={isProcessing} />
@@ -316,7 +316,7 @@ export function RegisterTrip() {
           <div className="space-y-2 flex-1">
             <Label>Kostnad</Label>
             <Input
-                value={Math.round(cost) + ' kr'}
+                value={Math.round(Number(cost)) + ' kr'}
                 disabled
             />
           </div>

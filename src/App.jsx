@@ -19,12 +19,12 @@ import {useListenToTrips} from "@/db/use-listen-to-trips";
 import {useListenToBookings} from "@/db/use-listen-to-bookings";
 
 function App() {
+  console.log('App rendering');
   useListenToTrips();
   useListenToBookings();
   const dispatch = useDispatch();
   const authState = useSelector(state => state.auth);
 
-  // TODO: Not sure this is the right way, it tends to unsubscribe/load several times...
   useEffect(() => {
     dispatch(fetchAuthState());
   }, [dispatch]);

@@ -83,11 +83,13 @@ export const HomePage = () => {
                     </div>
                     {!booking.logged && (
                           <div className="flex items-center justify-between">
-                          <Button variant="outline"
-                            onClick={() => logBooking(booking)}
-                          >
-                            Logga
-                          </Button>
+                          {(booking.car.hasLog ?? true) && (
+                            <Button variant="outline"
+                              onClick={() => logBooking(booking)}
+                            >
+                              Logga
+                            </Button>
+                          )}
                           <Button variant="outline"
                             onClick={() => changeBooking(booking)}
                           >

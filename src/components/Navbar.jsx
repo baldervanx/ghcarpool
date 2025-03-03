@@ -12,7 +12,7 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16">
           <div className="flex space-x-0">
             <Link to="/home">
-              <Button className="flex items-center [&_svg]:size-8 h-12 px-1"
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
                       variant={location.pathname === '/home' ? 'default' : 'ghost'}
               >
                 <House size={iconSize}/>
@@ -20,7 +20,7 @@ export function Navbar() {
               </Button>
             </Link>
             <Link to="/book-trip">
-              <Button className="flex items-center [&_svg]:size-8 h-12 px-1"
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
                   variant={location.pathname === '/book-trip' ? 'default' : 'ghost'}
               >
                 <CalendarPlus size={iconSize}/>
@@ -28,7 +28,7 @@ export function Navbar() {
               </Button>
             </Link>
             <Link to="/booking-overview">
-              <Button className="flex items-center [&_svg]:size-8 h-12 px-1"
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
                       variant={location.pathname === '/book-overview' ? 'default' : 'ghost'}
               >
                 <Calendar size={iconSize}/>
@@ -36,7 +36,7 @@ export function Navbar() {
               </Button>
             </Link>
             <Link to="/register-trip">
-              <Button className="flex items-center [&_svg]:size-8 h-12 px-1"
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
                 variant={location.pathname === '/register-trip' ? 'default' : 'ghost'}
               >
                 <FilePlus size={iconSize}/>
@@ -44,7 +44,7 @@ export function Navbar() {
               </Button>
             </Link>
             <Link to="/trip-log">
-              <Button className="flex items-center [&_svg]:size-8 h-12 px-1"
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
                 variant={location.pathname === '/trip-log' ? 'default' : 'ghost'}
               >
                 <FileText size={iconSize}/>

@@ -16,7 +16,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import {cn, useAccessibleCn} from '@/lib/utils';
 
 export type ComboboxOptions = {
     value: string;
@@ -76,14 +76,12 @@ export function Combobox({
                          }: ComboboxProps) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
+    const accessibleCn = useAccessibleCn()
 
     const [canCreate, setCanCreate] = useState(true);
     useEffect(() => {
         // Cannot create a new query if it is empty or has already been created
         // Unlike search, case sensitive here.
-
-        // クエリが空の場合、またはすでに作成済みの場合は新規作成できない
-        // 検索と違いここでは大文字小文字は区別する
         const isAlreadyCreated = !options.some((option) => option.label === query);
         setCanCreate(!!(query && isAlreadyCreated));
     }, [query, options]);
@@ -113,7 +111,7 @@ export function Combobox({
                     role="combobox"
                     disabled={disabled ?? false}
                     aria-expanded={open}
-                    className={cn('w-48 font-normal', className)}
+                    className={accessibleCn('w-48 font-normal', className)}
                 >
                     {selected && selected.length > 0 ? (
                         <div className="truncate mr-auto">
@@ -127,7 +125,7 @@ export function Combobox({
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-48 p-0">
+            <PopoverContent className="w-52 p-0">
                 <Command
                     filter={(value, search) => {
                         const v = value.toLocaleLowerCase();
@@ -139,6 +137,7 @@ export function Combobox({
                     <CommandInput
                         placeholder="Sök eller ny"
                         value={query}
+                        className={accessibleCn("text-sm")}
                         onValueChange={(value: string) => setQuery(value)}
                         onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) => {
                             if (event.key === 'Enter') {
@@ -165,7 +164,7 @@ export function Combobox({
                             {/* 選択肢が1つも無い、かつクエリも入力されていない場合 */}
                             {/* CommandEmptyのChildとして書いても、初回だけ表示されない場合があるのでCommandGroup内に書く */}
                             {options.length === 0 && !query && (
-                                <div className="py-1.5 pl-8 space-y-1 text-sm">
+                                <div className={accessibleCn("py-1.5 pl-8 space-y-1 text-sm")}>
                                     <p>No items</p>
                                     <p>Enter a value to create a new one</p>
                                 </div>
@@ -180,7 +179,7 @@ export function Combobox({
                             {options.map((option, index) => (
                                 <CommandItem
                                     key={option.label}
-                                    tabIndex={0}
+                                    tabIndex={index}
                                     value={option.label}
                                     onSelect={() => {
                                         console.log('onSelect');
@@ -189,21 +188,18 @@ export function Combobox({
                                     onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => {
                                         if (event.key === 'Enter') {
                                             // Process to prevent onSelect from firing, but it does not work well with StackBlitz.
-                                            // onSelectの発火を防ぐ処理だが、StackBlitzだとうまく動作しない
                                             event.stopPropagation();
 
                                             handleSelect(option);
                                         }
                                     }}
-                                    className={cn(
+                                    className={accessibleCn(
                                         'cursor-pointer',
                                         // Override CommandItem class name
-                                        // CommandItemのクラス名を上書き
-                                        'focus:!bg-blue-200 hover:!bg-blue-200 aria-selected:bg-transparent'
+                                        'focus:!bg-blue-200 hover:!bg-blue-200 aria-selected:bg-transparent text-sm'
                                     )}
                                 >
                                     {/* min to avoid the check icon being too small when the option.label is long. */}
-                                    {/* minを設定していない場合、option.labelが長いとチェックアイコンが小さくなってしまう */}
                                     <Check
                                         className={cn(
                                             'mr-2 h-4 w-4 min-h-4 min-w-4',

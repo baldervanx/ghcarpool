@@ -28,7 +28,7 @@ export const TimeSelector = ({value, onChange, label, disabled=false}: TimeSelec
             <Label>{label}</Label>
             <div className="flex gap-1">
                 <Select value={selectedHour} onValueChange={handleHourChange} disabled={disabled}>
-                    <SelectTrigger className="flex-1 px-2 time-select-trigger">
+                    <SelectTrigger className="flex-1 px-1.5 time-select-trigger">
                         <SelectValue placeholder="--"/>
                     </SelectTrigger>
                     <SelectContent>
@@ -40,7 +40,7 @@ export const TimeSelector = ({value, onChange, label, disabled=false}: TimeSelec
                     </SelectContent>
                 </Select>
                 <Select value={selectedMinute} onValueChange={handleMinuteChange} disabled={disabled}>
-                    <SelectTrigger className="flex-1 px-2 time-select-trigger">
+                    <SelectTrigger className="flex-1 px-1.5 time-select-trigger">
                         <SelectValue placeholder="00"/>
                     </SelectTrigger>
                     <SelectContent>

@@ -372,7 +372,7 @@ interface IdObject {
     id: string;
 }
 
-interface Booking {
+export interface Booking {
     parent_id: string;
     id: string;
     users: IdObject[];
@@ -384,7 +384,7 @@ interface Booking {
     recurrenceId?: string; // For recurring entries
 }
 
-interface DateCarBooking {
+export interface DateCarBooking {
     id: string;
     date: string;
     car: IdObject;

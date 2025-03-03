@@ -1,7 +1,10 @@
 import React, {useEffect, useState} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {db} from '@/db/firebase';
-import {collection, doc, DocumentReference,
+import {
+  collection,
+  doc,
+  DocumentReference,
   getDoc,
   runTransaction,
   serverTimestamp,
@@ -12,78 +15,17 @@ import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
 import {Checkbox} from '@/components/ui/checkbox';
-import { Combobox, ComboboxOptions } from '@/components/ui/combobox';
 import {CarSelector} from '@/components/CarSelector';
 import {useDispatch, useSelector} from 'react-redux';
 import UserSelector from '@/components/UserSelector';
-import {setSelectedCar, setSelectedUsers} from '@/store';
-import type { AppStore } from '@/store';
+import type {AppStore, DateCarBooking} from '@/store';
+import {Booking, setSelectedCar, setSelectedUsers} from '@/store';
 import {format, isSameDay} from 'date-fns';
 import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import {TimeSelector} from "@/components/time-selector";
+import {DestinationSelector} from "@/components/destination-selector";
 
-
-interface DestinationSelectorProps {
-  value: string,
-  onChange: (destination: string) => void,
-  onDistanceChange: (distance: string) => void,
-  disabled?: boolean
-}
-const DestinationSelector = ({value, onChange, onDistanceChange, disabled=false}: DestinationSelectorProps) => {
-  const {destinations} = useSelector((state: AppStore) => state.destination);
-  const [actualDestinations, setActualDestinations] = useState(destinations);
-  const [selectedDestination, setSelectedDestination] = useState('');
-
-  useEffect(() => {
-    setSelectedFromName(value || "Annan");
-  }, [value]);
-
-  const setSelectedFromName = (name: string) => {
-    const destObj = actualDestinations.find(d => d.name === name);
-    if (destObj) {
-      setSelectedDestination(destObj.id);
-    } else {
-      // Must here also create the custom destination entry
-      setActualDestinations([...actualDestinations, { id: name, name, shortName: "" }]);
-      setSelectedDestination(name);
-    }
-  }
-
-  const handleDestinationChange = (option: ComboboxOptions) => {
-    setSelectedDestination(option.value);
-    const destination = destinations.find(d => d.id === option.value);
-    if (destination) {
-      onChange(destination.name);
-      // The "Other" destination doesn't have a distance
-      onDistanceChange(destination.distance?.toString() || "");
-    } else {
-      // This is the case when the custom added destination is selected.
-      onChange(option.value);
-      onDistanceChange("");
-    }
-  };
-
-  const handleCustomDestinationChange = (label: string) => {
-    onChange(label); // This will actually trigger useEffect which in turn will create it.
-  };
-
-  return (
-      <div className="space-y-2">
-        <Label>Destination</Label>
-        <Combobox
-            options={actualDestinations.map((destination): ComboboxOptions => (
-                { value: destination.id, label: `${destination.name} ${destination.shortName ? "("+destination.shortName+")":""}`}
-            ))}
-            placeholder="Välj destination"
-            selected={selectedDestination}
-            onChange={handleDestinationChange}
-            onCreate={handleCustomDestinationChange}
-            disabled={disabled}
-        />
-      </div>
-  );
-};
 
 const BookTrip = () => {
   const navigate = useNavigate();
@@ -211,39 +153,70 @@ const BookTrip = () => {
     endTime: number;
   }
 
-  function findOverlappingBooking(bookings, newBooking: BookingTimes, existingBookingId?: string, recurrenceId?: string) {
+  interface OverlappingBooking {
+    type: string;
+    booking?: Booking;
+  }
+
+  function findOverlappingBooking(bookings:Booking[], newBooking: BookingTimes, existingBookingId?: string, recurrenceId?: string): OverlappingBooking {
     // Filter out any old version of the booking, add the new one and sort.
     const sortedBookings = [...bookings]
         .filter(b => b.id !== existingBookingId && b.recurrenceId !== recurrenceId)
-        .concat(newBooking)
         .sort((a, b) => a.startTime - b.startTime);
 
-    // It may also happen that the new booking completely overlaps (i.e starts before and ends after) another booking
-    // then this should be pointed out in the message.
-    // TODO: Must also detect if the newBooking overlaps with multiple bookings
-    // - store the result in a variable, continue looping through all bookings, then the multiple scenario is found.
-    for (let i = 1; i < sortedBookings.length; i++) {
-      if (sortedBookings[i].startTime < sortedBookings[i - 1].endTime) {
-        if (sortedBookings[i] === newBooking) {
-          // Start-time of newBooking overlaps with end time of existing booking
-          return {booking: sortedBookings[i - 1], type: "startTime"};
+    // Håll separerad från sorteringen för att kunna hitta överlappningar korrekt
+    const onlyExistingBookings = [...sortedBookings];
+
+    // Hitta alla överlappande bokningar
+    const overlappingBookings: OverlappingBooking[] = [];
+
+    for (const booking of onlyExistingBookings) {
+      // Kontrollera om den nya bokningen överlappar med den befintliga bokningen
+      if (
+          (newBooking.startTime < booking.endTime && newBooking.endTime > booking.startTime) ||
+          (booking.startTime < newBooking.endTime && booking.endTime > newBooking.startTime)
+      ) {
+        let type = "";
+
+        // Bestäm typ av överlappning
+        if (newBooking.startTime < booking.startTime && newBooking.endTime > booking.endTime) {
+          // Nya bokningen omsluter helt den befintliga
+          type = "complete";
+        } else if (newBooking.startTime < booking.endTime && newBooking.startTime >= booking.startTime) {
+          // Start-tiden överlappar
+          type = "startTime";
         } else {
-          // End-time of newBooking overlaps with start time of an existing booking
-          return {booking: sortedBookings[i], type: "endTime"};
+          // End-tiden överlappar
+          type = "endTime";
         }
+
+        overlappingBookings.push({ booking, type });
       }
     }
-    // If variable contain multiple results, return {type: "multiple"}
-    return {};
+
+    // Returnera rätt resultat baserat på antal överlappningar
+    if (overlappingBookings.length === 0) {
+      return { type: "none" };
+    } else if (overlappingBookings.length === 1) {
+      return overlappingBookings[0];
+    } else {
+      return { type: "multiple", booking: overlappingBookings[0].booking };
+    }
   }
 
   function checkBookingOverlapping(bookings, newBooking: BookingTimes, existingBookingId, recurrenceId, date = null) {
-    const {booking, type} = findOverlappingBooking(bookings, newBooking, existingBookingId, recurrenceId);
-    if (!type) return;
-    if (type === "startTime") {
-      throw new Error(`${date ? date + ": " : ""}Vald starttid krockar med bokning som slutar ${timeToString(booking.endTime)}`);
+    const overlappingBooking = findOverlappingBooking(bookings, newBooking, existingBookingId, recurrenceId);
+    if (overlappingBooking.type === "none") return;
+    if (overlappingBooking.type !== "multiple") {
+      if (overlappingBooking.type === "startTime") {
+        throw new Error(`${date ? date + ": " : ""}Vald starttid krockar med bokning som slutar ${timeToString(overlappingBooking.booking?.endTime)}`);
+      } else if (overlappingBooking.type === "endTime") {
+        throw new Error(`${date ? date + ": " : ""}Vald sluttid krockar med bokning som börjar ${timeToString(overlappingBooking.booking?.startTime)}`);
+      } else {
+        throw new Error(`${date ? date + ": " : ""}Bokningen krockar fullständigt med bokning ${timeToString(overlappingBooking.booking?.startTime)}-${timeToString(overlappingBooking.booking?.endTime)}`);
+      }
     } else {
-      throw new Error(`${date ? date + ": " : ""}Vald sluttid krockar med bokning som börjar ${timeToString(booking.startTime)}`);
+      throw new Error(`${date ? date + ": " : ""}Bokningen krockar med flera bokningar`);
     }
   }
 
@@ -300,7 +273,7 @@ const BookTrip = () => {
         // Check all dates for conflicts within the transaction
         for (const validation of bookingValidations) {
           if (validation.docRef) {
-            const dateBookingsDoc = await transaction.get(validation.docRef);
+            const dateBookingsDoc = await transaction.get<DateCarBooking, DocumentReference>(validation.docRef);
             if (dateBookingsDoc.exists()) {
               const bookingsFromDb = dateBookingsDoc.data().bookings;
               validation.bookings = bookingsFromDb;
@@ -585,7 +558,7 @@ const BookTrip = () => {
         };
 
         const {booking, type} = findOverlappingBooking(dateBooking.bookings, newBooking);
-        if (booking) {
+        if (type !== "none") {
           // Overlap found - check if it would be possible to swap bookings
           // swap is only possible if
           // - the newCar booking fits without overlaps in the currentCar
@@ -628,6 +601,7 @@ const BookTrip = () => {
                 min={getBookingDate()}
                 max={getBookingDate(undefined, 96)}
                 disabled={isEditing && isRecurring}
+                className="px-1.5"
             />
           </div>
           <TimeSelector
@@ -724,13 +698,14 @@ const BookTrip = () => {
             />
 
             <div className="space-y-2">
-              <Label>Distans (km)</Label>
+              <Label>Distans(km)</Label>
               <Input
                   type="number"
                   value={distance}
                   disabled={isEditing && isRecurring}
                   onChange={(e) => setDistance(e.target.value)}
                   required={isDistanceRequired()}
+                  className="w-20"
               />
             </div>
           </div>

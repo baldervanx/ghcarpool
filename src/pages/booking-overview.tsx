@@ -21,13 +21,14 @@ import {ChevronDown, ChevronLeft, ChevronRight} from "lucide-react";
 import {cn, useAccessibleCn} from "@/lib/utils";
 import {useSelector} from "react-redux";
 import BookingCell from "@/components/booking-cell"
+import type { AppStore } from '@/store';
 
 const BookingOverview = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { cars } = useSelector(state => state.car);
-  const { destinations } = useSelector(state => state.destination);
-  const { bookings, loading } = useSelector(state => state.booking)
+  const { cars } = useSelector((state: AppStore) => state.car);
+  const { destinations } = useSelector((state: AppStore) => state.destination);
+  const { bookings, loading } = useSelector((state: AppStore) => state.booking)
   const accessibleCn = useAccessibleCn();
   const daysPerPage = 14;
   const pageCount = 8;

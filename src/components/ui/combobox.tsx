@@ -182,7 +182,6 @@ export function Combobox({
                                     tabIndex={index}
                                     value={option.label}
                                     onSelect={() => {
-                                        console.log('onSelect');
                                         handleSelect(option);
                                     }}
                                     onKeyDown={(event: React.KeyboardEvent<HTMLDivElement>) => {

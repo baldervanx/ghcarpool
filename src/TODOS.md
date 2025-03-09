@@ -49,7 +49,8 @@
 - [X] Warn with pop-up confirmation when modifying a booking made by someone else. 
 - [X] ...Also have an alert message from the very beginning of modification
 - [ ] ...Also send message to the original creator using Slack: https://api.slack.com/methods/chat.postMessage
-- [ ] *IMPORTANT* ONGOING! - Swap existing bookings between cars
+- [X] *IMPORTANT* Swap existing bookings between cars
+- [ ] ...Also have an alert message when swapping someone else's booking
 - [X] *BUG* Changing car/date produces duplicate entry
 - [X] Validate overlap - present more details about overlap and better handling of recurring booking
 - [ ] Validate driving-range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
@@ -58,6 +59,7 @@
 - [X] It shall not be possible to edit or delete past bookings, only future ones.
 - [ ] Use accordion (https:ui.shadcn.com/docs/components/accordion) for the advanced settings?
 - [X] Recurring booking should end at and including end-date
+- [X] *BUG* Recurring booking was made on the wrong days, off by one
 - [X] Must fetch all existing bookings for the entire range of dates that is being booked and
       verify that there are no collisions BEFORE starting to book dates.
 - [X] Multi-day booking must delete all entries (including the recurring-booking entry) when deleted. 

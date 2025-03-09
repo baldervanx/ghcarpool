@@ -18,8 +18,8 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {CarSelector} from '@/components/CarSelector';
 import {useDispatch, useSelector} from 'react-redux';
 import UserSelector from '@/components/UserSelector';
-import type {AppStore, DateCarBooking} from '@/store';
-import {Booking, setSelectedCar, setSelectedUsers} from '@/store';
+import type {AppStore, DateCarBooking, Booking} from '@/store';
+import {setSelectedCar, setSelectedUsers} from '@/store';
 import {format, isSameDay} from 'date-fns';
 import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
 import ConfirmationDialog from '@/components/confirmation-dialog';
@@ -34,7 +34,7 @@ const BookTrip = () => {
   const {selectedCar, cars} = useSelector((state: AppStore) => state.car);
   const {user} = useSelector((state: AppStore) => state.auth);
   const {selectedUsers, users} = useSelector((state: AppStore) => state.user);
-  const {bookings, range: bookingsRange} = useSelector((state: AppStore) => state.booking);
+  const {bookings} = useSelector((state: AppStore) => state.booking);
   const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [bookingStartTime, setBookingStartTime] = useState('');
   const [bookingEndTime, setBookingEndTime] = useState('');
@@ -46,8 +46,8 @@ const BookTrip = () => {
   const [destination, setDestination] = useState('');
   const [alerts, setAlerts] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
-  const [existingBooking, setExistingBooking] = useState(null);
-  const [storedDateCarBooking, setStoredDateCarBooking] = useState(null);
+  const [existingBooking, setExistingBooking] = useState<string>(null);
+  const [storedDateCarBooking, setStoredDateCarBooking] = useState<DateCarBooking>(null);
   const [recurrenceId, setRecurrenceId] = useState(null);
   const [dialogState, setDialogState] = useState({
     isOpen: false,
@@ -57,6 +57,7 @@ const BookTrip = () => {
     onCancel: null
   });
   const [isComitting, setIsComitting] = useState(false);
+  const [bookingToSwap, setBookingToSwap] = useState<Booking>(null);
 
   useEffect(() => {
     if (location.state && location.state.parent_id) {
@@ -161,7 +162,7 @@ const BookTrip = () => {
   function findOverlappingBooking(bookings:Booking[], newBooking: BookingTimes, existingBookingId?: string, recurrenceId?: string): OverlappingBooking {
     // Filter out any old version of the booking, add the new one and sort.
     const sortedBookings = [...bookings]
-        .filter(b => b.id !== existingBookingId && b.recurrenceId !== recurrenceId)
+        .filter(b => b.id !== existingBookingId && (recurrenceId === undefined || b.recurrenceId !== recurrenceId))
         .sort((a, b) => a.startTime - b.startTime);
 
     // Håll separerad från sorteringen för att kunna hitta överlappningar korrekt
@@ -204,7 +205,7 @@ const BookTrip = () => {
     }
   }
 
-  function checkBookingOverlapping(bookings, newBooking: BookingTimes, existingBookingId, recurrenceId, date = null) {
+  function checkBookingOverlapping(bookings: Booking[], newBooking: BookingTimes, existingBookingId: string, recurrenceId: string, date = null) {
     const overlappingBooking = findOverlappingBooking(bookings, newBooking, existingBookingId, recurrenceId);
     if (overlappingBooking.type === "none") return;
     if (overlappingBooking.type !== "multiple") {
@@ -220,6 +221,11 @@ const BookTrip = () => {
     }
   }
 
+  const dayToIndex = (date: Date): number => {
+    const index = date.getDay() - 1; // Must change place on sunday
+    return index >= 0 ? index : 6;
+  };
+
   const createOrUpdateBookings = async () => {
     if (!isRecurring && !isMultiDay) {
       return await createSingleBooking(bookingStartTime, bookingEndTime, distance);
@@ -233,7 +239,7 @@ const BookTrip = () => {
       const bookingValidations = [];
 
       while (currentDate <= end) {
-        if (isMultiDay || recurringDays.includes(currentDate.getDay())) {
+        if (isMultiDay || recurringDays.includes(dayToIndex(currentDate))) {
           let startTime = bookingStartTime;
           let endTime = bookingEndTime;
           let dist = distance;
@@ -338,6 +344,15 @@ const BookTrip = () => {
     }
   };
 
+  const convertBookingBack = (booking: Booking): Booking => {
+    const { parent_id, logged, ...rest } = booking; // Exclude parent_id and logged
+    return {
+      ...rest,
+      users: booking.users.map(u => doc(db, 'users', u.id)),
+      byUser: doc(db, 'users', booking.byUser.id),
+    };
+  };
+
   const createSingleBooking = async (startTime: string, endTime: string, dist: string) => {
     // If the car or date has changed in editing mode we need to do things a little differently
     // otherwise it will leave the old booking and create the new one with the same id.
@@ -355,7 +370,7 @@ const BookTrip = () => {
       return await runTransaction(db, async (transaction) => {
         // Fetching these docs within the transaction, to both read and update within the transaction.
         const targetDateBookingsDoc = targetDateBooking ? await transaction.get(doc(db, 'date-car-bookings', targetDateBooking.id)) : undefined;
-        let sourceDateBookingsDoc = movingBooking ? await transaction.get(doc(db, 'date-car-bookings', sourceDateBooking.id)) : undefined;
+        let sourceDateBookingsDoc = (movingBooking || bookingToSwap) ? await transaction.get(doc(db, 'date-car-bookings', sourceDateBooking.id)) : undefined;
 
         const newBooking = {
           id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
@@ -368,7 +383,11 @@ const BookTrip = () => {
         };
 
         if (targetDateBookingsDoc && targetDateBookingsDoc.exists()) {
-          const existingBookings = targetDateBookingsDoc.data().bookings;
+          let existingBookings: Booking[] = targetDateBookingsDoc.data().bookings;
+          // The swapped booking must be removed from target bookings before checking the overlap
+          if (bookingToSwap) {
+            existingBookings = existingBookings.filter(b => b.id !== bookingToSwap.id);
+          }
 
           // Check for overlapping bookings
           checkBookingOverlapping(existingBookings, newBooking, existingBooking, null);
@@ -390,8 +409,11 @@ const BookTrip = () => {
           });
         }
         // Now it is safe to delete the old booking, if moving
-        if (sourceDateBookingsDoc && sourceDateBookingsDoc.exists()) {
-          const sourceBookings = sourceDateBookingsDoc.data().bookings;
+        if (movingBooking || bookingToSwap) {
+          let sourceBookings = sourceDateBookingsDoc.data().bookings;
+          if (bookingToSwap) {
+            sourceBookings.push(convertBookingBack(bookingToSwap));
+          }
           const updatedSourceBookings = sourceBookings.filter(b => b.id !== existingBooking);
           updateOrDeleteDateBooking(transaction, sourceDateBookingsDoc.ref, updatedSourceBookings);
         }
@@ -539,13 +561,15 @@ const BookTrip = () => {
 
   function acceptCarChange(currentCar: string, newCar: string): boolean {
     if (isEditing) {
+      // If changing car selection again, we need to reset the swapping setting.
+      setBookingToSwap(null);
       if (isRecurring || isMultiDay) {
         // Currently not supported, complex scenario
         setAlerts([{ type: 'info', message: 'Byte av bil på en upprepande bokning stöds ej' }]);
         return false;
       }
       // Note that "swap" scenario is (of course) only possible for the same date, if the
-      // date has been changed before the car-change, then we should just accept.
+      // date has been changed before the car-change, then we should just accept here.
       if (storedDateCarBooking.date !== bookingDate) return true;
       // Check if newCar is available at the selected date and time
       const dateBooking = bookings.find(dcb =>
@@ -558,14 +582,32 @@ const BookTrip = () => {
         };
 
         const {booking, type} = findOverlappingBooking(dateBooking.bookings, newBooking);
-        if (type !== "none") {
-          // Overlap found - check if it would be possible to swap bookings
-          // swap is only possible if
-          // - the newCar booking fits without overlaps in the currentCar
-          // - the newCar booking is not multi-day (if it is recurring it must be disconnected)
-          // - there is only a single overlapping booking in newCar
-          setAlerts([{type: 'info', message: 'Byte av bil krockar med annan bokning'}]);
-          return false; // TODO: Implement swapping support
+        // Overlap found - check if it would be possible to swap bookings
+        // swap is only possible if
+        // - the newCar booking fits without overlaps in the currentCar
+        // - the newCar booking is not multi-day (if it is recurring it must be disconnected)
+        // - there is only a single overlapping booking in newCar
+        if (type === "multiple") {
+          setAlerts([{type: 'info', message: 'Byte av bil krockar med flera bokningar'}]);
+          return false;
+        } else if (type !== "none") {
+          if (booking.recurrenceId) {
+            // Should check if the recurrence is multi-day, we can support moving a normal recurring booking.
+            setAlerts([{type: 'info', message: 'Byte av bil krockar med upprepande bokning'}]);
+            return false;
+          }
+          // Check if the booking would fit if moved.
+          const currentDateBooking = bookings.find(dcb =>
+              dcb.car.id === currentCar && dcb.date === bookingDate
+          );
+          const {type: type2} = findOverlappingBooking(currentDateBooking.bookings, booking, existingBooking);
+          if (type2 === "none") {
+            setAlerts([{type: 'info', message: 'Byte av bil innebär att bokningar byter plats'}]);
+            setBookingToSwap(booking);
+          } else {
+            setAlerts([{type: 'info', message: 'Byte av bil krockar med bokning som inte får plats'}]);
+            return false;
+          }
         }
       }
     }
@@ -588,7 +630,12 @@ const BookTrip = () => {
             onCancel={dialogState.onCancel}
         />
 
+        <div className="space-y-3">
         <CarSelector acceptChange={acceptCarChange} disabled={(isEditing && isRecurring) || isComitting}/>
+        {bookingToSwap && (
+            <Label className="indent-9 flex">Växlar bil på bokning {timeToString(bookingToSwap.startTime)}-{timeToString(bookingToSwap.endTime)} av {bookingToSwap.byUser.id}</Label>
+        )}
+        </div>
         <UserSelector disabled={isEditing && isRecurring}/>
 
         <div className="flex gap-2">
@@ -728,7 +775,7 @@ const BookTrip = () => {
               onClick={handleBooking}
               disabled={isComitting || !selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || (!distance && isDistanceRequired())}
           >
-            {isEditing ? 'Ändra bokning' : 'Boka resa'}
+            {isEditing ? 'Spara ändringar' : 'Boka resa'}
           </Button>
 
           {isEditing && isRecurring && (

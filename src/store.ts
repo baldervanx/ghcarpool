@@ -373,13 +373,14 @@ interface IdObject {
 }
 
 export interface Booking {
-    parent_id: string;
+    parent_id?: string; // Optional when
     id: string;
     users: IdObject[];
     startTime: number; // Minutes from midnight
     endTime: number; // Minutes from midnight
     distance: number;
     destination: string;
+    logged?: string; // The id of the logged entry.
     byUser: IdObject;
     recurrenceId?: string; // For recurring entries
 }

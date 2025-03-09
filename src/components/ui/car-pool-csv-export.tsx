@@ -66,7 +66,8 @@ const CarPoolCSVExporter = () => {
 
   return (
     <Button onClick={handleExport} disabled={loading}
-      className="fixed bottom-4 left-4"
+      variant="outline"
+      className="fixed bottom-4 left-4 rounded-full h-12 w-12 shadow-lg [&_svg]:size-6"
       aria-label="Export to CSV">
       <Download className="mr-2" />
     </Button>

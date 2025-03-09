@@ -8,6 +8,7 @@ import type { TextSize } from "@/lib/utils";
 import { useTheme } from '@/components/theme-context';
 import { Sun, Moon } from 'lucide-react';
 import CarPoolCSVExporter from "@/components/ui/car-pool-csv-export";
+import HelpDialog from '@/components/help-dialog';
 import {useSelector} from "react-redux";
 import {format} from "date-fns";
 import {useNavigate} from "react-router-dom";
@@ -168,6 +169,8 @@ export const HomePage = () => {
         {(user.isAdmin) && (
             <CarPoolCSVExporter/>
         )}
+
+        <HelpDialog />
       </div>
     </div>
   );

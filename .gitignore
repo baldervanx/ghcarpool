@@ -28,3 +28,5 @@ dist-ssr
 .firebaserc
 firebase-export-*/
 /emulated_database/
+/bundle-stats.json
+/stats.html

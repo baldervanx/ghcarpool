@@ -457,14 +457,52 @@ const BookTrip = () => {
     // This confirmation is currently only about editing a booking made by someone else
     if (!isEditing) return true;
     const bookingData = storedDateCarBooking.bookings.find(b => b.id === existingBooking);
-    // TODO: Need to support the swapping scenario too, which also should be confirmed.
-    if (bookingData.byUser.id === user.user_id) return true;
-    const name = users.find(u => u.id === bookingData.byUser.id)?.shortName || bookingData.byUser.id;
-    const action = type === "delete" ? "Raderar" : "Ändrar"
+    let otherUser: string;
+    let action: string;
+    if (bookingData.byUser.id !== user.user_id) {
+      otherUser = bookingData.byUser.id;
+      action = type === "delete" ? "Raderar" : "Ändrar";
+    } else if (bookingToSwap && bookingToSwap.byUser.id !== user.user_id) {
+      otherUser = bookingToSwap.byUser.id;
+      action = "Flyttar";
+    } else {
+      return true;
+    }
+    const name = users.find(u => u.id === otherUser)?.shortName || otherUser;
     return await showConfirmDialog(
         `${action} bokning av ${name}`,
         `Har du bekräftat med ${name} att du kan göra denna åtgärd?`
     );
+  }
+
+  const getFutureRecurrenceBookings = async (transaction: Transaction): Promise<DateCarBooking[]> => {
+    const todayDate= format(new Date(), 'yyyy-MM-dd');
+    const relevantBookingIds = bookings
+        .filter(b =>
+            b.car.id === selectedCar &&
+            b.date >= todayDate &&
+            b.bookings.some(b2 => b2.recurrenceId === recurrenceId)
+        )
+        .map(b => b.id);
+
+    if (relevantBookingIds.length === 0) {
+      return [];
+    }
+    const bookingsRef = collection(db, 'date-car-bookings');
+    const fetchedBookings: DateCarBooking[] = [];
+
+    for (const bookingId of relevantBookingIds) {
+      const bookingDocRef = doc(bookingsRef, bookingId);
+      const bookingSnapshot = await transaction.get(bookingDocRef);
+
+      if (bookingSnapshot.exists()) {
+        fetchedBookings.push({
+          id: bookingSnapshot.id,
+          ...bookingSnapshot.data(),
+        } as DateCarBooking);
+      }
+    }
+    return fetchedBookings;
   }
 
   const deleteBooking = async (single:boolean = false) => {
@@ -478,27 +516,26 @@ const BookTrip = () => {
       await runTransaction(db, async (transaction) => {
         if (recurrenceId && !single) {
           // Get all bookings with this recurrence ID
-          const recurrenceRef = doc(db, 'recurrence', recurrenceId);
-          transaction.delete(recurrenceRef);
-          const todayDate= format(new Date(), 'yyyy-MM-dd'); // Only allow deletion of future bookings
-          const recurrenceBookings = bookings.filter(b =>
-              b.car.id === selectedCar && b.date >= todayDate && b.bookings.find(b2 => b2.recurrenceId === recurrenceId)
-          );
-
-          // FIXME: Fetch all dateBookings before updating/deleting all of them.
+          // Must fetch all real DateCarBookings before updating/deleting all of them.
+          const recurrenceBookings = await getFutureRecurrenceBookings(transaction);
           recurrenceBookings.forEach(book => {
             const bookings = book.bookings;
             updateOrDeleteDateBooking(transaction, doc(db, 'date-car-bookings', book.id), bookings.filter(
                 b => b.recurrenceId !== recurrenceId
             ));
           });
+          const recurrenceRef = doc(db, 'recurrence', recurrenceId);
+          transaction.delete(recurrenceRef);
         } else {
           const dateBooking = bookings.find(dcb =>
               dcb.car.id === selectedCar && dcb.date === bookingDate
           );
-          updateOrDeleteDateBooking(transaction, doc(db, 'date-car-bookings', dateBooking.id), dateBooking.bookings.filter(
-              b => b.id !== existingBooking
-          ));
+          if (dateBooking) {
+            const dateBookingsDoc = await transaction.get(doc(db, 'date-car-bookings', dateBooking.id));
+            updateOrDeleteDateBooking(transaction, doc(db, 'date-car-bookings', dateBooking.id), dateBookingsDoc.data().bookings.filter(
+                b => b.id !== existingBooking
+            ));
+          }
         }
       });
 

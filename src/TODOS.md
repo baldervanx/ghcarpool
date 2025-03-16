@@ -50,7 +50,7 @@
 - [X] ...Also have an alert message from the very beginning of modification
 - [ ] ...Also send message to the original creator using Slack: https://api.slack.com/methods/chat.postMessage
 - [X] *IMPORTANT* Swap existing bookings between cars
-- [ ] ...Also have an alert message when swapping someone else's booking
+- [X] ...Also have an alert message when swapping someone else's booking
 - [X] *BUG* Changing car/date produces duplicate entry
 - [X] Validate overlap - present more details about overlap and better handling of recurring booking
 - [ ] Validate driving-range - check previous use and calc remaining range, estimate range depending on weather. Only warning.
@@ -99,6 +99,9 @@
 - [X] ... and should be shown as logged with a check-box
 - [X] Recurring bookings should be shown as such with a round arrow
 - [X] *IMPORTANT* Sort car-columns on priority
+- [X] *IMPORTANT* Scroll on table, not page. Ensure buttons always visible.
+-     Maybe only one week per page?
+- [ ] *IMPROVEMENT* Remove pagning or use paging on month basis instead.
 
 ## Home
 - [X] Add list of current active bookings, 

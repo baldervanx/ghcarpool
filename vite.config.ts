@@ -10,21 +10,24 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // Introduces error, need further analysis.
-  // build: {
-  //   rollupOptions: {
-  //     output: {
-  //       manualChunks(id) {
-  //         // External dependencies in separate files.
-  //         if (id.includes('node_modules')) {
-  //           if (id.includes('react')) return 'react';
-  //           if (id.includes('firebase/auth')) return 'fire-auth';
-  //           if (id.includes('firebase/firestore')) return 'firestore';
-  //           return 'vendor';
-  //         }
-  //       }
-  //     }
-  //   }
-  // }
+  // Introduces error when react-part is chunked, need further analysis.
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // External dependencies in separate files.
+          if (id.includes('node_modules')) {
+//            if (id.includes('react')) return 'react';
+//            if (id.includes('redux')) return 'redux';
+//            if (id.includes('@radix-ui')) return 'radix-ui';
+            if (id.includes('firebase/auth')) return 'fire-auth';
+            if (id.includes('firebase/firestore')) return 'firestore';
+            return 'vendor';
+          }
+        }
+      }
+    }
+  }
 })
 

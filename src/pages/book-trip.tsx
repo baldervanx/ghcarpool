@@ -781,7 +781,7 @@ const BookTrip = () => {
                 disabled={isEditing && isRecurring}
             />
 
-            <div className="space-y-2">
+            <div className="flex flex-col space-y-2">
               <Label>Distans(km)</Label>
               <Input
                   type="number"

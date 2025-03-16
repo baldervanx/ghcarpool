@@ -3,6 +3,7 @@ import { getAuth, signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useAccessibility } from '@/lib/utils';
 import type { TextSize } from "@/lib/utils";
 import { useTheme } from '@/components/theme-context';
@@ -12,7 +13,11 @@ import HelpDialog from '@/components/help-dialog';
 import {useSelector} from "react-redux";
 import {format} from "date-fns";
 import {useNavigate} from "react-router-dom";
-import type { AppStore } from '@/store';
+import type {AppStore, Booking, Car} from '@/store';
+
+interface BookingCar extends Booking {
+  car: Car
+}
 
 export const HomePage = () => {
   const { settings, updateSettings } = useAccessibility();
@@ -22,7 +27,7 @@ export const HomePage = () => {
   //const { trips, loading: tripsLoading } = useSelector((state: AppStore) => state.trip);
   const { bookings, loading: bookingsLoading } = useSelector((state: AppStore) => state.booking);
   const { user, loading: userLoading } = useSelector((state: AppStore) => state.auth);
-  const [ activeBookings, setActiveBookings ] = useState([]);
+  const [ activeBookings, setActiveBookings ] = useState<BookingCar[]>([]);
   const auth = getAuth();
 
   useEffect(() => {
@@ -38,12 +43,15 @@ export const HomePage = () => {
               // Would be a bit more efficient to do this later.
               car: cars.find(c => c.id === dayBooking.car.id)
             }))
-        );
-    const currentUserBookings = flatBookings
-        .filter(booking =>
+        ).filter(booking =>
             booking.users.some(user => user.id === currentUser)
         );
-    setActiveBookings(currentUserBookings);
+    const sortedBookings = flatBookings.sort((a, b) => {
+      if (a.logged && !b.logged) return 1;
+      if (!a.logged && b.logged) return -1;
+      return a.startTime - b.startTime;
+    });
+    setActiveBookings(sortedBookings);
   }, [bookings, user]);
 
   // FIXME: Move duplicated code to utility
@@ -53,12 +61,17 @@ export const HomePage = () => {
     return `${hours}:${mins.toString().padStart(2, '0')}`;
   }
 
-  function logBooking(booking) {
+  function logBooking(booking: BookingCar) {
     navigate('/register-trip', { state: { booking: booking } });
   }
 
-  function changeBooking(booking) {
+  function changeBooking(booking: BookingCar) {
     navigate('/book-trip', { state: { parent_id: booking.parent_id, booking_id: booking.id } });
+  }
+
+  function bookingStatus(booking: BookingCar): string {
+    // Can perhaps use time to give more details in the title.
+    return booking.logged ? "Kört" : "Bokat";
   }
 
   // TODO: Must check if the booking is multi-day and then display that properly,
@@ -75,10 +88,10 @@ export const HomePage = () => {
         {!userLoading && !bookingsLoading && (
             activeBookings.map((booking) => (
                 <Card key={booking.id}>
-                  <CardHeader>
-                    <CardTitle>{`${booking.logged ? "Kört" : "Bokat"} ${booking.car.name}`}</CardTitle>
+                  <CardHeader className="py-4">
+                    <CardTitle className="text-xl">{`${bookingStatus(booking)} ${booking.car.name}`}</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
+                  <CardContent className="py-4 space-y-2 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{`Tid: ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}`}</span>
                     </div>
@@ -112,50 +125,56 @@ export const HomePage = () => {
         )}
 
         {/* This card should be collapsed (accordion?) by default, as it is not that frequently used. */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Inställningar</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Hög kontrast</span>
-              <Button
-                  variant="outline"
-                  onClick={() => updateSettings({isHighContrast: !settings.isHighContrast})}
-              >
-                {settings.isHighContrast ? 'På' : 'Av'}
-              </Button>
-            </div>
+        <Accordion type="single" collapsible>
+          <AccordionItem value="settings">
+            <AccordionTrigger className="py-0">
+              <CardHeader className="p-3 space-y-3">
+                <CardTitle className="text-xl">Inställningar</CardTitle>
+              </CardHeader>
+            </AccordionTrigger>
+            <AccordionContent>
+              <CardContent className="p-4 space-y-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Hög kontrast</span>
+                  <Button
+                      variant="outline"
+                      onClick={() => updateSettings({isHighContrast: !settings.isHighContrast})}
+                  >
+                    {settings.isHighContrast ? 'På' : 'Av'}
+                  </Button>
+                </div>
 
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Textstorlek</span>
-              <Select
-                  value={settings.textSize}
-                  onValueChange={(value) => updateSettings({textSize: value as TextSize})}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Välj textstorlek"/>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="normal">Normal text</SelectItem>
-                  <SelectItem value="large">Stor text</SelectItem>
-                  <SelectItem value="larger">Större text</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Textstorlek</span>
+                  <Select
+                      value={settings.textSize}
+                      onValueChange={(value) => updateSettings({textSize: value as TextSize})}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Välj textstorlek"/>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="normal">Normal text</SelectItem>
+                      <SelectItem value="large">Stor text</SelectItem>
+                      <SelectItem value="larger">Större text</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="flex items-center justify-between">
-              <span className="font-medium">Mörkt/Ljust läge</span>
-              <Button
-                  variant="outline"
-                  onClick={toggleDarkMode}
-                  size="icon"
-              >
-                {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Mörkt/Ljust läge</span>
+                  <Button
+                      variant="outline"
+                      onClick={toggleDarkMode}
+                      size="icon"
+                  >
+                    {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
+                  </Button>
+                </div>
+              </CardContent>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
         <div className="flex gap-4 mb-8">
           <Button

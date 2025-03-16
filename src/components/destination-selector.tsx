@@ -55,7 +55,7 @@ export const DestinationSelector = ({
     };
 
     return (
-        <div className="space-y-2">
+        <div className="flex flex-col space-y-2">
             <Label>Destination</Label>
             <Combobox
                 options={actualDestinations.map((destination): ComboboxOptions => (

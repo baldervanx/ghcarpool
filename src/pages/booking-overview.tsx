@@ -69,13 +69,13 @@ const BookingOverview = () => {
       cell: ({ row }) => {
         const todayStyle = isSameDay(new Date(), row.original) ? 'darkorange' : undefined;
         return (
-          <div className="font-medium whitespace-nowrap"
-               style={{
-                 backgroundColor: todayStyle
-               }}
+            <div className="font-medium whitespace-nowrap"
+                 style={{
+                   backgroundColor: todayStyle
+                 }}
             >
-            {format(row.original, 'dd/MM E', {locale: sv})}
-          </div>
+              {format(row.original, 'dd/MM E', {locale: sv})}
+            </div>
         );
       },
       meta: {
@@ -88,19 +88,19 @@ const BookingOverview = () => {
       accessorKey: car.id,
       cell: ({ row }) => {
         const dateBookings = bookings.filter(booking =>
-          booking.car.id === car.id &&
-          isSameDay(new Date(booking.date), row.original)
+            booking.car.id === car.id &&
+            isSameDay(new Date(booking.date), row.original)
         ).flatMap(b => b.bookings).sort((a, b) => a.startTime - b.startTime);
         return (
-          <BookingCell
-            bookings={dateBookings}
-            car={car.id}
-            date={row.original}
-            destinations={destinations}
-            onClick={handleBookingClick}
-            readOnly={row.original < today}
-            accessibleCn={accessibleCn}
-          />
+            <BookingCell
+                bookings={dateBookings}
+                car={car.id}
+                date={row.original}
+                destinations={destinations}
+                onClick={handleBookingClick}
+                readOnly={row.original < today}
+                accessibleCn={accessibleCn}
+            />
         );
       }
     }))
@@ -128,97 +128,94 @@ const BookingOverview = () => {
   }
 
   return (
-    <div className="w-full">
-      <div className="rounded-md border">
-        <div className="overflow-x-auto relative">
-          <Table className="[&_tr_td]:p-1 [&_tr_th]:p-1">
-            <TableHeader className="sticky top-0 bg-background z-10">
-              <TableRow>
-                {table.getFlatHeaders().map(header => (
+      <div className="flex flex-col w-full max-h-[calc(100vh-80px)]">
+        <Table className="[&_tr_td]:p-1 [&_tr_th]:p-1 border">
+          <TableHeader className="sticky top-0 bg-background z-40">
+            <TableRow>
+              {table.getFlatHeaders().map(header => (
                   <TableHead
-                    key={header.id}
-                    className={cn(
-                      "bg-background",
-                      header.column.columnDef.meta?.isSticky && "sticky left-0 z-30"
-                    )}
-                    style={{
-                      left: header.column.columnDef.meta?.isSticky ? 0 : undefined,
-                      width: header.column.columnDef.meta?.width,
-                      background: header.column.columnDef.meta?.isSticky ? 'hsl(var(--background))' : undefined
-                    }}
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext()
-                    )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.map(row => (
-                <TableRow
-                  key={row.id}
-                  className={cn(
-                    isWeekend(row.original) && "bg-muted/50"
-                  )}
-                >
-                  {row.getVisibleCells().map(cell => (
-                    <TableCell
-                      key={cell.id}
+                      key={header.id}
                       className={cn(
-                        cell.column.columnDef.meta?.isSticky ? "sticky left-0 z-30" : "min-w-[16ch]"
+                          "bg-background",
+                          header.column.columnDef.meta?.isSticky && "sticky left-0 z-30"
                       )}
                       style={{
-                        left: cell.column.columnDef.meta?.isSticky ? 0 : undefined,
-                        width: cell.column.columnDef.meta?.width,
-                        background: cell.column.columnDef.meta?.isSticky ?
-                          isWeekend(row.original) ? 'hsl(var(--muted))' : 'hsl(var(--background))'
-                          : undefined
+                        left: header.column.columnDef.meta?.isSticky ? 0 : undefined,
+                        width: header.column.columnDef.meta?.width,
+                        background: header.column.columnDef.meta?.isSticky ? 'hsl(var(--background))' : undefined
                       }}
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
+                  >
+                    {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext()
+                    )}
+                  </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map(row => (
+                <TableRow
+                    key={row.id}
+                    className={cn(
+                        isWeekend(row.original) && "bg-muted/50"
+                    )}
+                >
+                  {row.getVisibleCells().map(cell => (
+                      <TableCell
+                          key={cell.id}
+                          className={cn(
+                              cell.column.columnDef.meta?.isSticky ? "sticky left-0 z-30" : "min-w-[16ch]"
+                          )}
+                          style={{
+                            left: cell.column.columnDef.meta?.isSticky ? 0 : undefined,
+                            width: cell.column.columnDef.meta?.width,
+                            background: cell.column.columnDef.meta?.isSticky ?
+                                isWeekend(row.original) ? 'hsl(var(--muted))' : 'hsl(var(--background))'
+                                : undefined
+                          }}
+                      >
+                        {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                        )}
+                      </TableCell>
                   ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+            ))}
+          </TableBody>
+        </Table>
+
+        {/* Navigationsknappar separerade från tabellen så de alltid syns */}
+        <div className="flex items-center justify-end space-x-2 py-4 mt-auto">
+          <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Föregående
+          </Button>
+          <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.setPageIndex(1)}
+          >
+            <ChevronDown className="h-4 w-4" />
+            Idag
+          </Button>
+          <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+          >
+            Nästa
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
-
-      <div className="flex items-center justify-end space-x-2 py-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Föregående
-        </Button>
-        <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.setPageIndex(1)}
-        >
-          <ChevronDown className="h-4 w-4" />
-          Idag
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
-          Nästa
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
   );
 };
 

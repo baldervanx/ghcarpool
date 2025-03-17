@@ -1,4 +1,4 @@
-import React, {useState, useMemo, useEffect} from 'react';
+import React, {useState, useMemo, useEffect, useRef} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {
   flexRender,
@@ -6,7 +6,19 @@ import {
   useReactTable,
   getPaginationRowModel,
 } from '@tanstack/react-table';
-import { format, addDays, isWeekend, isSameDay, startOfDay, differenceInDays } from 'date-fns';
+import {
+  format,
+  addMonths,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isWeekend,
+  isSameDay,
+  startOfDay,
+  differenceInMonths,
+  isSameMonth,
+  subMonths, isToday
+} from 'date-fns';
 import { sv } from 'date-fns/locale';
 import {
   Table,
@@ -28,29 +40,77 @@ const BookingOverview = () => {
   const location = useLocation();
   const { cars } = useSelector((state: AppStore) => state.car);
   const { destinations } = useSelector((state: AppStore) => state.destination);
-  const { bookings, loading } = useSelector((state: AppStore) => state.booking)
+  const { bookings, loading } = useSelector((state: AppStore) => state.booking);
   const accessibleCn = useAccessibleCn();
-  const daysPerPage = 14;
-  const pageCount = 8;
+  const tableRef = useRef(null);
+  const todayRowRef = useRef(null);
+  const pageCount = 6; // Visa 6 månader
   const [pagination, setPagination] = useState({
-    pageIndex: 1, //initial page index
-    pageSize: daysPerPage, //default page size
+    pageIndex: 1, // 1 = nuvarande månad (0 = föregående månad)
+    pageSize: 1, // 1 månad per sida
   });
 
+  // Bestäm den aktuella månaden baserat på sidnumret
+  const currentMonth = useMemo(() =>
+          addMonths(startOfMonth(new Date()), pagination.pageIndex - 1),
+      [pagination.pageIndex]
+  );
+
+  // Beräkna föregående och nästa månad för knapparna
+  const prevMonth = useMemo(() => subMonths(currentMonth, 1), [currentMonth]);
+  const nextMonth = useMemo(() => addMonths(currentMonth, 1), [currentMonth]);
+
+  // Använd location.state för att navigera till specifikt datum
   useEffect(() => {
     if (location.state && location.state.date) {
-      const daysAway = differenceInDays(location.state.date, startOfDay(new Date()));
-      const pageIx = Math.floor(daysAway/daysPerPage) + 1;
-      setPagination({pageIndex: pageIx, pageSize: daysPerPage});
+      const selectedDate = new Date(location.state.date);
+      const monthDiff = differenceInMonths(selectedDate, startOfMonth(new Date()));
+      setPagination({pageIndex: monthDiff + 1, pageSize: 1}); // +1 eftersom nuvarande månad är index 1
     }
   }, [location.state]);
 
-  const dates = useMemo(() =>
-          Array.from({ length: pagination.pageSize }, (_, i) =>
-              addDays(new Date(), i + ((pagination.pageIndex - 1) * pagination.pageSize) - 1)
-          ),
-      [pagination]
-  );
+  // Skapa datumlista för hela aktuella månaden
+  const dates = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    return eachDayOfInterval({ start: monthStart, end: monthEnd });
+  }, [currentMonth]);
+
+  // Funktion för att scrolla till dagens datum
+  const scrollToToday = () => {
+    if (!tableRef.current) return;
+    const scrollContainer = tableRef.current.parentElement;
+
+    if (todayRowRef.current && isSameMonth(new Date(), currentMonth)) {
+      const todayRow = todayRowRef.current;
+
+      const tableElement: Element = tableRef.current;
+
+      if (scrollContainer) {
+        // Beräkna positionen för att rada 2 (efter header) ska vara dagens datum
+        const tableHeader = tableElement.firstChild;
+        // @ts-ignore
+        const headerHeight = tableHeader ? tableHeader.offsetHeight : 0;
+        //const rowHeight = todayRow.offsetHeight;
+
+        const todayRowTop = todayRow.getBoundingClientRect().top;
+        const containerTop = scrollContainer.getBoundingClientRect().top;
+        const relativeTop = todayRowTop - containerTop;
+
+        // Scrolla så att dagens datum hamnar på andra raden (efter tabellhuvudet)
+        scrollContainer.scrollTop = scrollContainer.scrollTop + relativeTop - headerHeight;
+      }
+    } else {
+      scrollContainer.scrollTop = 0;
+    }
+  };
+
+  // Scrolla till dagens datum när data laddats
+  useEffect(() => {
+    if (!loading && isSameMonth(new Date(), currentMonth)) {
+      setTimeout(scrollToToday, 100);
+    }
+  }, [loading, dates, currentMonth]);
 
   const handleBookingClick = (booking) => {
     if (booking.id && booking.parent_id) {
@@ -64,17 +124,16 @@ const BookingOverview = () => {
 
   const columns = useMemo(() => [
     {
-      header: 'Datum',
+      header: () => (
+          <div className="font-semibold items-center capitalize">
+            {format(currentMonth, 'MMM', {locale: sv})}
+          </div>
+      ),
       accessorKey: 'date',
       cell: ({ row }) => {
-        const todayStyle = isSameDay(new Date(), row.original) ? 'darkorange' : undefined;
         return (
-            <div className="font-medium whitespace-nowrap"
-                 style={{
-                   backgroundColor: todayStyle
-                 }}
-            >
-              {format(row.original, 'dd/MM E', {locale: sv})}
+            <div className="font-medium whitespace-nowrap">
+              {format(row.original, 'dd E', {locale: sv})}
             </div>
         );
       },
@@ -104,7 +163,7 @@ const BookingOverview = () => {
         );
       }
     }))
-  ], [cars, bookings]);
+  ], [cars, bookings, currentMonth]);
 
   const table = useReactTable({
     data: dates,
@@ -112,12 +171,31 @@ const BookingOverview = () => {
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     manualPagination: true,
-    pageCount: pageCount, //One with past 2 weeks and 3 future months
+    pageCount: pageCount,
     onPaginationChange: setPagination,
     state: {
       pagination,
     },
   });
+
+  // Hantera klick på "Idag"-knappen
+  const handleTodayClick = () => {
+    setPagination({pageIndex: 1, pageSize: 1});
+    // Vänta tills state uppdaterats innan scrollning
+    setTimeout(scrollToToday, 100);
+  };
+
+  const handleNextClick = () => {
+    table.nextPage();
+    // Vänta tills state uppdaterats innan scrollning
+    setTimeout(scrollToToday, 100);
+  };
+
+  const handlePrevClick = () => {
+    table.previousPage();
+    // Vänta tills state uppdaterats innan scrollning
+    setTimeout(scrollToToday, 100);
+  };
 
   if (loading) {
     return (
@@ -127,15 +205,26 @@ const BookingOverview = () => {
     );
   }
 
+  function calcCellBg(isSticky: boolean | undefined, date: Date): string | undefined {
+    if (isSticky) {
+      if (isToday(date)) {
+        return "darkorange";
+      }
+      return isWeekend(date) ? 'hsl(var(--muted))' : 'hsl(var(--background))';
+    }
+    return undefined;
+  }
+
   return (
       <div className="flex flex-col w-full max-h-[calc(100vh-80px)]">
-        <Table className="[&_tr_td]:p-1 [&_tr_th]:p-1 border">
-          <TableHeader className="sticky top-0 bg-background z-40">
+        <Table ref={tableRef} className="[&_tr_td]:p-1 [&_tr_th]:p-1">
+          <TableHeader className="sticky text-base top-0 bg-background z-40">
             <TableRow>
               {table.getFlatHeaders().map(header => (
                   <TableHead
                       key={header.id}
                       className={cn(
+                          "h-auto",
                           "bg-background",
                           header.column.columnDef.meta?.isSticky && "sticky left-0 z-30"
                       )}
@@ -160,6 +249,7 @@ const BookingOverview = () => {
                     className={cn(
                         isWeekend(row.original) && "bg-muted/50"
                     )}
+                    ref={isToday(row.original) ? todayRowRef : null}
                 >
                   {row.getVisibleCells().map(cell => (
                       <TableCell
@@ -170,9 +260,7 @@ const BookingOverview = () => {
                           style={{
                             left: cell.column.columnDef.meta?.isSticky ? 0 : undefined,
                             width: cell.column.columnDef.meta?.width,
-                            background: cell.column.columnDef.meta?.isSticky ?
-                                isWeekend(row.original) ? 'hsl(var(--muted))' : 'hsl(var(--background))'
-                                : undefined
+                            background: calcCellBg(cell.column.columnDef.meta?.isSticky, row.original)
                           }}
                       >
                         {flexRender(
@@ -191,16 +279,17 @@ const BookingOverview = () => {
           <Button
               variant="outline"
               size="sm"
-              onClick={() => table.previousPage()}
+              onClick={handlePrevClick}
               disabled={!table.getCanPreviousPage()}
+              className="capitalize"
           >
             <ChevronLeft className="h-4 w-4" />
-            Föregående
+            {format(prevMonth, 'MMMM', {locale: sv})}
           </Button>
           <Button
               variant="outline"
               size="sm"
-              onClick={() => table.setPageIndex(1)}
+              onClick={handleTodayClick}
           >
             <ChevronDown className="h-4 w-4" />
             Idag
@@ -208,10 +297,11 @@ const BookingOverview = () => {
           <Button
               variant="outline"
               size="sm"
-              onClick={() => table.nextPage()}
+              onClick={handleNextClick}
               disabled={!table.getCanNextPage()}
+              className="capitalize"
           >
-            Nästa
+            {format(nextMonth, 'MMMM', {locale: sv})}
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

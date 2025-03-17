@@ -36,7 +36,7 @@ function App() {
   return (
       <Router>
         {authState.user && authState.isMember && <Navbar />}
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-2 py-2">
           <Routes>
             <Route
                 path="/login"

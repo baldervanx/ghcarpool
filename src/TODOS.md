@@ -100,8 +100,7 @@
 - [X] Recurring bookings should be shown as such with a round arrow
 - [X] *IMPORTANT* Sort car-columns on priority
 - [X] *IMPORTANT* Scroll on table, not page. Ensure buttons always visible.
--     Maybe only one week per page?
-- [ ] *IMPROVEMENT* Remove pagning or use paging on month basis instead.
+- [X] *IMPROVEMENT* Remove pagning or use paging on month basis instead.
 
 ## Home
 - [X] Add list of current active bookings, 
@@ -115,4 +114,4 @@
 - [X] Make journal export accessible only by admins 
 - [X] Use home page as landing-page
 - [ ] Clear cache button
-- [ ] Use accordion for settings, so that it is collapsed by default
+- [X] Use accordion for settings, so that it is collapsed by default

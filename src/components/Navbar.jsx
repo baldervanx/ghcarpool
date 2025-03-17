@@ -9,7 +9,7 @@ export function Navbar() {
   return (
     <nav className="border-b">
       <div className="container mx-auto px-2">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between">
           <div className="flex space-x-0">
             <Link to="/home">
               <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"

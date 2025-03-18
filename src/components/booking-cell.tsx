@@ -6,6 +6,7 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
   const [isDragging, setIsDragging] = useState(false);
   const startX = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const maxDrag = 60; // pixels
 
   function timeToString(minutes: number): string {
     const hours = Math.floor(minutes / 60);
@@ -26,7 +27,6 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
         const currentX = e.touches[0].clientX;
         const diff = startX.current - currentX;
 
-        const maxDrag = 60; // pixels
         const offset = Math.min(Math.max(diff, 0), maxDrag);
         setDragOffset(offset);
       }
@@ -48,6 +48,14 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
   const handleTouchEnd = useCallback(() => {
     if (readOnly) return;
     setIsDragging(false);
+    // If dragOffset after breakpoint then complete the drag automatically
+    // If it is less, then let it slide back
+    const breakpoint = maxDrag * 0.4;
+    if (dragOffset > breakpoint) {
+      setDragOffset(maxDrag);
+    } else {
+      setDragOffset(0);
+    }
   }, [dragOffset, onClick, car, date, readOnly]);
 
   if (!bookings || bookings.length === 0) {
@@ -78,7 +86,7 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
         </div>
       )}
       <div
-        className="relative z-10 transition-transform duration-300 bg-white dark:bg-gray-800"
+        className="relative z-10 transition-transform duration-500 bg-white dark:bg-gray-800"
         style={{ transform: `translateX(-${dragOffset}px)` }}
       >
         <div className="space-y-0.5">
@@ -88,18 +96,24 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
               onClick={() => !readOnly && onClick(booking)}
               className={accessibleCn("min-w-[14ch] bg-gray-100 dark:bg-gray-700 p-1 text-xs cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex justify-between items-center")}
             >
-              {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}` +
-                (booking.distance ? ` (${Math.round(booking.distance / 10)})` : ``) +
-                ` ${booking.destination ? (destinations.find(d => d.id === booking.destination)?.shortName || booking.destination) : ''}`
-              }
-              <span className="flex items-center">
-                {(booking.recurrenceId && !booking.logged) && (
-                    <Repeat size={12}/>
-                )}
-                {(booking.logged) && (
-                    <Check size={12}/>
-                )}
-              </span>
+              <div className="flex flex-col">
+                <span>
+                {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}` +
+                  (booking.distance ? ` (${Math.round(booking.distance / 10)})` : ``) +
+                  `${booking.destination ? ' ' + (destinations.find(d => d.id === booking.destination)?.shortName ?? booking.destination) : ''}`
+                }
+                </span>
+                {booking.comment && (<span className="italic">{booking.comment}</span>)}
+              </div>
+              {(booking.recurrenceId || booking.logged) && (
+                <div className="flex items-center">
+                  {(booking.recurrenceId && !booking.logged) && (
+                      <Repeat size={12}/>
+                  ) || (
+                      <Check size={12}/>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

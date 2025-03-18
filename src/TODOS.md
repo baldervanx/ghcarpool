@@ -84,6 +84,9 @@
 - [ ] *IMPORTANT* Confirmation when deleting all recurring bookings
 - [X] *IMPORTANT* Support booking trailer 
 - [X] *IMPORTANT* Only require distance for electric cars, not for trailer or volvo. Use "range" setting.
+- [X] *IMPORTANT* Comment - e.g. for broken car etc. 
+- [X] When start-time is selected the end-time should be set to the next hour, 
+      unless already higher than start-time
 
 ## Booking-overview
 - [X] Font-size of bookings should adjust with accessibility settings.
@@ -101,6 +104,10 @@
 - [X] *IMPORTANT* Sort car-columns on priority
 - [X] *IMPORTANT* Scroll on table, not page. Ensure buttons always visible.
 - [X] *IMPROVEMENT* Remove pagning or use paging on month basis instead.
+- [ ] Only have previous month if current day is in the beginning of the month.
+-     Load in 2-3 weeks of history - can be stored in cache.
+-     Extend timespan of bookings to match the 5 month of pages
+- [ ] Zoom-feature, to get a better overview - store in settings 
 
 ## Home
 - [X] Add list of current active bookings, 

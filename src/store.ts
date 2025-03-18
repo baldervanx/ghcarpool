@@ -383,6 +383,7 @@ export interface Booking {
     logged?: string; // The id of the logged entry.
     byUser: IdObject;
     recurrenceId?: string; // For recurring entries
+    comment?: string;
 }
 
 export interface DateCarBooking {

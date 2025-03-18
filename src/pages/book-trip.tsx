@@ -44,6 +44,7 @@ const BookTrip = () => {
   const [recurringEndDate, setRecurringEndDate] = useState('');
   const [distance, setDistance] = useState('');
   const [destination, setDestination] = useState('');
+  const [comment, setComment] = useState<string>('');
   const [alerts, setAlerts] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [existingBooking, setExistingBooking] = useState<string>(null);
@@ -82,6 +83,7 @@ const BookTrip = () => {
           setBookingEndTime(timeToString(bookingData.endTime));
           setDistance(bookingData.distance.toString());
           setDestination(bookingData.destination || '');
+          setComment(bookingData.comment || '');
 
           // Handle recurrence logic
           if (bookingData.recurrenceId) {
@@ -312,6 +314,7 @@ const BookTrip = () => {
             endTime: timeToNumber(bookingData.endTime),
             distance: Number(bookingData.distance),
             destination,
+            comment,
             byUser: doc(db, 'users', user.user_id),
             recurrenceId: recurrenceRef.id
           };
@@ -379,6 +382,7 @@ const BookTrip = () => {
           endTime: timeToNumber(endTime),
           distance: Number(dist),
           destination,
+          comment,
           byUser: doc(db, 'users', user.user_id)
         };
 
@@ -654,7 +658,14 @@ const BookTrip = () => {
 
   function isDistanceRequired(): boolean {
     const range = cars.find(c => c.id == selectedCar)?.range;
-    return range && range > 0;
+    return range && range > 0 && !comment;
+  }
+
+  function updateBookingStartTime(value: string) {
+    setBookingStartTime(value);
+    if (!bookingEndTime || (timeToNumber(bookingEndTime) < timeToNumber(value))) {
+      setBookingEndTime(value);
+    }
   }
 
   return (
@@ -691,7 +702,7 @@ const BookTrip = () => {
           <TimeSelector
               label="Starttid"
               value={bookingStartTime}
-              onChange={setBookingStartTime}
+              onChange={updateBookingStartTime}
               disabled={isEditing && isRecurring}
           />
           <TimeSelector
@@ -806,6 +817,16 @@ const BookTrip = () => {
                 <span>{alert.message}</span>
               </div>
           ))}
+
+          <div className="space-y-2">
+            <Label>Kommentar</Label>
+            <Input
+                value={comment}
+                disabled={isEditing && isRecurring}
+                onChange={e => setComment(e.target.value)}
+                className="w-full"
+            />
+          </div>
 
           <Button
               className="w-full"

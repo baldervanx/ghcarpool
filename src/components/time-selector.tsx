@@ -6,11 +6,12 @@ interface TimeSelectorProps {
     value: string,
     onChange: (time: string) => void,
     label: string,
-    disabled?: boolean
+    disabled?: boolean,
+    hourCount?: number
 }
 
-export const TimeSelector = ({value, onChange, label, disabled=false}: TimeSelectorProps) => {
-    const hours = Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0'));
+export const TimeSelector = ({value, onChange, label, disabled=false, hourCount=24}: TimeSelectorProps) => {
+    const hours = Array.from({length: hourCount}, (_, i) => i.toString().padStart(2, '0'));
     const minutes = ['00', '15', '30', '45'];
 
     const [selectedHour, selectedMinute] = value ? value.split(':') : ['', ''];

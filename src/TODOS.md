@@ -85,6 +85,7 @@
 - [X] *IMPORTANT* Support booking trailer 
 - [X] *IMPORTANT* Only require distance for electric cars, not for trailer or volvo. Use "range" setting.
 - [X] *IMPORTANT* Comment - e.g. for broken car etc. 
+- [ ] When comment is set - allow user to be not set.
 - [X] When start-time is selected the end-time should be set to the next hour, 
       unless already higher than start-time
 
@@ -107,7 +108,8 @@
 - [ ] Only have previous month if current day is in the beginning of the month.
 -     Load in 2-3 weeks of history - can be stored in cache.
 -     Extend timespan of bookings to match the 5 month of pages
-- [ ] Zoom-feature, to get a better overview - store in settings 
+- [ ] Zoom-feature, to get a better overview - store in settings
+- [ ] Allow pure comment bookings - no user and no time/full day.
 
 ## Home
 - [X] Add list of current active bookings, 

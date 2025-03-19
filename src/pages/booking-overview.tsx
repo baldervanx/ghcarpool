@@ -32,8 +32,8 @@ import { Button } from "@/components/ui/button";
 import {ChevronDown, ChevronLeft, ChevronRight} from "lucide-react";
 import {cn, useAccessibleCn} from "@/lib/utils";
 import {useSelector} from "react-redux";
-import BookingCell from "@/components/booking-cell"
-import type { AppStore } from '@/store';
+import BookingCell, {CarDate} from "@/components/booking-cell"
+import type {AppStore, Booking} from '@/store';
 
 const BookingOverview = () => {
   const navigate = useNavigate();
@@ -112,10 +112,10 @@ const BookingOverview = () => {
     }
   }, [loading, dates, currentMonth]);
 
-  const handleBookingClick = (booking) => {
-    if (booking.id && booking.parent_id) {
+  const handleBookingClick = (booking: Booking | CarDate) => {
+    if ("id" in booking && booking.id && "parent_id" in booking && booking.parent_id) {
       navigate('/book-trip', {state: {parent_id: booking.parent_id, booking_id: booking.id}});
-    } else if (booking.car && booking.date) {
+    } else if ("car" in booking && booking.car && booking.date) {
       navigate('/book-trip', {state: booking});
     }
   };

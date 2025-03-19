@@ -253,7 +253,7 @@ const userSlice = createSlice({
     }
 });
 
-interface Destination {
+export interface Destination {
     id: string,
     distance?: number,
     name: string,

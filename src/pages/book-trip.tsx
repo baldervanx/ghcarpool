@@ -710,6 +710,7 @@ const BookTrip = () => {
               value={bookingEndTime}
               onChange={setBookingEndTime}
               disabled={isEditing && isRecurring}
+              hourCount={25}
           />
         </div>
 

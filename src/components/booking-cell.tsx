@@ -1,7 +1,22 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {Repeat, Check} from 'lucide-react';
+import type { Booking, Destination } from '@/store';
 
-const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, accessibleCn}) => {
+export interface CarDate {
+  car: string, date: Date
+}
+
+export interface BookingCellParam {
+  bookings: Booking[],
+  car: string,
+  date: Date,
+  destinations: Destination[],
+  onClick: ({}: Booking | CarDate) => void,
+  readOnly: boolean,
+  accessibleCn: any //TODO: Type
+}
+
+const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, accessibleCn}: BookingCellParam) => {
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const startX = useRef(0);
@@ -69,6 +84,11 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
     );
   }
 
+  const timesToString = (booking: Booking) => {
+    const result = timeToString(booking.startTime) + '-' + timeToString(booking.endTime);
+    return result === '0-24' ? '' : result;
+  };
+
   return (
     <div
       ref={containerRef}
@@ -98,7 +118,7 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
             >
               <div className="flex flex-col">
                 <span>
-                {`${booking.users.map(u => u.id).join(', ')} ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}` +
+                {`${booking.users.filter(u => u.id != 'NO').map(u => u.id).join(', ')} ${timesToString(booking)}` +
                   (booking.distance ? ` (${Math.round(booking.distance / 10)})` : ``) +
                   `${booking.destination ? ' ' + (destinations.find(d => d.id === booking.destination)?.shortName ?? booking.destination) : ''}`
                 }

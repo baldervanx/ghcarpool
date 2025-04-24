@@ -15,6 +15,7 @@ import UserSelector from '@/components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '@/store';
 import type { AppStore } from '@/store';
 import { isOnline } from '@/lib/utils';
+import ConfirmationDialog from "@/components/confirmation-dialog";
 
 const MAX_DIST = 9999;
 let COST_PER_KM = 1;
@@ -43,6 +44,13 @@ export function RegisterTrip() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConnectedBooking, setIsConnectedBooking] = useState(false);
   const [connectedBooking, setConnectedBooking] = useState(null);
+  const [dialogState, setDialogState] = useState({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: null,
+    onCancel: null
+  });
 
   useEffect(() => {
     COST_PER_KM = data.cost_per_km;
@@ -159,9 +167,28 @@ export function RegisterTrip() {
 
   function distanceSimilarToBooking() {
     if (!isConnectedBooking || !connectedBooking) return true;
-
-    return (connectedBooking.distance - 5 < tripDistance) && (connectedBooking.distance + 5 > tripDistance);
+    let distDiff: number = connectedBooking.distance / 5;
+    if (distDiff < 2) distDiff = 2;
+    return (connectedBooking.distance - distDiff < tripDistance) && (connectedBooking.distance + distDiff > tripDistance);
   }
+
+  const showConfirmDialog = async (title: string, description: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setDialogState({
+        isOpen: true,
+        title,
+        description,
+        onConfirm: () => {
+          setDialogState(prev => ({ ...prev, isOpen: false }));
+          resolve(true);
+        },
+        onCancel: () => {
+          setDialogState(prev => ({ ...prev, isOpen: false }));
+          resolve(false);
+        }
+      });
+    });
+  };
 
   const handleSubmit = async () => {
     if (!selectedCar || selectedUsers.length === 0 || !newOdometer) {
@@ -177,8 +204,10 @@ export function RegisterTrip() {
     }
 
     if (!distanceSimilarToBooking()) {
-      setErrorMessage('Angiven sträcka skiljer sig från bokningen ' + connectedBooking.distance);
-      return; // TODO: This should be made to a soft validation - confirmation dialog?
+      if (!await showConfirmDialog('Bekräfta sträcka',
+          'Angiven sträcka skiljer sig från bokningens ' + connectedBooking.distance
+          + ' är detta förväntat?'))
+        return;
     }
 
     if (isProcessing) return;
@@ -218,7 +247,7 @@ export function RegisterTrip() {
       if (isConnectedBooking && connectedBooking) {
         // Fetch booking and update it with the trip reference
         const dateCarDocRef = doc(db, 'date-car-bookings', connectedBooking.parent_id);
-        return await runTransaction(db, async (transaction) => {
+        await runTransaction(db, async (transaction) => {
           const dateBookingsDoc = await transaction.get(dateCarDocRef);
           if (dateBookingsDoc.exists()) {
             const existingBookings = dateBookingsDoc.data().bookings;
@@ -248,6 +277,14 @@ export function RegisterTrip() {
 
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
+        <ConfirmationDialog
+            isOpen={dialogState.isOpen}
+            title={dialogState.title}
+            description={dialogState.description}
+            onConfirm={dialogState.onConfirm}
+            onCancel={dialogState.onCancel}
+        />
+
         <CarSelector disabled={isProcessing} carFilter={(cars) => cars.filter(c => c.hasLog ?? true)} />
         {/* Behöver markera inmatad text som röd, eller helst inte tillåta textinmatning alls.
             Ser ut som att värdet accepteras. */}

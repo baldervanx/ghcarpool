@@ -1,5 +1,18 @@
 
 # TODOs 
+
+## Bugs in release
+- [X] Does not jump properly to Log after having logged from home-page.
+- [ ] Date incorrect format on "Boka" tab - use react-datepicker? Format "DD MMM"?
+- [ ] Switching bookings where one booking is recurring, does not work (should "unlock" automatically)
+- [ ] Destination creation feature misunderstood, can it be simplified? 
+- [ ] Scrolling on booking overview not working fully, when touching bookings - can use header for scrolling
+-      make the scroll-bars always visible?
+- [ ] The logging-of-booking feature need to be completed, connect also from logging page and describe booking properly
+- [X] When validating distance of logging, must be soft validation - it happens that you drive longer than you booked.
+- [ ] When updating a booking that someone else created, it should not switch "ownership"
+- [X] Titles in export shall be semicolon separated
+
 ## General
 - [ ] Add unit tests or similar, complexity is quite high. Need to cover all scenarios.
 - [ ] ... Fix bugs in initial tests

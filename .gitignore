@@ -26,3 +26,7 @@ dist-ssr
 # Other
 .firebase/*
 .firebaserc
+firebase-export-*/
+/emulated_database/
+/bundle-stats.json
+/stats.html

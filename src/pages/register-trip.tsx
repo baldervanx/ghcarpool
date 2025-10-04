@@ -1,65 +1,62 @@
+// pages/RegisterTrip.jsx
+
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import {useLocation, useNavigate} from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { db } from '../utils/firebase';
-import { collection, query, getDocs, doc, orderBy, where, addDoc, updateDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { db } from '@/db/firebase';
+import {collection, doc, addDoc, updateDoc, serverTimestamp, runTransaction} from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
-import { CarSelector } from '../components/CarSelector';
-import UserSelector from '../components/UserSelector';
-import { setSelectedUsers } from '../store';
-import { isOnline } from '@/lib/utils'; // Importera nätverkskontrollen
+import { CarSelector } from '@/components/CarSelector';
+import UserSelector from '@/components/UserSelector';
+import { setSelectedUsers, setSelectedCar } from '@/store';
+import type { AppStore } from '@/store';
+import { isOnline } from '@/lib/utils';
+import ConfirmationDialog from "@/components/confirmation-dialog";
 
 const MAX_DIST = 9999;
 let COST_PER_KM = 1;
 
-interface Trip {
-  id: string;
-  odo: number;
-  distance: number;
-  cost: number;
-  comment?: string;
-  users: { id: string }[];
-  byUser: { id: string };
-}
 
 export function RegisterTrip() {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
-  const { selectedCar } = useSelector(state => state.car);
-  const { user } = useSelector(state => state.auth);
-  const { selectedUsers, users } = useSelector(state => state.user);
-  const { data } = useSelector(state => state.settings);
-  const [odometerLoading, setOdometerLoading] = useState(false);
+  const { selectedCar } = useSelector((state: AppStore) => state.car);
+  const { user } = useSelector((state: AppStore) => state.auth);
+  const { selectedUsers, users } = useSelector((state: AppStore) => state.user);
+  const { data } = useSelector((state: AppStore) => state.settings);
+  const { trips, loading: tripsLoading } = useSelector((state: AppStore) => state.trip);
   const [lastOdometer, setLastOdometer] = useState('');
-  const [tripDistance, setTripDistance] = useState('');
+  const [tripDistance, setTripDistance] = useState(0);
   const [cost, setCost] = useState('');
   const [newOdometer, setNewOdometer] = useState('');
   const [editOdometer, setEditOdometer] = useState('');
   const [comment, setComment] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
-  const [lastTrip, setLastTrip] = useState<Trip | null>(null);
-  const [previousTrip, setPreviousTrip] = useState<Trip | null>(null);
+  const [lastTrip, setLastTrip] = useState(null);
+  const [previousTrip, setPreviousTrip] = useState(null);
   const [canEdit, setCanEdit] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isConnectedBooking, setIsConnectedBooking] = useState(false);
+  const [connectedBooking, setConnectedBooking] = useState(null);
+  const [dialogState, setDialogState] = useState({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: null,
+    onCancel: null
+  });
 
   useEffect(() => {
     COST_PER_KM = data.cost_per_km;
+    // TODO: This should just be set once when user logs on.
     dispatch(setSelectedUsers([user.user_id]));
   }, [dispatch, users.length, user.user_id]);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (selectedCar) {
-        await fetchLastTrips(selectedCar);
-      }
-    };
-    fetchData();
-  }, [selectedCar]);
 
   useEffect(() => {
     const handleOnlineStatus = () => {
@@ -80,37 +77,22 @@ export function RegisterTrip() {
     };
   }, []);
 
-  const fetchLastTrips = async (carId) => {
-    if (!isOnline()) {
-      setErrorMessage('Du är offline. Kan inte hämta senaste resor.');
-      setIsProcessing(true);
-      return;
+  useEffect(() => {
+    if (location.state && location.state.booking) {
+       const booking = location.state.booking;
+       setIsConnectedBooking(true);
+       setConnectedBooking(booking);
+       dispatch(setSelectedCar(booking.car.id));
+       dispatch(setSelectedUsers(booking.users.map(u => u.id)));
     }
+  }, [location.state]);
 
-    resetAllFields('');
-    setLastOdometer('');
-    setOdometerLoading(true);
-
-    try {
-      const tripsRef = collection(db, 'trips');
-      const carRef = doc(db, 'cars', carId);
-      const q = query(
-          tripsRef,
-          where('car', '==', carRef),
-          orderBy('timestamp', 'desc'),
-          limit(2)
-      );
-
-      const snapshot = await getDocs(q);
-      setOdometerLoading(false);
-
-      if (!snapshot.empty) {
-        const trips = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Trip[];
-
-        const [latestTrip, prevTrip] = trips;
+  useEffect(() => {
+    setErrorMessage('');
+    if (selectedCar) {
+      const relevantTrips = trips.filter(trip => trip.car.id === selectedCar);
+      if (relevantTrips.length > 0) {
+        const [latestTrip, prevTrip] = relevantTrips;
         setLastTrip(latestTrip);
         setPreviousTrip(prevTrip);
 
@@ -132,28 +114,22 @@ export function RegisterTrip() {
       } else {
         setErrorMessage('Kan inte hämta senaste mätarställning för vald bil.');
         setLastOdometer('');
-        setNewOdometer('');
-        setLastTrip(null);
-        setPreviousTrip(null);
-        setCanEdit(false);
+        resetAllFields('');
       }
-    } catch (error) {
-      setErrorMessage('Ett fel uppstod när resan skulle hämtas.');
-      console.error('Error fetching trips:', error);
     }
-  };
+  }, [selectedCar, trips]);
 
-  const resetAllFields = (lastOdo) => {
+  const resetAllFields = (lastOdo: string) => {
     setEditOdometer('');
-    setTripDistance('');
+    setTripDistance(0);
     setCost('');
     setNewOdometer(lastOdo);
-    setComment('');
+    setComment(connectedBooking?.destination || '');
   };
 
   const handleOdometerChange = (value) => {
     setEditOdometer(value);
-    let newOdo: any = lastOdometer;
+    let newOdo = lastOdometer;
     if (value.length > 0) {
       let prefix = lastOdometer.slice(0, -value.length);
       newOdo = prefix + value;
@@ -161,10 +137,10 @@ export function RegisterTrip() {
         newOdo = (parseInt(prefix) + 1).toString() + value;
       }
     }
-    let dist: any = newOdo - lastOdometer;
-    if (dist <= 0 || dist > MAX_DIST) dist = '';
+    let dist: number = parseInt(newOdo) - parseInt(lastOdometer);
+    if (dist <= 0 || dist > MAX_DIST) dist = 0;
     setTripDistance(dist);
-    setCost(dist !== '' ? (dist * COST_PER_KM).toFixed(2) : '');
+    setCost(dist !== 0 ? (dist * COST_PER_KM).toFixed(2) : '');
     setNewOdometer(newOdo);
   };
 
@@ -189,6 +165,31 @@ export function RegisterTrip() {
     }
   };
 
+  function distanceSimilarToBooking() {
+    if (!isConnectedBooking || !connectedBooking) return true;
+    let distDiff: number = connectedBooking.distance / 5;
+    if (distDiff < 2) distDiff = 2;
+    return (connectedBooking.distance - distDiff < tripDistance) && (connectedBooking.distance + distDiff > tripDistance);
+  }
+
+  const showConfirmDialog = async (title: string, description: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setDialogState({
+        isOpen: true,
+        title,
+        description,
+        onConfirm: () => {
+          setDialogState(prev => ({ ...prev, isOpen: false }));
+          resolve(true);
+        },
+        onCancel: () => {
+          setDialogState(prev => ({ ...prev, isOpen: false }));
+          resolve(false);
+        }
+      });
+    });
+  };
+
   const handleSubmit = async () => {
     if (!selectedCar || selectedUsers.length === 0 || !newOdometer) {
       setErrorMessage('Vänligen fyll i alla fält');
@@ -200,6 +201,13 @@ export function RegisterTrip() {
     if (comment === "" && userCommentMandatory) {
       setErrorMessage('Kommentar krävs för ' + userCommentMandatory.shortName);
       return;
+    }
+
+    if (!distanceSimilarToBooking()) {
+      if (!await showConfirmDialog('Bekräfta sträcka',
+          'Angiven sträcka skiljer sig från bokningens ' + connectedBooking.distance
+          + ' är detta förväntat?'))
+        return;
     }
 
     if (isProcessing) return;
@@ -221,19 +229,34 @@ export function RegisterTrip() {
         byUser: byUser
       };
 
+      let tripRef;
       if (isEditMode && lastTrip) {
-        const tripRef = doc(db, 'trips', lastTrip.id);
+        tripRef = doc(db, 'trips', lastTrip.id);
         await updateDoc(tripRef, {
           ...tripData,
           editedAt: serverTimestamp()
         });
       } else {
-        await addDoc(collection(db, 'trips'), {
+        console.log('Submitting trip:', tripData);
+        tripRef = await addDoc(collection(db, 'trips'), {
           ...tripData,
           timestamp: serverTimestamp()
         });
       }
 
+      if (isConnectedBooking && connectedBooking) {
+        // Fetch booking and update it with the trip reference
+        const dateCarDocRef = doc(db, 'date-car-bookings', connectedBooking.parent_id);
+        await runTransaction(db, async (transaction) => {
+          const dateBookingsDoc = await transaction.get(dateCarDocRef);
+          if (dateBookingsDoc.exists()) {
+            const existingBookings = dateBookingsDoc.data().bookings;
+            const updatedBookings =
+                existingBookings.map(b => b.id === connectedBooking.id ? {...b, logged: tripRef} : b);
+            transaction.update(dateCarDocRef, {bookings: updatedBookings});
+          }
+        });
+      }
       navigate('/trip-log');
     } catch (error) {
       console.error('Error saving trip:', error);
@@ -254,7 +277,17 @@ export function RegisterTrip() {
 
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
-        <CarSelector disabled={isProcessing} />
+        <ConfirmationDialog
+            isOpen={dialogState.isOpen}
+            title={dialogState.title}
+            description={dialogState.description}
+            onConfirm={dialogState.onConfirm}
+            onCancel={dialogState.onCancel}
+        />
+
+        <CarSelector disabled={isProcessing} carFilter={(cars) => cars.filter(c => c.hasLog ?? true)} />
+        {/* Behöver markera inmatad text som röd, eller helst inte tillåta textinmatning alls.
+            Ser ut som att värdet accepteras. */}
         <UserSelector disabled={isProcessing} />
 
         {lastTrip && canEdit && (
@@ -277,7 +310,7 @@ export function RegisterTrip() {
             <Input
                 type="number"
                 value={lastOdometer}
-                placeholder={odometerLoading ? 'Laddar ...' : ''}
+                placeholder={tripsLoading ? 'Laddar ...' : ''}
                 disabled
             />
           </div>
@@ -307,7 +340,7 @@ export function RegisterTrip() {
                     handleOdometerChange(value);
                   }
                 }}
-                disabled={isProcessing || odometerLoading}
+                disabled={isProcessing || tripsLoading}
             />
           </div>
           <div className="space-y-2 flex-1">
@@ -320,7 +353,7 @@ export function RegisterTrip() {
           <div className="space-y-2 flex-1">
             <Label>Kostnad</Label>
             <Input
-                value={Math.round(cost) + ' kr'}
+                value={Math.round(Number(cost)) + ' kr'}
                 disabled
             />
           </div>
@@ -335,12 +368,33 @@ export function RegisterTrip() {
           />
         </div>
 
+        {connectedBooking && (
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                  id="connected-booking"
+                  checked={isConnectedBooking}
+                  onCheckedChange={(state) => {
+                    if (state !== 'indeterminate') {
+                      setIsConnectedBooking(state);
+                    }
+                  }}
+                  disabled={isProcessing}
+              />
+              <Label htmlFor="connected-booking" className="text-sm">
+                {`För bokning`}
+              </Label>
+            </div>
+        )}
+
+        {/* FIXME: Använd Alert istället? */}
         {errorMessage && (
             <div className="text-red-500">
               {errorMessage}
             </div>
         )}
 
+        {/* FIXME: Bör vara enabled så att användaren får feedback på felaktig inmatning. Fast inte om "isProcessing".
+            Måste se till att errorMessage nollställs när felet korrigeras. */}
         <Button
             className="w-full"
             onClick={handleSubmit}

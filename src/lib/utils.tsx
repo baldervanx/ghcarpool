@@ -1,12 +1,13 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { createContext, useContext, useEffect, useState, useMemo } from 'react'
+import React from 'react'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-type TextSize = 'normal' | 'large' | 'larger'
+export type TextSize = 'normal' | 'large' | 'larger'
 
 type AccessibilitySettings = {
   isHighContrast: boolean
@@ -143,3 +144,19 @@ export function useAccessibleCn() {
 export const isOnline = () => {
   return window.navigator.onLine;
 };
+
+export function mergeAndRemoveDuplicates<T>(array1:T[], array2:T[], key: string, sorter?: (a:T,b:T)=>number):T[] {
+  // Slå ihop arrayerna
+  const combined = [...array1, ...array2];
+
+  // Använd Map för att behålla unika objekt baserat på key
+  const uniqueMap = new Map();
+
+  combined.forEach(item => {
+    uniqueMap.set(item[key], item);
+  });
+
+  // Konvertera tillbaka till array och sortera
+  const uniqueArray = Array.from<T>(uniqueMap.values());
+  return sorter ? uniqueArray.sort(sorter) : uniqueArray;
+}

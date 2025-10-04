@@ -3,22 +3,29 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Provider } from 'react-redux';
-import store, { fetchAuthState, fetchUsers } from './store';
+import store, { fetchAuthState } from './store';
 import { Navbar } from './components/Navbar';
 import { Login } from './pages/Login';
 import { RegisterTrip } from './pages/register-trip';
 import { TripLog } from './pages/TripLog';
+import BookTrip from './pages/book-trip';
+import BookingOverview from './pages/booking-overview';
+
 import { AccessibilityProvider } from './lib/utils';
 import { ThemeProvider } from './components/theme-context';
 import { HomePage } from './pages/home';
 import PropTypes from "prop-types";
+import {useListenToTrips} from "@/db/use-listen-to-trips";
+import {useListenToBookings} from "@/db/use-listen-to-bookings";
 
 function App() {
+  console.log('App rendering');
+  useListenToTrips();
+  useListenToBookings();
   const dispatch = useDispatch();
   const authState = useSelector(state => state.auth);
 
   useEffect(() => {
-    dispatch(fetchUsers());
     dispatch(fetchAuthState());
   }, [dispatch]);
 
@@ -29,15 +36,23 @@ function App() {
   return (
       <Router>
         {authState.user && authState.isMember && <Navbar />}
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-2 py-2">
           <Routes>
             <Route
                 path="/login"
-                element={authState.user && authState.isMember ? <Navigate to="/register-trip" replace /> : <Login />}
+                element={authState.user && authState.isMember ? <Navigate to="/home" replace /> : <Login />}
             />
             <Route
                 path="/home"
                 element={<ProtectedRoute><HomePage /></ProtectedRoute>}
+            />
+            <Route
+                path="/book-trip"
+                element={<ProtectedRoute><BookTrip /></ProtectedRoute>}
+            />
+            <Route
+                path="/booking-overview"
+                element={<ProtectedRoute><BookingOverview /></ProtectedRoute>}
             />
             <Route
                 path="/register-trip"
@@ -49,7 +64,7 @@ function App() {
             />
             <Route
                 path="*"
-                element={<Navigate to="/register-trip" replace />}
+                element={<Navigate to="/home" replace />}
             />
           </Routes>
         </div>

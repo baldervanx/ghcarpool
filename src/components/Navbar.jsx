@@ -1,34 +1,54 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { House } from 'lucide-react';
+import { House, Calendar, CalendarPlus, FileText, FilePlus } from 'lucide-react';
 
 export function Navbar() {
   const location = useLocation();
+  const iconSize = 32;
 
   return (
     <nav className="border-b">
       <div className="container mx-auto px-2">
-        <div className="flex items-center justify-between h-12">
-          <div className="flex space-x-2">
+        <div className="flex items-center justify-between">
+          <div className="flex space-x-0">
             <Link to="/home">
-              <Button className="h-8"
-                variant={location.pathname === '/home' ? 'default' : 'ghost'}
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
+                      variant={location.pathname === '/home' ? 'default' : 'ghost'}
               >
-                <House size={32}/>
+                <House size={iconSize}/>
+                {/*<span className="hidden md:inline">Hem</span>*/}
+              </Button>
+            </Link>
+            <Link to="/book-trip">
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
+                  variant={location.pathname === '/book-trip' ? 'default' : 'ghost'}
+              >
+                <CalendarPlus size={iconSize}/>
+                <span className="hidden md:inline">Boka</span>
+              </Button>
+            </Link>
+            <Link to="/booking-overview">
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
+                      variant={location.pathname === '/book-overview' ? 'default' : 'ghost'}
+              >
+                <Calendar size={iconSize}/>
+                <span className="hidden md:inline">Bok</span>
               </Button>
             </Link>
             <Link to="/register-trip">
-              <Button className="h-8"
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
                 variant={location.pathname === '/register-trip' ? 'default' : 'ghost'}
               >
-                Logga
+                <FilePlus size={iconSize}/>
+                <span className="hidden md:inline">Logga</span>
               </Button>
             </Link>
             <Link to="/trip-log">
-              <Button className="h-8"
+              <Button className="flex items-center gap-0 [&_svg]:size-8 h-12 px-1"
                 variant={location.pathname === '/trip-log' ? 'default' : 'ghost'}
               >
-                Journal
+                <FileText size={iconSize}/>
+                <span className="hidden md:inline">Log</span>
               </Button>
             </Link>
           </div>
@@ -37,3 +57,4 @@ export function Navbar() {
     </nav>
   );
 }
+

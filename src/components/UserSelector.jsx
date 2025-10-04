@@ -1,5 +1,4 @@
 // components/UserSelector.jsx
-import React from 'react';
 import { User } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import MultipleSelector from '@/components/ui/multiple-selector';

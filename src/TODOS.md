@@ -9,9 +9,16 @@
 - [ ] Scrolling on booking overview not working fully, when touching bookings - can use header for scrolling
 -      make the scroll-bars always visible?
 - [ ] The logging-of-booking feature need to be completed, connect also from logging page and describe booking properly
+-     Logging of multi-day should mark all entries as logged.
+- [ ] Home page showing "Logga" on multi-day booking, before end-date
 - [X] When validating distance of logging, must be soft validation - it happens that you drive longer than you booked.
 - [ ] When updating a booking that someone else created, it should not switch "ownership"
+- [ ] Should always be able to change a booking where one of the users are the one editing it, even if it is created by someone else
 - [X] Titles in export shall be semicolon separated
+- [X] Updating multi-day booking has multiple issues: comments, start/end-times loaded/set incorrectly, distance lost, 
+      changing end-time collides with itself
+- [ ] Make it possible to do limited updates of recurring bookings
+- [ ] Should load more booking history when going back
 
 ## General
 - [ ] Add unit tests or similar, complexity is quite high. Need to cover all scenarios.

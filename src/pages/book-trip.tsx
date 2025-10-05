@@ -4,8 +4,12 @@ import {db} from '@/db/firebase';
 import {
   collection,
   doc,
+  DocumentData,
   DocumentReference,
+  DocumentSnapshot,
+  FieldValue,
   getDoc,
+  getDocFromCache,
   runTransaction,
   serverTimestamp,
   Transaction
@@ -161,9 +165,9 @@ const BookTrip = () => {
     booking?: Booking;
   }
 
-  function findOverlappingBooking(bookings:Booking[], newBooking: BookingTimes, existingBookingId?: string, recurrenceId?: string): OverlappingBooking {
+  function findOverlappingBooking(bookings: Booking[], newBooking: BookingTimes, existingBookingId?: string, recurrenceId?: string): OverlappingBooking {
     // Filter out any old version of the booking, add the new one and sort.
-    const sortedBookings = [...bookings]
+    const sortedBookings = bookings
         .filter(b => b.id !== existingBookingId && (recurrenceId === undefined || b.recurrenceId !== recurrenceId))
         .sort((a, b) => a.startTime - b.startTime);
 
@@ -193,17 +197,17 @@ const BookTrip = () => {
           type = "endTime";
         }
 
-        overlappingBookings.push({ booking, type });
+        overlappingBookings.push({booking, type});
       }
     }
 
     // Returnera rätt resultat baserat på antal överlappningar
     if (overlappingBookings.length === 0) {
-      return { type: "none" };
+      return {type: "none"};
     } else if (overlappingBookings.length === 1) {
       return overlappingBookings[0];
     } else {
-      return { type: "multiple", booking: overlappingBookings[0].booking };
+      return {type: "multiple", booking: overlappingBookings[0].booking};
     }
   }
 
@@ -289,26 +293,34 @@ const BookTrip = () => {
                 startTime: timeToNumber(validation.startTime),
                 endTime: timeToNumber(validation.endTime)
               };
-
               checkBookingOverlapping(bookingsFromDb, newBooking, existingBooking, recurrenceId, validation.date);
             }
           }
         }
 
         // If we get here, all validations passed. Create the recurrence document
-        const recurrenceRef = doc(collection(db, 'recurrence'));
-        transaction.set(recurrenceRef, {
-          isMultiDay,
-          recurringDays,
-          recurringStartDate: bookingDate,
-          recurringEndDate,
-          createdAt: serverTimestamp()
-        });
+        let recurrenceRef: DocumentReference<DocumentData, DocumentData> | DocumentSnapshot<DocumentData, DocumentData>
+        if (recurrenceId) {
+          // Fetch existing
+          recurrenceRef = await getDocFromCache(doc(db, 'recurrence', recurrenceId));
+        } else {
+          // Create new
+          recurrenceRef = doc(collection(db, 'recurrence'));
+          transaction.set(recurrenceRef, {
+            isMultiDay,
+            recurringDays,
+            recurringStartDate: bookingDate,
+            recurringEndDate,
+            createdAt: serverTimestamp()
+          });
+        }
 
         // Create or update all bookings
         for (const bookingData of bookingValidations) {
+          // Check if the booking is already present
+          let currentBookingInData = bookingData.bookings ? bookingData.bookings.find(b => b.recurrenceId === recurrenceId)?.id : null;
           const newBooking = {
-            id: existingBooking || doc(collection(db, 'date-car-bookings')).id,
+            id: currentBookingInData || doc(collection(db, 'date-car-bookings')).id,
             users: selectedUsers.map(u => doc(db, 'users', u)),
             startTime: timeToNumber(bookingData.startTime),
             endTime: timeToNumber(bookingData.endTime),
@@ -323,7 +335,7 @@ const BookTrip = () => {
             const existingBookings = bookingData.bookings;
 
             const updatedBookings = existingBooking
-                ? existingBookings.map(b => b.id === existingBooking ? newBooking : b)
+                ? existingBookings.map(b => b.id === newBooking.id ? newBooking : b)
                 : [...existingBookings, newBooking];
 
             transaction.update(bookingData.docRef, {bookings: updatedBookings});

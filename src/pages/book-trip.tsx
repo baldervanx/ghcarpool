@@ -7,7 +7,6 @@ import {
   DocumentData,
   DocumentReference,
   DocumentSnapshot,
-  FieldValue,
   getDoc,
   getDocFromCache,
   runTransaction,
@@ -24,7 +23,7 @@ import {useDispatch, useSelector} from 'react-redux';
 import UserSelector from '@/components/UserSelector';
 import type {AppStore, DateCarBooking, Booking} from '@/store';
 import {setSelectedCar, setSelectedUsers} from '@/store';
-import {format, isSameDay} from 'date-fns';
+import {addDays, differenceInCalendarDays, format} from 'date-fns';
 import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import {TimeSelector} from "@/components/time-selector";
@@ -65,7 +64,7 @@ const BookTrip = () => {
   const [bookingToSwap, setBookingToSwap] = useState<Booking>(null);
 
   useEffect(() => {
-    if (location.state && location.state.parent_id) {
+    if (location.state?.parent_id) {
       const {parent_id, booking_id} = location.state;
       const dateCarBooking = bookings.find(dcb => dcb.id === parent_id);
 
@@ -96,7 +95,7 @@ const BookTrip = () => {
           }
         }
       }
-    } else if (location.state && location.state.car) {
+    } else if (location.state?.car) {
       const {car, date} = location.state;
       dispatch(setSelectedCar(car));
       setBookingDate(format(date, 'yyyy-MM-dd'));
@@ -241,20 +240,22 @@ const BookTrip = () => {
       // Collect all dates that need booking before starting transaction
       const start = new Date(bookingDate);
       const end = new Date(recurringEndDate);
-      const currentDate = new Date(start);
+      const numDays = differenceInCalendarDays(end, start);
+
       const bookingValidations = [];
 
-      while (currentDate <= end) {
+      for (let dayOffset = 0; dayOffset <= numDays; dayOffset++) {
+        const currentDate = addDays(start, dayOffset);
         if (isMultiDay || recurringDays.includes(dayToIndex(currentDate))) {
           let startTime = bookingStartTime;
           let endTime = bookingEndTime;
           let dist = distance;
 
           if (isMultiDay) {
-            if (isSameDay(currentDate, start)) {
+            if (dayOffset === 0) {
               endTime = "24:00";
               dist = '';
-            } else if (isSameDay(currentDate, end)) {
+            } else if (dayOffset === numDays) {
               startTime = "00:00";
               endTime = bookingEndTime;
               dist = distance;
@@ -278,7 +279,6 @@ const BookTrip = () => {
             docRef: dateBookings ? doc(db, 'date-car-bookings', dateBookings.id) : null,
           });
         }
-        currentDate.setDate(currentDate.getDate() + 1);
       }
 
       return await runTransaction(db, async (transaction) => {
@@ -398,7 +398,7 @@ const BookTrip = () => {
           byUser: doc(db, 'users', user.user_id)
         };
 
-        if (targetDateBookingsDoc && targetDateBookingsDoc.exists()) {
+        if (targetDateBookingsDoc?.exists()) {
           let existingBookings: Booking[] = targetDateBookingsDoc.data().bookings;
           // The swapped booking must be removed from target bookings before checking the overlap
           if (bookingToSwap) {
@@ -569,10 +569,8 @@ const BookTrip = () => {
     const distanceReq = isDistanceRequired();
     if (!selectedCar || selectedUsers.length === 0 || !bookingDate || !bookingStartTime || !bookingEndTime || (!distance && distanceReq)) {
       validations.push({ type: 'error', message: `Vänligen fyll i alla obligatoriska fält: bil, användare, datum, start- och sluttid${distanceReq?", samt distans":""}.` });
-    } else {
-      if (!isMultiDay && bookingStartTime >= bookingEndTime) {
-        validations.push({ type: 'error', message: 'Sluttid måste vara större än starttid' });
-      }
+    } else if (!isMultiDay && bookingStartTime >= bookingEndTime) {
+      validations.push({ type: 'error', message: 'Sluttid måste vara större än starttid' });
     }
 
     if (isRecurring && (!recurringEndDate || recurringDays.length === 0)) {

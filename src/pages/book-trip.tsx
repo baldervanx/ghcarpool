@@ -298,11 +298,26 @@ const BookTrip = () => {
           }
         }
 
-        // If we get here, all validations passed. Create the recurrence document
-        let recurrenceRef: DocumentReference<DocumentData, DocumentData> | DocumentSnapshot<DocumentData, DocumentData>
+        // If we get here, all validations passed.
+        // IMPORTANT: Perform all reads before any writes in this transaction
+        let allRecurrenceBookings = [] as DateCarBooking[];
         if (recurrenceId) {
-          // Fetch existing
-          recurrenceRef = await getDocFromCache(doc(db, 'recurrence', recurrenceId));
+          allRecurrenceBookings = await getAllRecurrenceBookings(transaction);
+        }
+
+        // Create or update the recurrence document (writes begin after all reads completed)
+        let recurrenceRef: DocumentReference<DocumentData, DocumentData>;
+        if (recurrenceId) {
+          // Update existing recurrence document with new range/settings
+          const recurrenceDocRef = doc(db, 'recurrence', recurrenceId);
+          transaction.update(recurrenceDocRef, {
+            isMultiDay,
+            recurringDays,
+            recurringStartDate: bookingDate,
+            recurringEndDate,
+            updatedAt: serverTimestamp()
+          });
+          recurrenceRef = recurrenceDocRef;
         } else {
           // Create new
           recurrenceRef = doc(collection(db, 'recurrence'));
@@ -315,7 +330,7 @@ const BookTrip = () => {
           });
         }
 
-        // Create or update all bookings
+        // Create or update all bookings for dates within the selected range
         for (const bookingData of bookingValidations) {
           // Check if the booking is already present
           let currentBookingInData = bookingData.bookings ? bookingData.bookings.find(b => b.recurrenceId === recurrenceId)?.id : null;
@@ -347,6 +362,17 @@ const BookTrip = () => {
               car: carRef,
               bookings: [newBooking]
             });
+          }
+        }
+
+        // Remove any existing recurrence bookings outside the newly selected range
+        if (recurrenceId) {
+          const targetDates = new Set(bookingValidations.map(b => b.date));
+          for (const dateBooking of allRecurrenceBookings) {
+            if (!targetDates.has(dateBooking.date)) {
+              const remaining = dateBooking.bookings.filter(b => b.recurrenceId !== recurrenceId);
+              updateOrDeleteDateBooking(transaction, doc(db, 'date-car-bookings', dateBooking.id), remaining);
+            }
           }
         }
 
@@ -497,6 +523,34 @@ const BookTrip = () => {
         .filter(b =>
             b.car.id === selectedCar &&
             b.date >= todayDate &&
+            b.bookings.some(b2 => b2.recurrenceId === recurrenceId)
+        )
+        .map(b => b.id);
+
+    if (relevantBookingIds.length === 0) {
+      return [];
+    }
+    const bookingsRef = collection(db, 'date-car-bookings');
+    const fetchedBookings: DateCarBooking[] = [];
+
+    for (const bookingId of relevantBookingIds) {
+      const bookingDocRef = doc(bookingsRef, bookingId);
+      const bookingSnapshot = await transaction.get(bookingDocRef);
+
+      if (bookingSnapshot.exists()) {
+        fetchedBookings.push({
+          id: bookingSnapshot.id,
+          ...bookingSnapshot.data(),
+        } as DateCarBooking);
+      }
+    }
+    return fetchedBookings;
+  }
+
+  const getAllRecurrenceBookings = async (transaction: Transaction): Promise<DateCarBooking[]> => {
+    const relevantBookingIds = bookings
+        .filter(b =>
+            b.car.id === selectedCar &&
             b.bookings.some(b2 => b2.recurrenceId === recurrenceId)
         )
         .map(b => b.id);
@@ -698,7 +752,7 @@ const BookTrip = () => {
 
         <div className="flex gap-2">
           <div className="space-y-2">
-            <Label>Datum</Label>
+            <Label>{isMultiDay ? 'Startdatum' : 'Datum'}</Label>
             <Input
                 type="date"
                 value={bookingDate}
@@ -715,13 +769,15 @@ const BookTrip = () => {
               onChange={updateBookingStartTime}
               disabled={isEditing && isRecurring}
           />
-          <TimeSelector
-              label="Sluttid"
-              value={bookingEndTime}
-              onChange={setBookingEndTime}
-              disabled={isEditing && isRecurring}
-              hourCount={25}
-          />
+          {!isMultiDay && (
+            <TimeSelector
+                label="Sluttid"
+                value={bookingEndTime}
+                onChange={setBookingEndTime}
+                disabled={isEditing && isRecurring}
+                hourCount={25}
+            />
+          )}
         </div>
 
         <div className="flex items-center space-x-8">
@@ -781,17 +837,40 @@ const BookTrip = () => {
                     </div>
                 )}
 
-                <div className="space-y-2">
-                  <Label>Slutdatum</Label>
-                  <Input
-                      type="date"
-                      value={recurringEndDate}
-                      disabled={isEditing}
-                      onChange={(e) => setRecurringEndDate(e.target.value)}
-                      min={getBookingDate(bookingDate, 1)}
-                      max={getBookingDate(undefined, 96)}
-                  />
-                </div>
+                {!isMultiDay && (
+                  <div className="space-y-2">
+                    <Label>Slutdatum</Label>
+                    <Input
+                        type="date"
+                        value={recurringEndDate}
+                        disabled={isEditing}
+                        onChange={(e) => setRecurringEndDate(e.target.value)}
+                        min={getBookingDate(bookingDate, 1)}
+                        max={getBookingDate(undefined, 96)}
+                    />
+                  </div>
+                )}
+
+                {isMultiDay && (
+                  <div className="flex gap-2 items-end">
+                    <div className="space-y-2">
+                      <Label>Slutdatum</Label>
+                      <Input
+                          type="date"
+                          value={recurringEndDate}
+                          onChange={(e) => setRecurringEndDate(e.target.value)}
+                          min={getBookingDate(bookingDate, 1)}
+                          max={getBookingDate(undefined, 96)}
+                      />
+                    </div>
+                    <TimeSelector
+                        label="Sluttid"
+                        value={bookingEndTime}
+                        onChange={setBookingEndTime}
+                        hourCount={25}
+                    />
+                  </div>
+                )}
               </div>
           )}
 

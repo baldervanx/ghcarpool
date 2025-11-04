@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import { getAuth, signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -11,12 +11,22 @@ import { Sun, Moon } from 'lucide-react';
 import CarPoolCSVExporter from "@/components/ui/car-pool-csv-export";
 import HelpDialog from '@/components/help-dialog';
 import {useSelector} from "react-redux";
-import {format} from "date-fns";
+import {format, differenceInCalendarDays} from "date-fns";
+import { sv } from 'date-fns/locale';
 import {useNavigate} from "react-router-dom";
 import type {AppStore, Booking, Car} from '@/store';
+import { db } from '@/db/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface BookingCar extends Booking {
-  car: Car
+  car: Car;
+  date: string;
+}
+
+interface RecurrenceInfo {
+  isMultiDay: boolean;
+  start: string; // yyyy-MM-dd
+  end: string;   // yyyy-MM-dd
 }
 
 export const HomePage = () => {
@@ -28,6 +38,7 @@ export const HomePage = () => {
   const { bookings, loading: bookingsLoading } = useSelector((state: AppStore) => state.booking);
   const { user, loading: userLoading } = useSelector((state: AppStore) => state.auth);
   const [ activeBookings, setActiveBookings ] = useState<BookingCar[]>([]);
+  const [ recurrenceMap, setRecurrenceMap ] = useState<Record<string, RecurrenceInfo>>({});
   const auth = getAuth();
 
   useEffect(() => {
@@ -41,7 +52,8 @@ export const HomePage = () => {
             dayBooking.bookings.map(booking => ({
               ...booking,
               // Would be a bit more efficient to do this later.
-              car: cars.find(c => c.id === dayBooking.car.id)
+              car: cars.find(c => c.id === dayBooking.car.id),
+              date: dayBooking.date
             }))
         ).filter(booking =>
             booking.users.some(user => user.id === currentUser)
@@ -53,6 +65,39 @@ export const HomePage = () => {
     });
     setActiveBookings(sortedBookings);
   }, [bookings, user]);
+
+  // Fetch recurrence data for any unseen recurrenceIds present in today's active bookings
+  useEffect(() => {
+    const uniqueRecurrenceIds = Array.from(new Set(activeBookings
+      .map(b => b.recurrenceId)
+      .filter((id): id is string => Boolean(id))));
+
+    const missing = uniqueRecurrenceIds.filter(id => !recurrenceMap[id]);
+    if (missing.length === 0) return;
+
+    (async () => {
+      const entries: Array<[string, RecurrenceInfo]> = [];
+      for (const rid of missing) {
+        try {
+          const ref = doc(db, 'recurrence', rid);
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            const data = snap.data() as any;
+            entries.push([rid, {
+              isMultiDay: Boolean(data.isMultiDay),
+              start: data.recurringStartDate,
+              end: data.recurringEndDate
+            }]);
+          }
+        } catch (e) {
+          // ignore fetch errors for now
+        }
+      }
+      if (entries.length > 0) {
+        setRecurrenceMap(prev => ({...prev, ...Object.fromEntries(entries)}));
+      }
+    })();
+  }, [activeBookings, recurrenceMap]);
 
   // FIXME: Move duplicated code to utility
   function timeToString(minutes: number): string {
@@ -74,9 +119,42 @@ export const HomePage = () => {
     return booking.logged ? "Kört" : "Bokat";
   }
 
-  // TODO: Must check if the booking is multi-day and then display that properly,
-  //  also see if the booking is past, ongoing or in the future.
-  //  The bookings should be sorted:
+  function isMultiDay(booking: BookingCar): boolean {
+    if (!booking.recurrenceId) return false;
+    const rec = recurrenceMap[booking.recurrenceId];
+    return Boolean(rec?.isMultiDay);
+  }
+
+  function isLastDayOfMultiDay(booking: BookingCar): boolean {
+    const rec = booking.recurrenceId ? recurrenceMap[booking.recurrenceId] : undefined;
+    if (!rec?.isMultiDay) return true; // Only restrict when multi-day
+    return booking.date === rec.end;
+  }
+
+  function capitalizeFirst(text: string): string {
+    if (!text) return text;
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  function formatDayLabel(dateStr: string, includeDate: boolean): string {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    if (dateStr === todayStr) return 'Idag';
+    const d = new Date(dateStr + 'T00:00:00');
+    const label = includeDate ? format(d, 'EEEE d MMM', { locale: sv }) : format(d, 'EEEE', { locale: sv });
+    return capitalizeFirst(label);
+  }
+
+  function getRecurrenceEdgeTimes(booking: BookingCar): { start?: number; end?: number } {
+    const rec = booking.recurrenceId ? recurrenceMap[booking.recurrenceId] : undefined;
+    if (!rec) return {};
+    const startDay = bookings.find(b => b.car.id === booking.car.id && b.date === rec.start);
+    const endDay = bookings.find(b => b.car.id === booking.car.id && b.date === rec.end);
+    const startBooking = startDay?.bookings.find(b => b.recurrenceId === booking.recurrenceId);
+    const endBooking = endDay?.bookings.find(b => b.recurrenceId === booking.recurrenceId);
+    return { start: startBooking?.startTime, end: endBooking?.endTime };
+  }
+
+  // TODO: The bookings should be sorted:
   //      1. past booking that hasn't been logged at the top (include such bookings from yesterday)
   //      2. ongoing booking that will need to be logged soon
   //      3. coming bookings later the same day
@@ -92,19 +170,40 @@ export const HomePage = () => {
                     <CardTitle className="text-xl">{`${bookingStatus(booking)} ${booking.car.name}`}</CardTitle>
                   </CardHeader>
                   <CardContent className="py-4 space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{`Tid: ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}`}</span>
-                    </div>
+                    {isMultiDay(booking) && booking.recurrenceId && recurrenceMap[booking.recurrenceId] ? (
+                      (() => {
+                        const rec = recurrenceMap[booking.recurrenceId];
+                        const spanDays = differenceInCalendarDays(new Date(rec.end + 'T00:00:00'), new Date(rec.start + 'T00:00:00'));
+                        const includeDate = spanDays > 7;
+                        const edges = getRecurrenceEdgeTimes(booking);
+                        return (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">{`Start: ${formatDayLabel(rec.start, includeDate)} ${edges.start !== undefined ? timeToString(edges.start) : ''}`}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">{`Slut: ${formatDayLabel(rec.end, includeDate)} ${edges.end !== undefined ? timeToString(edges.end) : ''}`}</span>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{`Tid: ${timeToString(booking.startTime)}-${timeToString(booking.endTime)}`}</span>
+                      </div>
+                    )}
                     {!booking.logged && (
-                          <div className="flex items-center justify-between">
-                          {(booking.car.hasLog ?? true) && (
+                          <div className="flex items-center">
+                          {(booking.car.hasLog ?? true) && isLastDayOfMultiDay(booking) && (
                             <Button variant="outline"
+                              className="mr-2"
                               onClick={() => logBooking(booking)}
                             >
                               Logga
                             </Button>
                           )}
-                          <Button variant="outline"
+                          <Button  variant="outline"
+                            className="ml-auto"
                             onClick={() => changeBooking(booking)}
                           >
                             Ändra

@@ -8,9 +8,11 @@
 - [ ] Destination creation feature misunderstood, can it be simplified? 
 - [ ] Scrolling on booking overview not working fully, when touching bookings - can use header for scrolling
 -      make the scroll-bars always visible?
-- [ ] The logging-of-booking feature need to be completed, connect also from logging page and describe booking properly
+- [X] The logging-of-booking feature need to be completed, connect also from logging page and describe booking properly
 -     Logging of multi-day should mark all entries as logged.
-- [ ] Home page showing "Logga" on multi-day booking, before end-date
+- [X] Home page showing "Logga" on multi-day booking, before end-date
+- [X] Multi-day booking: should be possible to adjust end-date, change comment
+- [X] Multi-day booking: Slut-tid ska visas efter slut-datum
 - [X] When validating distance of logging, must be soft validation - it happens that you drive longer than you booked.
 - [ ] When updating a booking that someone else created, it should not switch "ownership"
 - [ ] Should always be able to change a booking where one of the users are the one editing it, even if it is created by someone else

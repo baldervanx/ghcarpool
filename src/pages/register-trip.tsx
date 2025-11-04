@@ -13,6 +13,8 @@ import { Card } from '@/components/ui/card';
 import { CarSelector } from '@/components/CarSelector';
 import UserSelector from '@/components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '@/store';
+import { format } from 'date-fns';
+import { sv } from 'date-fns/locale';
 import type { AppStore } from '@/store';
 import { isOnline } from '@/lib/utils';
 import ConfirmationDialog from "@/components/confirmation-dialog";
@@ -29,6 +31,7 @@ export function RegisterTrip() {
   const { user } = useSelector((state: AppStore) => state.auth);
   const { selectedUsers, users } = useSelector((state: AppStore) => state.user);
   const { data } = useSelector((state: AppStore) => state.settings);
+  const { bookings } = useSelector((state: AppStore) => state.booking);
   const { trips, loading: tripsLoading } = useSelector((state: AppStore) => state.trip);
   const [lastOdometer, setLastOdometer] = useState('');
   const [tripDistance, setTripDistance] = useState(0);
@@ -87,6 +90,33 @@ export function RegisterTrip() {
     }
   }, [location.state]);
 
+  const clearConnectedBooking = () => {
+    setIsConnectedBooking(false);
+    setConnectedBooking(null);
+  };
+
+  const setConnectedFromDateBooking = (selectedCarId: string, dateBooking: any) => {
+    if (!dateBooking) return clearConnectedBooking();
+    const candidates = dateBooking.bookings
+        .filter(b => !b.logged)
+        .sort((a, b) => (a.endTime ?? 0) - (b.endTime ?? 0));
+    if (candidates.length === 0) return clearConnectedBooking();
+    const chosen = candidates[0];
+    const augmented = { ...chosen, car: { id: selectedCarId }, date: dateBooking.date };
+    setIsConnectedBooking(true);
+    setConnectedBooking(augmented);
+  };
+
+  // If user navigates directly and selects a car, auto-select today's earliest unlogged booking for that car
+  useEffect(() => {
+    if (location.state && location.state.booking) return; // do not override explicit navigation
+    if (!selectedCar) return clearConnectedBooking();
+
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const dateBooking = bookings.find(dcb => dcb.car.id === selectedCar && dcb.date === today);
+    setConnectedFromDateBooking(selectedCar, dateBooking);
+  }, [selectedCar, bookings, location.state]);
+
   useEffect(() => {
     setErrorMessage('');
     if (selectedCar) {
@@ -143,6 +173,18 @@ export function RegisterTrip() {
     setCost(dist !== 0 ? (dist * COST_PER_KM).toFixed(2) : '');
     setNewOdometer(newOdo);
   };
+
+  function timeToString(minutes: number): string {
+    const hours = Math.floor(minutes / 60).toString().padStart(2, '0');
+    const mins = (minutes % 60).toString().padStart(2, '0');
+    return `${hours}:${mins}`;
+  }
+
+  function connectedBookingLabel(): string {
+    if (!connectedBooking || connectedBooking.endTime === undefined) return 'För bokning';
+    const endStr = timeToString(connectedBooking.endTime);
+    return `För bokning med sluttid ${endStr}`;
+  }
 
   const calculateEditOdometer = (newOdo, dist) => {
     return newOdo.slice(newOdo.length - dist.length);
@@ -381,7 +423,7 @@ export function RegisterTrip() {
                   disabled={isProcessing}
               />
               <Label htmlFor="connected-booking" className="text-sm">
-                {`För bokning`}
+                {connectedBookingLabel()}
               </Label>
             </div>
         )}

@@ -14,13 +14,13 @@ import { CarSelector } from '@/components/CarSelector';
 import UserSelector from '@/components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '@/store';
 import { format } from 'date-fns';
-import { sv } from 'date-fns/locale';
 import type { AppStore } from '@/store';
 import { isOnline } from '@/lib/utils';
 import ConfirmationDialog from "@/components/confirmation-dialog";
 
 const MAX_DIST = 9999;
-let COST_PER_KM = 1;
+const LONG_DIST: number = 500;
+let COST_PER_KM: number = 1;
 
 
 export function RegisterTrip() {
@@ -109,7 +109,7 @@ export function RegisterTrip() {
 
   // If user navigates directly and selects a car, auto-select today's earliest unlogged booking for that car
   useEffect(() => {
-    if (location.state && location.state.booking) return; // do not override explicit navigation
+    if (location.state?.booking) return; // do not override explicit navigation
     if (!selectedCar) return clearConnectedBooking();
 
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -157,18 +157,18 @@ export function RegisterTrip() {
     setComment(connectedBooking?.destination || '');
   };
 
-  const handleOdometerChange = (value) => {
+  const handleOdometerChange = (value: string) => {
     setEditOdometer(value);
     let newOdo = lastOdometer;
     if (value.length > 0) {
       let prefix = lastOdometer.slice(0, -value.length);
       newOdo = prefix + value;
-      if (newOdo < lastOdometer) {
+      if (newOdo < lastOdometer && prefix.length > 0) {
         newOdo = (parseInt(prefix) + 1).toString() + value;
       }
     }
     let dist: number = parseInt(newOdo) - parseInt(lastOdometer);
-    if (dist <= 0 || dist > MAX_DIST) dist = 0;
+    if (dist <= 0 || dist > MAX_DIST || isNaN(dist)) dist = 0;
     setTripDistance(dist);
     setCost(dist !== 0 ? (dist * COST_PER_KM).toFixed(2) : '');
     setNewOdometer(newOdo);
@@ -181,16 +181,16 @@ export function RegisterTrip() {
   }
 
   function connectedBookingLabel(): string {
-    if (!connectedBooking || connectedBooking.endTime === undefined) return 'För bokning';
+    if (connectedBooking?.endTime === undefined) return 'För bokning';
     const endStr = timeToString(connectedBooking.endTime);
     return `För bokning med sluttid ${endStr}`;
   }
 
-  const calculateEditOdometer = (newOdo, dist) => {
+  const calculateEditOdometer = (newOdo: string, dist: string) => {
     return newOdo.slice(newOdo.length - dist.length);
   };
 
-  const handleEditModeChange = async (checked) => {
+  const handleEditModeChange = async (checked: boolean) => {
     setIsEditMode(checked);
     if (checked && lastTrip && canEdit && previousTrip) {
       setLastOdometer(previousTrip.odo.toString());
@@ -250,6 +250,10 @@ export function RegisterTrip() {
           'Angiven sträcka skiljer sig från bokningens ' + connectedBooking.distance
           + ' är detta förväntat?'))
         return;
+    } else if (!isConnectedBooking && tripDistance > LONG_DIST) {
+        if (!await showConfirmDialog('Bekräfta lång sträcka',
+            'Den angivna sträckan är ovanligt lång (' + tripDistance + ' km). Vill du fortsätta?'))
+          return;
     }
 
     if (isProcessing) return;

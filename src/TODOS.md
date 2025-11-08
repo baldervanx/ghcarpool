@@ -2,6 +2,7 @@
 # TODOs 
 
 ## Bugs in release
+- [ ] If a car isn't used for a long time, the register-trip page does not find the last trip properly.
 - [X] Does not jump properly to Log after having logged from home-page.
 - [ ] Date incorrect format on "Boka" tab - use react-datepicker? Format "DD MMM"?
 - [ ] Switching bookings where one booking is recurring, does not work (should "unlock" automatically)
@@ -52,11 +53,11 @@
 -     ... Allow adjusting the odo of one line and with this also changing the next line.
 -     ... Show a warning, telling exactly what is being changed so the user can confirm
 -     ... Only allow chaning the last few lines, any older shall be read-only
-- [ ] *IMPORTANT* *ONGOING* Connect with booking, find the closest matching booking - alternatively use the one coming as argument
+- [X] *IMPORTANT* *ONGOING* Connect with booking, find the closest matching booking - alternatively use the one coming as argument
 - [X] ... Add destination as a default comment
-- [ ] ... Soft-validate that the distance is approximately what was booked
-- [ ] ... *BUG* Not showing details about which booking the log is made
-- [ ] ... *BUG* Not navigating to Log after logging a booking
+- [X] ... Soft-validate that the distance is approximately what was booked
+- [X] ... *BUG* Not showing details about which booking the log is made
+- [X] ... *BUG* Not navigating to Log after logging a booking
 - [ ] Move the alert-functionality to a component, supporting different life-times of the alerts, 
 -     ... connect to monitor that checks if the source-value changes?
 -     ... use this alert component in both book-trip and register-trip

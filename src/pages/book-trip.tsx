@@ -727,7 +727,7 @@ const BookTrip = () => {
 
   function updateBookingStartTime(value: string) {
     setBookingStartTime(value);
-    if (!bookingEndTime || (timeToNumber(bookingEndTime) < timeToNumber(value))) {
+    if (!isMultiDay && (!bookingEndTime || (timeToNumber(bookingEndTime) < timeToNumber(value)))) {
       setBookingEndTime(value);
     }
   }

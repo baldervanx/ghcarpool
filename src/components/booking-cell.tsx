@@ -113,8 +113,8 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
           {bookings.map((booking) => (
             <div
               key={booking.id}
-              onClick={() => !readOnly && onClick(booking)}
-              className={accessibleCn("min-w-[14ch] bg-gray-100 dark:bg-gray-700 p-1 text-xs cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex justify-between items-center")}
+              onClick={() => !readOnly && !booking.logged && onClick(booking)}
+              className={accessibleCn(`min-w-[14ch] bg-gray-100 dark:bg-gray-700 p-1 text-xs ${!readOnly && !booking.logged ? 'cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600' : 'cursor-default opacity-70'} transition-colors flex justify-between items-center`)}
             >
               <div className="flex flex-col">
                 <span>

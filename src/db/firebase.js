@@ -16,8 +16,12 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// Konfigurera Firestore att använda emulatorn
-if (process.env.NODE_ENV === 'development') {
+// Konfigurera Firestore att använda emulatorn i utvecklingsläge
+const isDev = import.meta.env.MODE === 'development';
+const shouldUseEmulator =
+    isDev && import.meta.env.VITE_USE_FIREBASE_EMULATOR !== 'false';
+
+if (shouldUseEmulator) {
   connectAuthEmulator(auth, 'http://localhost:9099');
   connectFirestoreEmulator(db, 'localhost', 9090);
 }

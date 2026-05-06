@@ -3,6 +3,10 @@
 
 ## Bugs in release
 - [ ] If a car isn't used for a long time, the register-trip page does not find the last trip properly.
+- [X] (Klar?) Möjlighet för administratörer att välja månad i log-fliken
+- [X] Sluttid shall not be set automatically when it is a multi-day, as there are no relationship between the times then
+- [ ] Logging against a booking should do sanity-check - if the end-time isn't close to the current time.
+- [X] A logged booking can still be edited, which can cause issues.
 - [X] Does not jump properly to Log after having logged from home-page.
 - [ ] Date incorrect format on "Boka" tab - use react-datepicker? Format "DD MMM"?
 - [ ] Switching bookings where one booking is recurring, does not work (should "unlock" automatically)

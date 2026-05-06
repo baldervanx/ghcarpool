@@ -3,8 +3,14 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { visualizer } from 'rollup-plugin-visualizer';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react(), visualizer({ filename: 'bundle-stats.json', template: "raw-data", gzipSize: true })],
+  server: {
+    headers: command === 'serve' ? {
+      // This is needed to allow the Firebase auth popup to work in development.
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    } : undefined,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -29,5 +35,4 @@ export default defineConfig({
       }
     }
   }
-})
-
+}));

@@ -21,6 +21,12 @@ Export data, if "export-on-exit" isn't used:
 Run the app locally:
 `npm run dev`
 
+Run local app with production data:
+```
+$env:USE_FIREBASE_EMULATOR="false"
+npm run dev
+```
+
 Run tests:
 `npm run test`
 

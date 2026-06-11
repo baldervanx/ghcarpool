@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   collection,
   query,
@@ -39,6 +39,8 @@ const convertTrip = (doc) => {
 export function useListenToTrips() {
   const dispatch = useDispatch();
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  // Only subscribe when authenticated; re-subscribe when the user changes.
+  const uid = useSelector((state: any) => state.auth.user?.uid);
 
   const handleSnapshot = useCallback((snapshot) => {
     dispatch(setTripsLoading(false));
@@ -76,6 +78,13 @@ export function useListenToTrips() {
 
 
   useEffect(() => {
+    // Don't subscribe before the user is authenticated. An unauthenticated
+    // query fails with permission-denied and terminates the listener, leaving
+    // the trip list blank until a full page reload.
+    if (!uid) {
+      return;
+    }
+
     // Sätt loading-state när lyssnaren startar
     dispatch(setTripsLoading(true));
 
@@ -109,5 +118,5 @@ export function useListenToTrips() {
         unsubscribeRef.current = null;
       }
     };
-  }, []);
+  }, [uid]);
 }

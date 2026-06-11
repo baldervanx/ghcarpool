@@ -10,6 +10,16 @@ This is initially just an app for registering a trip log for a carpool in order 
 * ShadCN 
 * Lucide (icons) https://lucide.dev/
 
+## Setting up the project
+Install dependencies:
+`npm install`
+Install firebase tools:
+`npm install -g firebase-tools`
+Login to firebase:
+`firebase login`
+Select project:
+`firebase use --add` (select project)
+
 ## Starting development environment
 
 Emulator for the database:

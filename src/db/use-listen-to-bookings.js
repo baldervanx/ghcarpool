@@ -1,6 +1,6 @@
 // Create a new hook: use-listen-to-bookings.ts
 import { useEffect, useRef, useCallback } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   collection,
   query,
@@ -36,6 +36,8 @@ const convertBooking = (doc) => {
 export function useListenToBookings() {
   const dispatch = useDispatch();
   const unsubscribeRef = useRef(null);
+  // Only subscribe when authenticated; re-subscribe when the user changes.
+  const uid = useSelector((state) => state.auth.user?.uid);
 
   const handleSnapshot = useCallback((snapshot) => {
     dispatch(setBookingsLoading(false));
@@ -72,6 +74,13 @@ export function useListenToBookings() {
   }, [dispatch]);
 
   useEffect(() => {
+    // Don't subscribe before the user is authenticated. Doing so fires the
+    // Firestore query while unauthenticated, which fails with permission-denied
+    // and terminates the listener for good (data stays blank until full reload).
+    if (!uid) {
+      return;
+    }
+
     dispatch(setBookingsLoading(true));
     const daysPerPage = 14;
     const pageCount = 8;
@@ -109,5 +118,5 @@ export function useListenToBookings() {
         unsubscribeRef.current = null;
       }
     };
-  }, []);
+  }, [uid]);
 }

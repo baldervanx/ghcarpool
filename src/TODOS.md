@@ -2,6 +2,8 @@
 # TODOs 
 
 ## Bugs in release
+- [X] Gets stuck for a long time in loading state, but not when I open from a new place.
+- [X] When logging in everything is blank, have to reload to see any data.
 - [ ] If a car isn't used for a long time, the register-trip page does not find the last trip properly.
 - [X] (Klar?) Möjlighet för administratörer att välja månad i log-fliken
 - [X] Sluttid shall not be set automatically when it is a multi-day, as there are no relationship between the times then

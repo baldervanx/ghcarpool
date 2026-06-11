@@ -89,13 +89,27 @@ export const fetchSettings = createCachedThunk('settings', async () => {
 });
 
 // Modified auth state handling with cache awareness
+// Keep a single auth listener at module level so repeated dispatches of
+// fetchAuthState (e.g. on App mount and again right after login) don't stack
+// multiple onAuthStateChanged listeners. Stacked listeners caused duplicated
+// fetches and the "bookings tripled on logout/login" issue.
+let authUnsubscribe: (() => void) | null = null;
+
 export const fetchAuthState = createAsyncThunk(
     'auth/fetchAuthState',
     async (_, { dispatch }) => {
         return new Promise<void>((resolve) => {
             const auth = getAuth();
 
-            onAuthStateChanged(auth, async (user: User | null) => {
+            // Tear down any previous listener before registering a new one.
+            if (authUnsubscribe) {
+                authUnsubscribe();
+                authUnsubscribe = null;
+            }
+
+            let resolved = false;
+
+            authUnsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
                 let authState: AuthState = {
                     user: null,
                     isMember: false,
@@ -141,7 +155,12 @@ export const fetchAuthState = createAsyncThunk(
                     }
                 }
                 dispatch(setAuthState(authState));
-                resolve();
+                // Only resolve the thunk once (on the first auth resolution),
+                // subsequent auth changes still update state via setAuthState.
+                if (!resolved) {
+                    resolved = true;
+                    resolve();
+                }
             });
         });
     }

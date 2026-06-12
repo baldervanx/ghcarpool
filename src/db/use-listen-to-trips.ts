@@ -41,8 +41,19 @@ export function useListenToTrips() {
   const unsubscribeRef = useRef<(() => void) | null>(null);
   // Only subscribe when authenticated; re-subscribe when the user changes.
   const uid = useSelector((state: any) => state.auth.user?.uid);
+  // Perf instrumentation: measure time-to-first-snapshot.
+  const subscribeStartRef = useRef(0);
+  const firstSnapshotLoggedRef = useRef(false);
 
   const handleSnapshot = useCallback((snapshot) => {
+    if (!firstSnapshotLoggedRef.current) {
+      firstSnapshotLoggedRef.current = true;
+      const elapsed = Math.round(performance.now() - subscribeStartRef.current);
+      console.log(
+        `[perf] trips first snapshot in ${elapsed}ms ` +
+        `(docs=${snapshot.size}, fromCache=${snapshot.metadata.fromCache})`
+      );
+    }
     dispatch(setTripsLoading(false));
 
     const addedTrips = [];
@@ -101,6 +112,8 @@ export function useListenToTrips() {
 
     // Sätt upp snapshot-lyssnaren
     console.log("Loading trips");
+    subscribeStartRef.current = performance.now();
+    firstSnapshotLoggedRef.current = false;
     unsubscribeRef.current = onSnapshot(
       q,
       handleSnapshot,

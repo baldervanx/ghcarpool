@@ -6,9 +6,7 @@ import {
   doc,
   DocumentData,
   DocumentReference,
-  DocumentSnapshot,
   getDoc,
-  getDocFromCache,
   runTransaction,
   serverTimestamp,
   Transaction
@@ -751,7 +749,7 @@ const BookTrip = () => {
         <UserSelector disabled={isEditing && isRecurring}/>
 
         <div className="flex gap-2">
-          <div className="space-y-2">
+          <div className="space-y-2 flex-1 min-w-[10rem]">
             <Label>{isMultiDay ? 'Startdatum' : 'Datum'}</Label>
             <Input
                 type="date"
@@ -760,23 +758,27 @@ const BookTrip = () => {
                 min={getBookingDate()}
                 max={getBookingDate(undefined, 96)}
                 disabled={isEditing && isRecurring}
-                className="px-1.5"
+                className="px-1.5 w-full appearance-none"
             />
           </div>
-          <TimeSelector
-              label="Starttid"
-              value={bookingStartTime}
-              onChange={updateBookingStartTime}
-              disabled={isEditing && isRecurring}
-          />
-          {!isMultiDay && (
+          <div className="flex-1 min-w-0">
             <TimeSelector
-                label="Sluttid"
-                value={bookingEndTime}
-                onChange={setBookingEndTime}
+                label="Starttid"
+                value={bookingStartTime}
+                onChange={updateBookingStartTime}
                 disabled={isEditing && isRecurring}
-                hourCount={25}
             />
+          </div>
+          {!isMultiDay && (
+            <div className="flex-1 min-w-0">
+              <TimeSelector
+                  label="Sluttid"
+                  value={bookingEndTime}
+                  onChange={setBookingEndTime}
+                  disabled={isEditing && isRecurring}
+                  hourCount={25}
+              />
+            </div>
           )}
         </div>
 

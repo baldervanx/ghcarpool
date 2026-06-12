@@ -38,8 +38,19 @@ export function useListenToBookings() {
   const unsubscribeRef = useRef(null);
   // Only subscribe when authenticated; re-subscribe when the user changes.
   const uid = useSelector((state) => state.auth.user?.uid);
+  // Perf instrumentation: measure time-to-first-snapshot.
+  const subscribeStartRef = useRef(0);
+  const firstSnapshotLoggedRef = useRef(false);
 
   const handleSnapshot = useCallback((snapshot) => {
+    if (!firstSnapshotLoggedRef.current) {
+      firstSnapshotLoggedRef.current = true;
+      const elapsed = Math.round(performance.now() - subscribeStartRef.current);
+      console.log(
+        `[perf] bookings first snapshot in ${elapsed}ms ` +
+        `(docs=${snapshot.size}, fromCache=${snapshot.metadata.fromCache})`
+      );
+    }
     dispatch(setBookingsLoading(false));
 
     const addedBookings = [];
@@ -102,6 +113,8 @@ export function useListenToBookings() {
     );
 
     console.log(`Loading bookings for ${startDate}-${endDate}`);
+    subscribeStartRef.current = performance.now();
+    firstSnapshotLoggedRef.current = false;
     unsubscribeRef.current = onSnapshot(
       q,
       handleSnapshot,

@@ -100,6 +100,7 @@ export const fetchAuthState = createAsyncThunk(
     async (_, { dispatch }) => {
         return new Promise<void>((resolve) => {
             const auth = getAuth();
+            const authStart = performance.now();
 
             // Tear down any previous listener before registering a new one.
             if (authUnsubscribe) {
@@ -159,6 +160,10 @@ export const fetchAuthState = createAsyncThunk(
                 // subsequent auth changes still update state via setAuthState.
                 if (!resolved) {
                     resolved = true;
+                    console.log(
+                        `[perf] auth resolved in ${Math.round(performance.now() - authStart)}ms ` +
+                        `(signedIn=${Boolean(user)}, isMember=${authState.isMember})`
+                    );
                     resolve();
                 }
             });

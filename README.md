@@ -48,3 +48,6 @@ Deploy to preview channel:
 
 Deploy to production:
 `firebase deploy`
+
+Check _relevant_ vulnerabilities:
+`npm audit --omit=dev `

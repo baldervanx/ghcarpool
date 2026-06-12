@@ -59,7 +59,7 @@
 -     ... Allow adjusting the odo of one line and with this also changing the next line.
 -     ... Show a warning, telling exactly what is being changed so the user can confirm
 -     ... Only allow chaning the last few lines, any older shall be read-only
-- [X] *IMPORTANT* *ONGOING* Connect with booking, find the closest matching booking - alternatively use the one coming as argument
+- [X] Connect with booking, find the closest matching booking - alternatively use the one coming as argument
 - [X] ... Add destination as a default comment
 - [X] ... Soft-validate that the distance is approximately what was booked
 - [X] ... *BUG* Not showing details about which booking the log is made

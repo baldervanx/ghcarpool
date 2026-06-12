@@ -1,5 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  connectFirestoreEmulator
+} from 'firebase/firestore';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -13,7 +19,23 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// Enable an IndexedDB-backed offline cache. With this, onSnapshot serves the
+// first snapshot immediately from local cache (metadata.fromCache === true) and
+// then updates from the server, so the landing page spinner clears quickly on
+// warm/repeat loads instead of waiting for the full multi-month query each time.
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  });
+} catch (e) {
+  // initializeFirestore throws if called more than once (e.g. HMR) – fall back.
+  console.warn('Falling back to default Firestore cache:', e);
+  db = getFirestore(app);
+}
+export { db };
+
 export const auth = getAuth(app);
 
 // Konfigurera Firestore att använda emulatorn i utvecklingsläge

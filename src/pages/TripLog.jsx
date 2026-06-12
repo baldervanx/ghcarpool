@@ -4,11 +4,13 @@ import OfflineStatus from '../components/OfflineStatus';
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { CarSelector } from '../components/CarSelector';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { sv } from 'date-fns/locale';
+import { CalendarDays, Filter } from 'lucide-react';
 import {collection, getDocs, query, where, orderBy, Timestamp, doc} from 'firebase/firestore';
 import { db } from '../db/firebase';
 
@@ -21,6 +23,7 @@ export function TripLog() {
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [historicalTrips, setHistoricalTrips] = useState([]);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
+  const [showMonthFilter, setShowMonthFilter] = useState(false);
 
   const availableMonths = useMemo(() => {
     const months = [];
@@ -124,9 +127,24 @@ export function TripLog() {
   return (
       <div className="max-w-4xl mx-auto space-y-2">
         <Card className="p-2 space-y-2">
-          <CarSelector carFilter={(cars) => cars.filter(c => c.hasLog ?? true)}/>
-          {user.isAdmin && availableMonths.length > 0 && (
-            <div className="p-2">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <CarSelector carFilter={(cars) => cars.filter(c => c.hasLog ?? true)}/>
+            </div>
+            {availableMonths.length > 0 && (
+              <Button
+                  variant={showMonthFilter ? 'secondary' : 'ghost'}
+                  size="icon"
+                  aria-label="Filtrera på månad"
+                  onClick={() => setShowMonthFilter(v => !v)}
+              >
+                <Filter size={20} />
+              </Button>
+            )}
+          </div>
+          {showMonthFilter && availableMonths.length > 0 && (
+            <div className="flex items-center gap-2 p-2">
+              <CalendarDays size={32} />
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                 <SelectTrigger className="w-[280px]">
                   <SelectValue placeholder="Välj månad" />

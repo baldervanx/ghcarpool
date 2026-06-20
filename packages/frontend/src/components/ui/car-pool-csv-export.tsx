@@ -1,74 +1,99 @@
 import React, { useState } from 'react';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
-import { db } from '@/db/firebase';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { api } from '@/api/client';
+import { format, subMonths } from 'date-fns';
 
+interface TripRow {
+  id: string;
+  car: { id: string };
+  odo: number;
+  distance: number;
+  users: { id: string }[];
+  cost: number;
+  comment?: string;
+  timestamp: string; // ISO-string från backend
+  byUser: { id: string };
+}
+
+/**
+ * Exporterar resor för perioden dag 20 föregående månad → dag 20 denna månad,
+ * grupperade per bil, som CSV (UTF-8 med BOM för Excel-kompatibilitet).
+ *
+ * Använder backend-endpointen GET /api/v1/admin/trips?month=yyyy-MM
+ * istället för direkt Firestore-åtkomst.
+ */
 const CarPoolCSVExporter = () => {
   const [loading, setLoading] = useState(false);
 
   const handleExport = async () => {
     setLoading(true);
+    try {
+      const now        = new Date();
+      const thisMonth  = format(now, 'yyyy-MM');
+      const prevMonth  = format(subMonths(now, 1), 'yyyy-MM');
 
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    const startDate = new Date(currentYear, currentMonth - 1, 20);
-    const endDate = new Date(currentYear, currentMonth, 20);
+      // Hämta resor för båda månaderna och filtrera lokalt på dag 20-20
+      const [thisMonthTrips, prevMonthTrips] = await Promise.all([
+        api.get<TripRow[]>(`/admin/trips?month=${thisMonth}`),
+        api.get<TripRow[]>(`/admin/trips?month=${prevMonth}`),
+      ]);
 
-    const q = query(
-      collection(db, 'trips'),
-      where('timestamp', '>=', startDate),
-      where('timestamp', '<', endDate),
-      orderBy('car'),
-      orderBy('odo')
-    );
+      const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 20);
+      const endDate   = new Date(now.getFullYear(), now.getMonth(), 20);
 
-    const querySnapshot = await getDocs(q);
-    const docs = querySnapshot.docs.map((doc) => doc.data());
+      const allTrips = [...prevMonthTrips, ...thisMonthTrips]
+        .filter(t => {
+          const ts = new Date(t.timestamp);
+          return ts >= startDate && ts < endDate;
+        })
+        .sort((a, b) => {
+          if (a.car.id !== b.car.id) return a.car.id.localeCompare(b.car.id);
+          return a.odo - b.odo;
+        });
 
-    const header = 'Odo;Distance;User1;User2;User3;Cost;Comment;Timestamp;By User\n'
-    let csvData = '\ufeff' // Add BOM for UTF-8 encoding
+      const header = 'Odo;Distance;User1;User2;User3;Cost;Comment;Timestamp;By User\n';
+      const fill   = new Array(2).fill('');
+      let csvData  = '\ufeff'; // BOM för Excel
+      let currentCarId = '';
 
-    const fillArray = new Array(2).fill('');
-    let currentCar = {id:''};
-    for (const {
-      car,
-      odo,
-      distance,
-      users,
-      cost,
-      comment,
-      timestamp,
-      byUser
-    } of docs) {
-      if (car.id !== currentCar.id) {
-        csvData += '\n\n';
-        csvData += `${car.id}\n`;
-        csvData += header;
-        currentCar = car;
+      for (const { car, odo, distance, users, cost, comment, timestamp, byUser } of allTrips) {
+        if (car.id !== currentCarId) {
+          csvData += '\n\n';
+          csvData += `${car.id}\n`;
+          csvData += header;
+          currentCarId = car.id;
+        }
+        const userIds = users.map(u => u.id).concat(fill).slice(0, 3);
+        const ts      = new Date(timestamp).toISOString();
+        const costStr = cost != null ? cost.toFixed(2).replace('.', ',') : '';
+        csvData += `${odo};${distance ?? ''};${userIds.join(';')};${costStr};"${comment ?? ''}";${ts};${byUser?.id}\n`;
       }
-      const userIds = users.map(user => user.id).concat(fillArray).slice(0, 3);
-      csvData += `${odo};${distance || ''};${userIds.join(';')};${cost?.toFixed(2).replace('.', ',') || ''};"${comment || ''}";${timestamp.toDate().toISOString()};${byUser?.id}\n`;
+
+      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      const url  = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href     = url;
+      link.download = `ghbilpool-${format(endDate, 'yyyy-MM-dd')}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV export failed:', err);
+    } finally {
+      setLoading(false);
     }
-
-    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `ghbilpool-${endDate.toLocaleDateString()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    setLoading(false);
   };
 
-
   return (
-    <Button onClick={handleExport} disabled={loading}
+    <Button
+      onClick={handleExport}
+      disabled={loading}
       variant="outline"
       className="fixed bottom-4 left-4 rounded-full h-12 w-12 shadow-lg [&_svg]:size-6"
-      aria-label="Export to CSV">
+      aria-label="Export to CSV"
+    >
       <Download className="mr-2" />
     </Button>
   );

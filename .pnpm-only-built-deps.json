@@ -1,1 +1,1 @@
-["@firebase/util", "esbuild", "protobufjs", "re2"]
+["@firebase/util", "esbuild", "msw", "protobufjs", "re2"]

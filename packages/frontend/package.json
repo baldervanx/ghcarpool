@@ -43,7 +43,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
-    "@firebase/rules-unit-testing": "^4.0.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^14.6.1",
@@ -57,16 +56,19 @@
     "eslint-plugin-react": "^7.37.1",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.13",
-    "firebase-mock": "^2.3.2",
-    "firebase-tools": "^13.23.0",
     "globals": "^15.11.0",
-    "jest-environment-jsdom": "^29.7.0",
     "jsdom": "^26.0.0",
+    "msw": "^2.14.6",
     "postcss": "^8.5.10",
     "rollup-plugin-visualizer": "^5.14.0",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.6.3",
     "vite": "^5.4.20",
     "vitest": "^3.0.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "msw"
+    ]
   }
 }

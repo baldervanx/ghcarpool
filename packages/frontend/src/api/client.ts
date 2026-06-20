@@ -6,6 +6,13 @@ import { getAuth } from 'firebase/auth';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function getToken(): Promise<string> {
   const user = getAuth().currentUser;
   if (!user) throw new Error('Inte inloggad');
@@ -29,7 +36,7 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `HTTP ${res.status}`);
+    throw new ApiError(res.status, body.error ?? `HTTP ${res.status}`);
   }
 
   // 204 No Content

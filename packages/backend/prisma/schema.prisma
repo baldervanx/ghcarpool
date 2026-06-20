@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  isAdmin          Boolean  @default(false)
+  shortName        String   @default("")
+  commentMandatory Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  bookingsMade  Booking[]       @relation("BookingByUser")
+  bookingUsers  BookingUser[]
+  tripsMade     Trip[]          @relation("TripByUser")
+  tripUsers     TripUser[]
+}
+
+// Sessions hanteras av connect-pg-simple, skapar tabellen via migration nedan
+model Session {
+  sid    String   @id
+  sess   Json
+  expire DateTime
+
+  @@index([expire])
+  @@map("session")
+}
+
+model Car {
+  id      String  @id @default(cuid())
+  name    String
+  range   Int     @default(0)
+  order   Int     @default(0)
+  hasLog  Boolean @default(true)
+
+  dateCarBookings DateCarBooking[]
+  trips           Trip[]
+}
+
+model Destination {
+  id        String  @id @default(cuid())
+  name      String
+  shortName String
+  distance  Int?
+
+  bookings Booking[]
+}
+
+model Settings {
+  id         String  @id @default("main")
+  costPerKm  Float   @default(1.0)
+  extra      Json?
+}
+
+model DateCarBooking {
+  id    String @id @default(cuid())
+  date  String // ISO date "yyyy-MM-dd"
+  car   Car    @relation(fields: [carId], references: [id])
+  carId String
+
+  bookings Booking[]
+
+  @@unique([date, carId])
+  @@index([date])
+}
+
+model Booking {
+  id            String          @id @default(cuid())
+  parent        DateCarBooking  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  parentId      String
+  startTime     Int             // minuter från midnatt
+  endTime       Int             // minuter från midnatt
+  distance      Int             @default(0)
+  destination   Destination?    @relation(fields: [destinationId], references: [id])
+  destinationId String?
+  comment       String?
+  recurrenceId  String?
+  logged        String?         // Trip.id om loggad
+  byUser        User            @relation("BookingByUser", fields: [byUserId], references: [id])
+  byUserId      String
+
+  users BookingUser[]
+}
+
+model BookingUser {
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingId String
+  user      User    @relation(fields: [userId], references: [id])
+  userId    String
+
+  @@id([bookingId, userId])
+}
+
+model Trip {
+  id        String     @id @default(cuid())
+  car       Car        @relation(fields: [carId], references: [id])
+  carId     String
+  odo       Int
+  distance  Int
+  cost      Float
+  comment   String?
+  timestamp DateTime   @default(now())
+  byUser    User       @relation("TripByUser", fields: [byUserId], references: [id])
+  byUserId  String
+
+  users TripUser[]
+}
+
+model TripUser {
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripId String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  @@id([tripId, userId])
+}

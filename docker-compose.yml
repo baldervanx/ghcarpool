@@ -1,0 +1,69 @@
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-ghcarpool}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB:-ghcarpool}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ghcarpool}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  # ── Backend (Node/Express/Prisma) ──────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV:    production
+      PORT:        3001
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-ghcarpool}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ghcarpool}"
+      SESSION_SECRET: ${SESSION_SECRET}
+      FRONTEND_URL:   ${FRONTEND_URL:-http://localhost}
+      # Firebase Admin — välj ett av alternativen (se README)
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      GOOGLE_APPLICATION_CREDENTIALS:  ${GOOGLE_APPLICATION_CREDENTIALS:-}
+    networks:
+      - internal
+    # Exponeras ej direkt — nginx proxar /api
+    expose:
+      - "3001"
+
+  # ── Frontend (Vite/React → nginx) ──────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: packages/frontend/Dockerfile
+      args:
+        VITE_API_URL:               /api
+        VITE_FIREBASE_API_KEY:      ${VITE_FIREBASE_API_KEY}
+        VITE_FIREBASE_AUTH_DOMAIN:  ${VITE_FIREBASE_AUTH_DOMAIN}
+        VITE_FIREBASE_PROJECT_ID:   ${VITE_FIREBASE_PROJECT_ID}
+        VITE_FIREBASE_APP_ID:       ${VITE_FIREBASE_APP_ID}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${APP_PORT:-80}:80"
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge

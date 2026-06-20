@@ -32,3 +32,6 @@ firebase-export-*/
 /bundle-stats.json
 /stats.html
 /testing
+
+# pnpm
+pnpm-lock.yaml

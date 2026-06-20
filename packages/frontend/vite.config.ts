@@ -10,6 +10,12 @@ export default defineConfig(({ command }) => ({
       // This is needed to allow the Firebase auth popup to work in development.
       'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
     } : undefined,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
   },
   resolve: {
     alias: {

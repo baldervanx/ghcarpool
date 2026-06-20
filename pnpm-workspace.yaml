@@ -1,0 +1,21 @@
+packages:
+  - 'packages/*'
+
+allowBuilds:
+  '@firebase/util': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  protobufjs: true
+  re2: true
+
+settings:
+  onlyBuiltDependencies:
+    - '@firebase/util'
+    - '@prisma/client'
+    - '@prisma/engines'
+    - esbuild
+    - prisma
+    - protobufjs
+    - re2

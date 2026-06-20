@@ -28,7 +28,7 @@ const AdminTrips = () => {
   const handleDeleteTrips = async () => {
     setIsDeleting(true);
     try {
-      await Promise.all(tripsToDelete.map(t => api.del(`/admin/trips/${t.id}`)));
+      await Promise.all(tripsToDelete.map(t => api.delete<{ id: string }>(`/admin/trips/${t.id}`)));
       setTripsToDelete([]);
       setIsDialogOpen(false);
     } catch (error) {

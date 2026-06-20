@@ -276,7 +276,7 @@ export function RegisterTrip() {
           cost: Number(cost),
           comment,
           bookingId: isConnectedBooking && connectedBooking ? connectedBooking.id : undefined,
-          bookingParentId: isConnectedBooking && connectedBooking ? connectedBooking.parent_id : undefined,
+          parentId: isConnectedBooking && connectedBooking ? connectedBooking.parent_id : undefined,
         });
       }
 
@@ -349,8 +349,9 @@ export function RegisterTrip() {
 
         <div className="flex gap-4">
           <div className="space-y-2 flex-1">
-            <Label>Sista siffror</Label>
+            <Label htmlFor="edit-odometer">Sista siffror</Label>
             <Input
+                id="edit-odometer"
                 min="0"
                 max="9999"
                 type="number"

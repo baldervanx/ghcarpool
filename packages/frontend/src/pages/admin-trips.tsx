@@ -1,13 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  deleteDoc,
-  doc
-} from 'firebase/firestore';
-import { db } from '@/db/firebase';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -21,33 +12,23 @@ import {
   AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Trash2 } from 'lucide-react';
+import { api } from '@/api/client';
+import type { TripDto } from '@/api/trips';
 
 const AdminTrips = () => {
-  const [tripsToDelete, setTripsToDelete] = useState([]);
+  const [tripsToDelete, setTripsToDelete] = useState<TripDto[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchTripsWithoutInitComment = async () => {
-    const q = query(
-      collection(db, 'trips'),
-      where('comment', '!=', 'Init')
-    );
-
-    const snapshot = await getDocs(q);
-    const trips = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    setTripsToDelete(trips);
+    const trips = await api.get<TripDto[]>('/admin/trips');
+    setTripsToDelete(trips.filter(t => t.comment !== 'Init'));
   };
 
   const handleDeleteTrips = async () => {
     setIsDeleting(true);
     try {
-      for (const trip of tripsToDelete) {
-        await deleteDoc(doc(db, 'trips', trip.id));
-      }
+      await Promise.all(tripsToDelete.map(t => api.del(`/admin/trips/${t.id}`)));
       setTripsToDelete([]);
       setIsDialogOpen(false);
     } catch (error) {

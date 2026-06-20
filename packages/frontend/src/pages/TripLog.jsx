@@ -8,11 +8,10 @@ import { Button } from '@/components/ui/button';
 import { CarSelector } from '../components/CarSelector';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, parseISO, subMonths } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { CalendarDays, Filter } from 'lucide-react';
-import {collection, getDocs, query, where, orderBy, Timestamp, doc} from 'firebase/firestore';
-import { db } from '../db/firebase';
+import { api } from '@/api/client';
 
 export function TripLog() {
 
@@ -35,45 +34,16 @@ export function TripLog() {
     return months;
   }, []);
 
-  const convertTrip = (doc) => {
-    const data = doc.data();
-    // The timestamp from firestore is a Timestamp object, convert it to a string.
-    // The live trips from redux store already have a string timestamp.
-    const date = data.timestamp?.toDate();
-    const timestamp = date ? format(date, 'yyyy-MM-dd') : '';
-
-    return {
-      id: doc.id,
-      ...data,
-      car: { id: data.car.id },
-      users: data.users.map(user => ({ id: user.id })),
-      timestamp: timestamp
-    };
-  };
-
   const fetchHistoricalTrips = useCallback(async (carId, month) => {
     setLoadingHistorical(true);
-    const startDate = startOfMonth(parseISO(`${month}-01`));
-    const endDate = endOfMonth(parseISO(`${month}-01`));
-
-    const tripsRef = collection(db, 'trips');
-    const carRef = doc(db, "cars", carId);
-    const q = query(tripsRef,
-        where('car', '==', carRef),
-        where('timestamp', '>=', Timestamp.fromDate(startDate)),
-        where('timestamp', '<=', Timestamp.fromDate(endDate)),
-        orderBy('timestamp', 'desc')
-    );
-
     try {
-        const querySnapshot = await getDocs(q);
-        const fetchedTrips = querySnapshot.docs.map(convertTrip);
-        setHistoricalTrips(fetchedTrips);
+      const result = await api.get(`/admin/trips?carId=${carId}&month=${month}`);
+      setHistoricalTrips(result);
     } catch (error) {
-        console.error("Error fetching historical trips: ", error);
-        setHistoricalTrips([]);
+      console.error("Error fetching historical trips: ", error);
+      setHistoricalTrips([]);
     } finally {
-        setLoadingHistorical(false);
+      setLoadingHistorical(false);
     }
   }, []);
 
@@ -84,7 +54,6 @@ export function TripLog() {
       if (user.isAdmin && selectedMonth !== currentMonth) {
         fetchHistoricalTrips(selectedCar, selectedMonth);
       } else {
-        // Clear historical trips if we switch back to current month or are not admin
         setHistoricalTrips([]);
       }
     } else {
@@ -99,7 +68,6 @@ export function TripLog() {
       if (user.isAdmin && selectedMonth !== currentMonth) {
         setCarTrips(historicalTrips);
       } else {
-        // The trips in the store are trips for all the cars
         const relevantTrips = trips.filter(trip => trip.car.id === selectedCar);
         setCarTrips(relevantTrips);
       }

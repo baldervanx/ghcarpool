@@ -1,135 +1,79 @@
-import { useEffect, useRef, useCallback } from 'react';
+/**
+ * SSE-hook som ersätter use-listen-to-trips.ts (Firestore onSnapshot).
+ */
+import { useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { getAuth } from 'firebase/auth';
 import {
-  collection,
-  query,
-  orderBy,
-  where,
-  Timestamp,
-  onSnapshot
-} from 'firebase/firestore';
-import { db } from '@/db/firebase';
-import { setTripsLoading, addMultipleTrips, addOrUpdateTrip, removeTrip } from '@/store';
+  setTripsLoading,
+  setTrips,
+  addOrUpdateTrip,
+  removeTrip,
+} from '@/store';
+import type { AppStore } from '@/store';
+import { tripsApi } from '@/api/trips';
 
-const formatDate = (date) => {
-  if (!date) return '';
-  return new Intl.DateTimeFormat('sv-SE', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
-};
-
-const convertTrip = (doc) => {
-  const data = doc.data();
-  return {
-    id: doc.id,
-    car: { id: data.car.id },
-    odo: data.odo,
-    distance: data.distance,
-    cost: data.cost,
-    comment: data.comment,
-    users: data.users.map(user => ({ id: user.id })),
-    byUser: { id: data.byUser.id },
-    timestamp: formatDate(data.timestamp?.toDate())
-  };
-};
+const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
 
 export function useListenToTrips() {
   const dispatch = useDispatch();
-  const unsubscribeRef = useRef<(() => void) | null>(null);
-  // Only subscribe when authenticated; re-subscribe when the user changes.
-  const uid = useSelector((state: any) => state.auth.user?.uid);
-  // Perf instrumentation: measure time-to-first-snapshot.
-  const subscribeStartRef = useRef(0);
-  const firstSnapshotLoggedRef = useRef(false);
-
-  const handleSnapshot = useCallback((snapshot) => {
-    if (!firstSnapshotLoggedRef.current) {
-      firstSnapshotLoggedRef.current = true;
-      const elapsed = Math.round(performance.now() - subscribeStartRef.current);
-      console.log(
-        `[perf] trips first snapshot in ${elapsed}ms ` +
-        `(docs=${snapshot.size}, fromCache=${snapshot.metadata.fromCache})`
-      );
-    }
-    dispatch(setTripsLoading(false));
-
-    const addedTrips = [];
-    const modifiedTrips = [];
-    const removedTrips = [];
-
-    snapshot.docChanges().forEach((change) => {
-      const trip = convertTrip(change.doc);
-
-      switch (change.type) {
-        case 'added':
-          addedTrips.push(trip);
-          break;
-        case 'modified':
-          modifiedTrips.push(trip);
-          break;
-        case 'removed':
-          removedTrips.push(trip);
-          break;
-      }
-    });
-
-    if (addedTrips.length > 0) {
-      dispatch(addMultipleTrips(addedTrips));
-    }
-    if (modifiedTrips.length > 0) {
-      modifiedTrips.forEach(trip => dispatch(addOrUpdateTrip(trip)));
-    }
-    if (removedTrips.length > 0) {
-      removedTrips.forEach(trip => dispatch(removeTrip(trip)));
-    }
-  }, [dispatch]);
-
+  const uid = useSelector((state: AppStore) => state.auth.user?.uid);
+  const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    // Don't subscribe before the user is authenticated. An unauthenticated
-    // query fails with permission-denied and terminates the listener, leaving
-    // the trip list blank until a full page reload.
-    if (!uid) {
-      return;
-    }
+    if (!uid) return;
 
-    // Sätt loading-state när lyssnaren startar
+    // 1. Initial load
     dispatch(setTripsLoading(true));
+    tripsApi.list().then((trips) => {
+      dispatch(setTrips(trips as any));
+      dispatch(setTripsLoading(false));
+    }).catch((err) => {
+      console.error('[trips] initial load failed:', err);
+      dispatch(setTripsLoading(false));
+    });
 
-    const tripsRef = collection(db, 'trips');
+    // 2. SSE for live updates
+    const openStream = async () => {
+      const token = await getAuth().currentUser?.getIdToken();
+      if (!token) return;
 
-    const lastMonth = new Date();
-    lastMonth.setDate(lastMonth.getDate() - 30);
+      const url = `${API_BASE}/trips/stream?token=${encodeURIComponent(token)}`;
+      const es = new EventSource(url, { withCredentials: true });
+      esRef.current = es;
 
-    const q = query(
-      tripsRef,
-      where('timestamp', '>=', Timestamp.fromDate(lastMonth)),
-      orderBy('odo', 'asc')
-    );
+      const t0 = performance.now();
+      let firstEvent = true;
 
-    // Sätt upp snapshot-lyssnaren
-    console.log("Loading trips");
-    subscribeStartRef.current = performance.now();
-    firstSnapshotLoggedRef.current = false;
-    unsubscribeRef.current = onSnapshot(
-      q,
-      handleSnapshot,
-      (error) => {
-        console.error('Error fetching trips:', error);
-        dispatch(setTripsLoading(false));
-      }
-    );
+      const handle = (type: 'add' | 'update' | 'remove') => (e: MessageEvent) => {
+        if (firstEvent) {
+          firstEvent = false;
+          console.log(`[perf] trips first SSE event in ${Math.round(performance.now() - t0)}ms`);
+        }
+        const data = JSON.parse(e.data);
+        switch (type) {
+          case 'add':    dispatch(addOrUpdateTrip(data)); break;
+          case 'update': dispatch(addOrUpdateTrip(data)); break;
+          case 'remove': dispatch(removeTrip(data));      break;
+        }
+      };
 
-    // Cleanup-funktion för att avregistrera när komponenten unmountas
-    return () => {
-      if (unsubscribeRef.current) {
-        console.log("Unsubscribing trips");
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
+      es.addEventListener('add',    handle('add'));
+      es.addEventListener('update', handle('update'));
+      es.addEventListener('remove', handle('remove'));
+
+      es.onerror = (err) => {
+        console.error('[trips] SSE error', err);
+        es.close();
+        setTimeout(openStream, 5000);
+      };
     };
-  }, [uid]);
+
+    openStream();
+
+    return () => {
+      esRef.current?.close();
+      esRef.current = null;
+    };
+  }, [uid, dispatch]);
 }

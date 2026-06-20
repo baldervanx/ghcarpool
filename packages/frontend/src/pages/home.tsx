@@ -15,8 +15,6 @@ import {format, differenceInCalendarDays} from "date-fns";
 import { sv } from 'date-fns/locale';
 import {useNavigate} from "react-router-dom";
 import type {AppStore, Booking, Car} from '@/store';
-import { db } from '@/db/firebase';
-import { doc, getDoc } from 'firebase/firestore';
 
 interface BookingCar extends Booking {
   car: Car;
@@ -38,7 +36,6 @@ export const HomePage = () => {
   const { bookings, loading: bookingsLoading } = useSelector((state: AppStore) => state.booking);
   const { user, loading: userLoading } = useSelector((state: AppStore) => state.auth);
   const [ activeBookings, setActiveBookings ] = useState<BookingCar[]>([]);
-  const [ recurrenceMap, setRecurrenceMap ] = useState<Record<string, RecurrenceInfo>>({});
   const auth = getAuth();
 
   useEffect(() => {
@@ -66,38 +63,29 @@ export const HomePage = () => {
     setActiveBookings(sortedBookings);
   }, [bookings, user]);
 
-  // Fetch recurrence data for any unseen recurrenceIds present in today's active bookings
-  useEffect(() => {
-    const uniqueRecurrenceIds = Array.from(new Set(activeBookings
-      .map(b => b.recurrenceId)
-      .filter((id): id is string => Boolean(id))));
-
-    const missing = uniqueRecurrenceIds.filter(id => !recurrenceMap[id]);
-    if (missing.length === 0) return;
-
-    (async () => {
-      const entries: Array<[string, RecurrenceInfo]> = [];
-      for (const rid of missing) {
-        try {
-          const ref = doc(db, 'recurrence', rid);
-          const snap = await getDoc(ref);
-          if (snap.exists()) {
-            const data = snap.data() as any;
-            entries.push([rid, {
-              isMultiDay: Boolean(data.isMultiDay),
-              start: data.recurringStartDate,
-              end: data.recurringEndDate
-            }]);
-          }
-        } catch (e) {
-          // ignore fetch errors for now
-        }
+  // Recurrence-data härleds direkt från bookings i state (satt av SSE-hooken).
+  // isMultiDay detekteras via att en bokning spänner flera dagar (startTime=0 eller endTime=1440).
+  const recurrenceMap = useMemo<Record<string, RecurrenceInfo>>(() => {
+    const map: Record<string, RecurrenceInfo> = {};
+    for (const dcb of bookings) {
+      for (const b of dcb.bookings) {
+        if (!b.recurrenceId || map[b.recurrenceId]) continue;
+        // Samla alla dcb med detta recurrenceId för att hitta start/end
+        const related = bookings.filter(d => d.bookings.some(x => x.recurrenceId === b.recurrenceId))
+          .sort((a, c) => a.date.localeCompare(c.date));
+        if (related.length === 0) continue;
+        // Flerdagsbokning: start och slut är distinkta datum
+        const isMultiDay = related.length > 1 &&
+          related[0].bookings.some(x => x.recurrenceId === b.recurrenceId && x.endTime === 1440);
+        map[b.recurrenceId] = {
+          isMultiDay,
+          start: related[0].date,
+          end: related[related.length - 1].date,
+        };
       }
-      if (entries.length > 0) {
-        setRecurrenceMap(prev => ({...prev, ...Object.fromEntries(entries)}));
-      }
-    })();
-  }, [activeBookings, recurrenceMap]);
+    }
+    return map;
+  }, [bookings]);
 
   // FIXME: Move duplicated code to utility
   function timeToString(minutes: number): string {

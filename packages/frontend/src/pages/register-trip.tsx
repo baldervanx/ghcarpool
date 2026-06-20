@@ -1,10 +1,6 @@
-// pages/RegisterTrip.jsx
-
 import React, { useState, useEffect } from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { db } from '@/db/firebase';
-import {collection, doc, addDoc, updateDoc, serverTimestamp, runTransaction} from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +13,7 @@ import { format } from 'date-fns';
 import type { AppStore } from '@/store';
 import { isOnline } from '@/lib/utils';
 import ConfirmationDialog from "@/components/confirmation-dialog";
+import { tripsApi } from '@/api/trips';
 
 const MAX_DIST = 9999;
 const LONG_DIST: number = 500;
@@ -261,48 +258,28 @@ export function RegisterTrip() {
     try {
       setIsProcessing(true);
 
-      const carRef = doc(db, 'cars', selectedCar);
-      const userRefs = selectedUsers.map((u) => doc(db, 'users', u));
-      const byUser = doc(db, 'users', user.user_id);
-
-      const tripData = {
-        car: carRef,
-        users: userRefs,
-        odo: Number(newOdometer),
-        distance: tripDistance,
-        cost: Number(cost),
-        comment: comment,
-        byUser: byUser
-      };
-
-      let tripRef;
       if (isEditMode && lastTrip) {
-        tripRef = doc(db, 'trips', lastTrip.id);
-        await updateDoc(tripRef, {
-          ...tripData,
-          editedAt: serverTimestamp()
+        await tripsApi.update(lastTrip.id, {
+          carId: selectedCar,
+          userIds: selectedUsers,
+          odo: Number(newOdometer),
+          distance: tripDistance,
+          cost: Number(cost),
+          comment,
         });
       } else {
-        console.log('Submitting trip:', tripData);
-        tripRef = await addDoc(collection(db, 'trips'), {
-          ...tripData,
-          timestamp: serverTimestamp()
+        await tripsApi.create({
+          carId: selectedCar,
+          userIds: selectedUsers,
+          odo: Number(newOdometer),
+          distance: tripDistance,
+          cost: Number(cost),
+          comment,
+          bookingId: isConnectedBooking && connectedBooking ? connectedBooking.id : undefined,
+          bookingParentId: isConnectedBooking && connectedBooking ? connectedBooking.parent_id : undefined,
         });
       }
 
-      if (isConnectedBooking && connectedBooking) {
-        // Fetch booking and update it with the trip reference
-        const dateCarDocRef = doc(db, 'date-car-bookings', connectedBooking.parent_id);
-        await runTransaction(db, async (transaction) => {
-          const dateBookingsDoc = await transaction.get(dateCarDocRef);
-          if (dateBookingsDoc.exists()) {
-            const existingBookings = dateBookingsDoc.data().bookings;
-            const updatedBookings =
-                existingBookings.map(b => b.id === connectedBooking.id ? {...b, logged: tripRef} : b);
-            transaction.update(dateCarDocRef, {bookings: updatedBookings});
-          }
-        });
-      }
       navigate('/trip-log');
     } catch (error) {
       console.error('Error saving trip:', error);

@@ -185,13 +185,31 @@ router.put('/settings', async (req: Request, res: Response) => {
 // ADMIN: trip log overview (all trips, not just last 30 days)
 // ============================================================
 
-// GET /api/v1/admin/trips
-router.get('/trips', async (_req, res: Response) => {
+// GET /api/v1/admin/trips  (optional ?carId=&month=yyyy-MM)
+router.get('/trips', async (req: Request, res: Response) => {
+  const { carId, month } = req.query as Record<string, string | undefined>;
+
+  const where: Record<string, unknown> = {};
+  if (carId) where.carId = carId;
+  if (month) {
+    const start = new Date(`${month}-01T00:00:00Z`);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 1);
+    where.timestamp = { gte: start, lt: end };
+  }
+
   const trips = await prisma.trip.findMany({
+    where,
     include: { users: true },
-    orderBy: { odo: 'desc' },
+    orderBy: { timestamp: 'desc' },
   });
   res.json(trips.map(t => serializeTrip(t)));
+});
+
+// DELETE /api/v1/admin/trips/:id
+router.delete('/trips/:id', async (req: Request, res: Response) => {
+  await prisma.trip.delete({ where: { id: req.params.id } });
+  res.status(204).end();
 });
 
 export default router;

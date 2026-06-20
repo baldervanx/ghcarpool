@@ -1,8 +1,7 @@
 import { configureStore, createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
-import { getDoc, getDocs, collection, doc, DocumentData } from 'firebase/firestore';
-import { db } from './db/firebase.js';
 import { mergeAndRemoveDuplicates } from "@/lib/utils";
+import { usersApi, carsApi, destinationsApi, settingsApi } from '@/api/general';
 
 const CACHE_DURATION = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
 
@@ -66,26 +65,21 @@ interface UserDb {
     email: string;
     isAdmin: boolean;
 }
-// Updated fetch functions using cache
+// Updated fetch functions using REST API
 export const fetchUsers = createCachedThunk('user', async () => {
-    const usersSnapshot = await getDocs(collection(db, 'users'));
-    return usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserDb));
+    return usersApi.list();
 });
 
 export const fetchCars = createCachedThunk('car', async () => {
-    const carsSnapshot = await getDocs(collection(db, 'cars'));
-    let cars = carsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Car));
-    return cars.sort((a,b)=> a.order-b.order);
+    return carsApi.list();
 });
 
 export const fetchDestinations = createCachedThunk('destination', async () => {
-    const destsSnapshot = await getDocs(collection(db, 'destinations'));
-    return destsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Destination));
+    return destinationsApi.list();
 });
 
 export const fetchSettings = createCachedThunk('settings', async () => {
-    const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
-    return settingsSnap.exists() ? settingsSnap.data() : null;
+    return settingsApi.get();
 });
 
 // Modified auth state handling with cache awareness
@@ -307,7 +301,7 @@ const destinationSlice = createSlice({
 
 // Settings Slice
 interface SettingsState {
-    data: DocumentData | null;
+    data: Record<string, unknown> | null;
     loading: boolean;
     error: string | null;
 }

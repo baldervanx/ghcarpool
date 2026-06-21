@@ -17,6 +17,10 @@ services:
       retries: 10
     networks:
       - internal
+    # Exponera PostgreSQL-porten lokalt för DB-verktyg (t.ex. TablePlus, pgAdmin).
+    # Sätt POSTGRES_EXPOSE_PORT=5432 i .env för att aktivera — utelämna i produktion.
+    ports:
+      - "${POSTGRES_EXPOSE_PORT:-}:5432"
 
   # ── Backend (Node/Express/Prisma) ──────────────────────────────────────────
   backend:
@@ -33,13 +37,14 @@ services:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-ghcarpool}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ghcarpool}"
       SESSION_SECRET: ${SESSION_SECRET}
       FRONTEND_URL:   ${FRONTEND_URL:-http://localhost}
+      # Sätt COOKIE_SECURE=true om TLS termineras i nginx (HTTPS_PORT satt nedan)
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       # Google OAuth (optionellt — utelämna för att inaktivera)
       GOOGLE_CLIENT_ID:     ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL:  ${GOOGLE_CALLBACK_URL:-}
     networks:
       - internal
-    # Exponeras ej direkt — nginx proxar /api
     expose:
       - "3001"
 
@@ -56,6 +61,11 @@ services:
       - backend
     ports:
       - "${APP_PORT:-80}:80"
+      # HTTPS: sätt HTTPS_PORT=443 och lägg SSL-cert i ./certs/ (se README)
+      - "${HTTPS_PORT:-}:443"
+    volumes:
+      # SSL-certifikat — monteras bara om HTTPS_PORT är satt
+      - ${CERTS_DIR:-/dev/null}:/etc/nginx/certs:ro
     networks:
       - internal
 

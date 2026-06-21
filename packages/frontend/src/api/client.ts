@@ -1,8 +1,7 @@
 /**
  * Lätt wrapper för fetch mot backend-API.
- * Hämtar Firebase ID-token och skickar med i Authorization-headern automatiskt.
+ * Auth sköts via session-cookie (credentials: 'include') — ingen Bearer-token.
  */
-import { getAuth } from 'firebase/auth';
 
 const BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
 
@@ -13,22 +12,14 @@ export class ApiError extends Error {
   }
 }
 
-async function getToken(): Promise<string> {
-  const user = getAuth().currentUser;
-  if (!user) throw new Error('Inte inloggad');
-  return user.getIdToken();
-}
-
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = await getToken();
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
       ...(options.headers ?? {}),
     },
     credentials: 'include',

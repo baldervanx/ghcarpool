@@ -1,109 +1,143 @@
 import request from 'supertest';
-import express from 'express';
-import { requireAuth, requireAdmin } from '../middleware/auth';
+import bcrypt from 'bcrypt';
+import app from '../app';
 import prisma from '../db/prisma';
 
-// Mocka firebase-admin modulen
-jest.mock('../lib/firebase-admin', () => ({
-  firebaseAuth: {
-    verifyIdToken: jest.fn(),
-  },
-}));
+const TEST_EMAIL = `auth-test-${Date.now()}@example.com`;
+const TEST_PASSWORD = 'testlösenord123';
+const ADMIN_EMAIL = `admin-test-${Date.now()}@example.com`;
 
-import { firebaseAuth } from '../lib/firebase-admin';
-const mockVerify = firebaseAuth.verifyIdToken as jest.Mock;
-
-// Testapp
-const app = express();
-app.use(express.json());
-
-app.get('/protected', requireAuth, (req, res) => {
-  res.json({ userId: req.user!.id, email: req.user!.email });
+beforeAll(async () => {
+  const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
+  await prisma.user.upsert({
+    where: { email: TEST_EMAIL },
+    create: { email: TEST_EMAIL, passwordHash },
+    update: { passwordHash },
+  });
+  const adminHash = await bcrypt.hash('admin123', 10);
+  await prisma.user.upsert({
+    where: { email: ADMIN_EMAIL },
+    create: { email: ADMIN_EMAIL, isAdmin: true, passwordHash: adminHash },
+    update: { isAdmin: true, passwordHash: adminHash },
+  });
 });
 
-app.get('/admin-only', requireAuth, requireAdmin, (_req, res) => {
-  res.json({ ok: true });
+afterAll(async () => {
+  await prisma.user.deleteMany({
+    where: { email: { in: [TEST_EMAIL, ADMIN_EMAIL] } },
+  });
+  await prisma.$disconnect();
 });
 
-describe('requireAuth middleware', () => {
-  const TEST_EMAIL = `auth-test-${Date.now()}@example.com`;
+// ── POST /api/v1/auth/login ───────────────────────────────────────────────────
 
-  afterAll(async () => {
-    await prisma.user.deleteMany({ where: { email: { contains: 'auth-test-' } } });
-    await prisma.$disconnect();
-  });
-
-  it('returnerar 401 om Authorization-header saknas', async () => {
-    const res = await request(app).get('/protected');
+describe('POST /api/v1/auth/login', () => {
+  it('returnerar 401 utan body', async () => {
+    const res = await request(app).post('/api/v1/auth/login').send({});
     expect(res.status).toBe(401);
-    expect(res.body.error).toMatch(/Saknar/);
   });
 
-  it('returnerar 401 vid ogiltig token', async () => {
-    mockVerify.mockRejectedValueOnce(new Error('invalid token'));
+  it('returnerar 401 med fel lösenord', async () => {
     const res = await request(app)
-      .get('/protected')
-      .set('Authorization', 'Bearer bad-token');
+      .post('/api/v1/auth/login')
+      .send({ email: TEST_EMAIL, password: 'fel-lösenord' });
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe('Ogiltig token');
+    expect(res.body.error).toMatch(/Fel e-post eller lösenord/);
   });
 
-  it('skapar användare och tillåter åtkomst med giltig token', async () => {
-    mockVerify.mockResolvedValueOnce({ uid: 'uid-123', email: TEST_EMAIL });
+  it('returnerar 401 för okänd e-post', async () => {
     const res = await request(app)
-      .get('/protected')
-      .set('Authorization', `Bearer valid-token`);
+      .post('/api/v1/auth/login')
+      .send({ email: 'okänd@example.com', password: TEST_PASSWORD });
+    expect(res.status).toBe(401);
+  });
+
+  it('returnerar 200 med rätt inloggning', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: TEST_EMAIL, password: TEST_PASSWORD });
     expect(res.status).toBe(200);
     expect(res.body.email).toBe(TEST_EMAIL);
+    expect(res.body).not.toHaveProperty('passwordHash');
+  });
+});
 
-    const user = await prisma.user.findUnique({ where: { email: TEST_EMAIL } });
-    expect(user).not.toBeNull();
+// ── GET /api/v1/auth/me ───────────────────────────────────────────────────────
+
+describe('GET /api/v1/auth/me', () => {
+  it('returnerar 401 utan session', async () => {
+    const res = await request(app).get('/api/v1/auth/me');
+    expect(res.status).toBe(401);
   });
 
-  it('returnerar samma användare vid andra anropet (upsert idempotent)', async () => {
-    mockVerify.mockResolvedValueOnce({ uid: 'uid-123', email: TEST_EMAIL });
-    const res = await request(app)
-      .get('/protected')
-      .set('Authorization', `Bearer valid-token`);
-    expect(res.status).toBe(200);
+  it('returnerar inloggad användare med giltig session', async () => {
+    const agent = request.agent(app);
+    await agent
+      .post('/api/v1/auth/login')
+      .send({ email: TEST_EMAIL, password: TEST_PASSWORD });
 
-    const count = await prisma.user.count({ where: { email: TEST_EMAIL } });
-    expect(count).toBe(1);
+    const res = await agent.get('/api/v1/auth/me');
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe(TEST_EMAIL);
+  });
+});
+
+// ── POST /api/v1/auth/logout ──────────────────────────────────────────────────
+
+describe('POST /api/v1/auth/logout', () => {
+  it('loggar ut och invaliderar sessionen', async () => {
+    const agent = request.agent(app);
+    await agent
+      .post('/api/v1/auth/login')
+      .send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+
+    const logoutRes = await agent.post('/api/v1/auth/logout');
+    expect(logoutRes.status).toBe(200);
+    expect(logoutRes.body.ok).toBe(true);
+
+    // /me ska nu returnera 401
+    const meRes = await agent.get('/api/v1/auth/me');
+    expect(meRes.status).toBe(401);
+  });
+});
+
+// ── requireAuth + requireAdmin via skyddade routes ────────────────────────────
+
+describe('requireAuth middleware', () => {
+  it('returnerar 401 på skyddad route utan session', async () => {
+    const res = await request(app).get('/api/v1/users');
+    expect(res.status).toBe(401);
+  });
+
+  it('tillåter åtkomst med giltig session', async () => {
+    const agent = request.agent(app);
+    await agent
+      .post('/api/v1/auth/login')
+      .send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+
+    const res = await agent.get('/api/v1/users');
+    expect(res.status).toBe(200);
   });
 });
 
 describe('requireAdmin middleware', () => {
-  const ADMIN_EMAIL = `admin-test-${Date.now()}@example.com`;
-  const USER_EMAIL = `user-test-${Date.now()}@example.com`;
-
-  afterAll(async () => {
-    await prisma.user.deleteMany({
-      where: { email: { in: [ADMIN_EMAIL, USER_EMAIL] } },
-    });
-  });
-
   it('returnerar 403 för icke-admin', async () => {
-    mockVerify.mockResolvedValueOnce({ uid: 'uid-user', email: USER_EMAIL });
-    const res = await request(app)
-      .get('/admin-only')
-      .set('Authorization', 'Bearer user-token');
+    const agent = request.agent(app);
+    await agent
+      .post('/api/v1/auth/login')
+      .send({ email: TEST_EMAIL, password: TEST_PASSWORD });
+
+    const res = await agent.get('/api/v1/admin/users');
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('Åtkomst nekad');
   });
 
-  it('tillåter åtkomst för admin-användare', async () => {
-    // Skapa en admin-användare direkt i DB
-    await prisma.user.upsert({
-      where: { email: ADMIN_EMAIL },
-      create: { email: ADMIN_EMAIL, isAdmin: true },
-      update: { isAdmin: true },
-    });
+  it('tillåter åtkomst för admin', async () => {
+    const agent = request.agent(app);
+    await agent
+      .post('/api/v1/auth/login')
+      .send({ email: ADMIN_EMAIL, password: 'admin123' });
 
-    mockVerify.mockResolvedValueOnce({ uid: 'uid-admin', email: ADMIN_EMAIL });
-    const res = await request(app)
-      .get('/admin-only')
-      .set('Authorization', 'Bearer admin-token');
+    const res = await agent.get('/api/v1/admin/users');
     expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
   });
 });

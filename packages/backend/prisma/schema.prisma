@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -13,6 +14,7 @@ model User {
   isAdmin          Boolean  @default(false)
   shortName        String   @default("")
   commentMandatory Boolean  @default(false)
+  passwordHash     String?
   createdAt        DateTime @default(now())
 
   bookingsMade  Booking[]       @relation("BookingByUser")

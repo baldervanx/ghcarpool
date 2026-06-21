@@ -3,7 +3,6 @@
  */
 import { useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { getAuth } from 'firebase/auth';
 import {
   setTripsLoading,
   setTrips,
@@ -33,12 +32,9 @@ export function useListenToTrips() {
       dispatch(setTripsLoading(false));
     });
 
-    // 2. SSE for live updates
-    const openStream = async () => {
-      const token = await getAuth().currentUser?.getIdToken();
-      if (!token) return;
-
-      const url = `${API_BASE}/trips/stream?token=${encodeURIComponent(token)}`;
+    // 2. SSE for live updates — session-cookie autentiserar automatiskt
+    const openStream = () => {
+      const url = `${API_BASE}/trips/stream`;
       const es = new EventSource(url, { withCredentials: true });
       esRef.current = es;
 

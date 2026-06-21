@@ -6,7 +6,6 @@
  */
 import { useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { getAuth } from 'firebase/auth';
 import { addDays, format, startOfDay } from 'date-fns';
 import {
   setBookingsLoading,
@@ -52,13 +51,9 @@ export function useListenToBookings() {
       dispatch(setBookingsLoading(false));
     });
 
-    // 2. SSE stream for live updates
-    const openStream = async () => {
-      const token = await getAuth().currentUser?.getIdToken();
-      if (!token) return;
-
-      // EventSource stöder inte custom headers — skicka token som query-param
-      const url = `${API_BASE}/bookings/stream?token=${encodeURIComponent(token)}`;
+    // 2. SSE stream for live updates — session-cookie autentiserar automatiskt
+    const openStream = () => {
+      const url = `${API_BASE}/bookings/stream`;
       const es = new EventSource(url, { withCredentials: true });
       esRef.current = es;
 
@@ -85,7 +80,6 @@ export function useListenToBookings() {
       es.onerror = (err) => {
         console.error('[bookings] SSE error', err);
         es.close();
-        // Återanslut efter 5 s
         setTimeout(openStream, 5000);
       };
     };

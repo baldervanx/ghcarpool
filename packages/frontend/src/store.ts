@@ -1,6 +1,6 @@
 import { configureStore, createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { mergeAndRemoveDuplicates } from "@/lib/utils";
+import { api } from '@/api/client';
 import { usersApi, carsApi, destinationsApi, settingsApi } from '@/api/general';
 
 const CACHE_DURATION = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
@@ -82,86 +82,34 @@ export const fetchSettings = createCachedThunk('settings', async () => {
     return settingsApi.get();
 });
 
-// Modified auth state handling with cache awareness
-// Keep a single auth listener at module level so repeated dispatches of
-// fetchAuthState (e.g. on App mount and again right after login) don't stack
-// multiple onAuthStateChanged listeners. Stacked listeners caused duplicated
-// fetches and the "bookings tripled on logout/login" issue.
-let authUnsubscribe: (() => void) | null = null;
-
+// Modified auth state handling
 export const fetchAuthState = createAsyncThunk(
     'auth/fetchAuthState',
     async (_, { dispatch }) => {
-        return new Promise<void>((resolve) => {
-            const auth = getAuth();
-            const authStart = performance.now();
+        try {
+            const user = await api.get<{ id: string; email: string; isAdmin: boolean }>('/auth/me');
 
-            // Tear down any previous listener before registering a new one.
-            if (authUnsubscribe) {
-                authUnsubscribe();
-                authUnsubscribe = null;
-            }
+            const users = await dispatch(fetchUsers()).unwrap();
+            await Promise.all([
+                dispatch(fetchCars()),
+                dispatch(fetchSettings()),
+                dispatch(fetchDestinations()),
+            ]);
 
-            let resolved = false;
-
-            authUnsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
-                let authState: AuthState = {
-                    user: null,
-                    isMember: false,
-                    loading: false
-                };
-
-                if (user) {
-                    // Check if we need to wait for fresh data
-                    const needsFreshData = !getCachedData('user') ||
-                        !getCachedData('car') ||
-                        !getCachedData('settings') ||
-                        !getCachedData('destination');
-
-                    // Fetch all required data
-                    const users = await dispatch(fetchUsers()).unwrap();
-
-                    // Only wait for these if we need fresh data
-                    if (needsFreshData) {
-                        await Promise.all([
-                            dispatch(fetchCars()),
-                            dispatch(fetchSettings()),
-                            dispatch(fetchDestinations())
-                        ]);
-                    } else {
-                        // Otherwise fetch in background
-                        dispatch(fetchCars());
-                        dispatch(fetchSettings());
-                        dispatch(fetchDestinations());
-                    }
-
-                    const matchedUser = users.find(u => u.email === user.email);
-                    if (matchedUser) {
-                        authState = {
-                            user: {
-                                uid: user.uid,
-                                email: user.email,
-                                user_id: matchedUser.id,
-                                isAdmin: matchedUser.isAdmin
-                            },
-                            isMember: true,
-                            loading: false
-                        };
-                    }
-                }
-                dispatch(setAuthState(authState));
-                // Only resolve the thunk once (on the first auth resolution),
-                // subsequent auth changes still update state via setAuthState.
-                if (!resolved) {
-                    resolved = true;
-                    console.log(
-                        `[perf] auth resolved in ${Math.round(performance.now() - authStart)}ms ` +
-                        `(signedIn=${Boolean(user)}, isMember=${authState.isMember})`
-                    );
-                    resolve();
-                }
-            });
-        });
+            const matchedUser = users.find((u: { email: string }) => u.email === user.email);
+            dispatch(setAuthState({
+                user: {
+                    uid: user.id,
+                    email: user.email,
+                    user_id: user.id,
+                    isAdmin: user.isAdmin,
+                },
+                isMember: Boolean(matchedUser),
+                loading: false,
+            }));
+        } catch {
+            dispatch(setAuthState({ user: null, isMember: false, loading: false }));
+        }
     }
 );
 

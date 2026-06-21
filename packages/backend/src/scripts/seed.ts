@@ -15,6 +15,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { addDays, format, subDays } from 'date-fns';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
@@ -32,6 +33,10 @@ function timeMin(h: number, m = 0) {
 
 async function main() {
   console.log('Seeding database...\n');
+
+  // ── Lösenord för seed-användare ───────────────────────────────────────────
+  const SEED_PASSWORD = 'dev123';
+  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
 
   // ── Settings ────────────────────────────────────────────────────────────
   const settings = await prisma.settings.upsert({
@@ -83,12 +88,12 @@ async function main() {
   }
 
   // ── Users ─────────────────────────────────────────────────────────────────
-  // OBS: I produktion skapas användare automatiskt via requireAuth-middleware
-  // när de loggar in med Firebase. Dessa test-users är för lokal testning.
+  // Seed-användare får alla lösenordet "dev123" för lokal testning.
+  // I produktion sätts riktiga lösenord med: pnpm exec ts-node src/scripts/set-password.ts
   const usersData = [
-    { email: 'admin@example.com', shortName: 'ADM', isAdmin: true, commentMandatory: false },
-    { email: 'anna@example.com', shortName: 'ANA', isAdmin: false, commentMandatory: false },
-    { email: 'bjorn@example.com', shortName: 'BJN', isAdmin: false, commentMandatory: true },
+    { email: 'admin@example.com', shortName: 'ADM', isAdmin: true,  commentMandatory: false },
+    { email: 'anna@example.com',  shortName: 'ANA', isAdmin: false, commentMandatory: false },
+    { email: 'bjorn@example.com', shortName: 'BJN', isAdmin: false, commentMandatory: true  },
     { email: 'cecilia@example.com', shortName: 'CEC', isAdmin: false, commentMandatory: false },
     { email: 'david@example.com', shortName: 'DAV', isAdmin: false, commentMandatory: false },
   ];
@@ -97,12 +102,13 @@ async function main() {
   for (const u of usersData) {
     const user = await prisma.user.upsert({
       where: { email: u.email },
-      create: u,
-      update: { shortName: u.shortName, isAdmin: u.isAdmin },
+      create: { ...u, passwordHash },
+      update: { shortName: u.shortName, isAdmin: u.isAdmin, passwordHash },
     });
     users[u.email] = user.id;
     console.log('User:', user.email, '->', user.id);
   }
+  console.log(`\nAlla seed-användare har lösenordet: ${SEED_PASSWORD}\n`);
 
   // ── Trips — historik (senaste 30 dagar) ──────────────────────────────────
   const volvoId = cars['Volvo XC60 (ABC 123)'];

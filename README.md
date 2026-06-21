@@ -7,12 +7,12 @@ Samåkningssystem för arbetsplatser. Låter användare boka bilar, logga resor 
 ```
 packages/
   frontend/   React 18 + Vite + Redux Toolkit + TailwindCSS + shadcn/ui
-  backend/    Node 20 + Express + TypeScript + Prisma ORM
+  backend/    Node 22 + Express + TypeScript + Prisma ORM
 ```
 
-- **Auth**: Firebase Authentication (Google Sign-In). Frontend hämtar ID-token; backend verifierar den via Firebase Admin SDK.
-- **Databas**: PostgreSQL 17 + Prisma. Alla skrivningar går via backend.
-- **Realtid**: SSE (Server-Sent Events) ersätter Firestore `onSnapshot`. Backend broadcastar `add/update/remove`-events när data förändras.
+- **Auth**: Session-baserad inloggning med e-post + lösenord (Passport.js). Google OAuth är optionellt (styrs av env-variabler). Ingen extern autentiseringstjänst krävs.
+- **Databas**: PostgreSQL 17 + Prisma. Alla skrivningar går via backend. Sessioner lagras i databasen.
+- **Realtid**: SSE (Server-Sent Events). Backend broadcastar `add/update/remove`-events när data förändras.
 - **Deployment**: Docker Compose. nginx serverar frontend och proxar `/api` till backend.
 
 ---
@@ -21,9 +21,8 @@ packages/
 
 ### 1. Förutsättningar
 
-- Docker >= 24 och Docker Compose v2
-- Ett Firebase-projekt med Google Sign-In aktiverat
-- En Firebase service-account-nyckel (JSON) för backend
+- Docker >= 24 och Docker Compose v2 (eller Podman + podman-compose)
+- Inget externt konto krävs
 
 ### 2. Konfigurera miljövariabler
 
@@ -31,17 +30,16 @@ packages/
 cp .env.example .env
 ```
 
-Öppna `.env` och fyll i alla värden. Kortfattad guide:
+Öppna `.env` och fyll i:
 
-| Variabel | Var hittar du det |
+| Variabel | Beskrivning |
 |---|---|
 | `POSTGRES_PASSWORD` | Välj ett starkt lösenord |
 | `SESSION_SECRET` | Generera: `openssl rand -hex 32` |
-| `VITE_FIREBASE_API_KEY` | Firebase Console → Projektinst. → Dina appar → Web-app |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Samma ställe, t.ex. `ditt-projekt.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | Samma ställe |
-| `VITE_FIREBASE_APP_ID` | Samma ställe |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Console → Projektinst. → Tjänstekonton → Generera ny nyckel. Klistra in hela JSON-innehållet som ett enda värde (utan radbrytningar). |
+| `FRONTEND_URL` | URL som backend tillåter CORS-anrop från (default `http://localhost`) |
+| `APP_PORT` | Porten nginx lyssnar på (default `80`) |
+
+Google OAuth är **frivilligt** — lämna `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` tomma för att hoppa över det.
 
 ### 3. Starta
 
@@ -51,7 +49,15 @@ docker compose up --build -d
 
 Appen är nu tillgänglig på http://localhost (eller `APP_PORT` om du ändrat den).
 
-### 4. Seed-data (valfritt)
+### 4. Skapa första användaren
+
+Första gången behöver du sätta ett lösenord på en befintlig databasanvändare (eller använda seed-scriptet nedan som skapar exempelanvändare med lösenord):
+
+```bash
+docker compose exec backend node packages/backend/dist/scripts/set-password.js user@example.com nyttlösenord
+```
+
+### 5. Seed-data (valfritt)
 
 Fyll databasen med testdata (bilar, destinationer, inställningar, exempelanvändare och bokningar):
 
@@ -59,15 +65,7 @@ Fyll databasen med testdata (bilar, destinationer, inställningar, exempelanvän
 docker compose exec backend node packages/backend/dist/scripts/seed.js
 ```
 
-Eller mot en lokal databas under utveckling:
-
-```bash
-cd packages/backend
-DATABASE_URL="postgresql://ghcarpool:ditt_lösenord@127.0.0.1:5432/ghcarpool_dev" \
-  npx ts-node src/scripts/seed.ts
-```
-
-### 5. Stoppa
+### 6. Stoppa
 
 ```bash
 docker compose down          # Behåller data i pgdata-volymen
@@ -80,13 +78,13 @@ docker compose down -v       # Tar även bort databasen
 
 ### Förutsättningar
 
-- Node.js 20
+- Node.js 22
 - pnpm >= 9  (`npm install -g pnpm`)
-- PostgreSQL 17 (se nedan om du saknar det)
+- PostgreSQL 17 (se nedan)
 
 ### Starta PostgreSQL
 
-Om du inte har PostgreSQL installerat lokalt kan du köra det via Docker:
+Enklast via Docker:
 
 ```bash
 docker run -d \
@@ -106,23 +104,25 @@ pnpm install
 
 ### Konfigurera backend
 
+Kopiera dev-filen direkt (kräver ingen ändring för lokal standardinstallation):
+
 ```bash
-cp packages/backend/.env.example packages/backend/.env
-# Redigera packages/backend/.env — fyll i DATABASE_URL, SESSION_SECRET osv.
+cp .env.dev packages/backend/.env
 ```
 
-### Kör migrationer + generera Prisma-klient
+Om du vill anpassa (annan DB-URL, port osv.) redigerar du `packages/backend/.env`.
+
+### Kör migrationer
 
 ```bash
 cd packages/backend
-npx prisma migrate dev
-npx prisma generate
+pnpm exec prisma migrate dev
 ```
 
 ### Starta dev-servrar
 
 ```bash
-# Terminal 1 — backend (port 3001, hot-reload)
+# Terminal 1 — backend (port 3001, hot-reload via ts-node-dev)
 pnpm dev:backend
 
 # Terminal 2 — frontend (port 5173, HMR)
@@ -130,6 +130,13 @@ pnpm dev:frontend
 ```
 
 Vite proxar automatiskt `/api/*` till `http://localhost:3001`.
+
+### Sätta lösenord på en användare (dev)
+
+```bash
+cd packages/backend
+pnpm exec ts-node src/scripts/set-password.ts user@example.com lösenord123
+```
 
 ---
 
@@ -144,49 +151,56 @@ Vite proxar automatiskt `/api/*` till `http://localhost:3001`.
 | `PORT` | Nej | HTTP-port, default `3001` |
 | `NODE_ENV` | Nej | `development` eller `production` |
 | `FRONTEND_URL` | Nej | Tillåten CORS-origin, default `http://localhost:5173` |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Ja* | Hela service-account JSON på en rad |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Ja* | Alternativ: sökväg till service-account-fil |
-
-\* Minst ett av `FIREBASE_SERVICE_ACCOUNT_JSON` / `GOOGLE_APPLICATION_CREDENTIALS` krävs.
+| `GOOGLE_CLIENT_ID` | Nej | Google OAuth — utelämnas för att inaktivera |
+| `GOOGLE_CLIENT_SECRET` | Nej | Google OAuth — utelämnas för att inaktivera |
+| `GOOGLE_CALLBACK_URL` | Nej | Google OAuth callback, default `/api/v1/auth/google/callback` |
 
 ### Frontend (build-args / `.env.local`)
 
 | Variabel | Beskrivning |
 |---|---|
-| `VITE_FIREBASE_API_KEY` | Firebase web-app API-nyckel |
-| `VITE_FIREBASE_AUTH_DOMAIN` | t.ex. `ditt-projekt.firebaseapp.com` |
-| `VITE_FIREBASE_PROJECT_ID` | Firebase projekt-ID |
-| `VITE_FIREBASE_APP_ID` | Firebase App ID |
-| `VITE_API_URL` | Backend bas-URL, default `/api` (nginx-proxy) |
+| `VITE_API_URL` | Backend bas-URL, default `/api/v1` (nginx-proxy) |
+| `VITE_GOOGLE_AUTH_ENABLED` | Sätt till `true` för att visa Google-knappen i login-formuläret |
+
+---
+
+## Auth-flöde
+
+1. Användaren fyller i e-post + lösenord på `/login`.
+2. Frontend POSTar till `POST /api/v1/auth/login`.
+3. Passport.js verifierar mot `User.passwordHash` (bcrypt).
+4. Vid godkänd inloggning skapar Express en session (lagras i PostgreSQL via `connect-pg-simple`).
+5. Alla efterföljande anrop bär automatiskt session-cookien (`credentials: include`).
+6. `GET /api/v1/auth/me` returnerar inloggad användare — används av frontend vid sidladdning.
+7. `POST /api/v1/auth/logout` förstör sessionen.
 
 ---
 
 ## API-översikt
 
-Alla endpoints (utom `/health`) kräver en giltig Firebase ID-token i headern:
+Alla skyddade endpoints kräver en aktiv session (cookie).
 
-```
-Authorization: Bearer <firebase-id-token>
-```
-
-| Metod | Sökväg | Beskrivning |
-|---|---|---|
-| GET | `/health` | Hälsokontroll |
-| GET | `/api/v1/me` | Inloggad användares profil |
-| GET | `/api/v1/users` | Alla användare |
-| GET | `/api/v1/cars` | Alla bilar |
-| GET | `/api/v1/destinations` | Alla destinationer |
-| GET | `/api/v1/settings` | Appinställningar |
-| GET | `/api/v1/bookings` | Bokningar (senaste 90 dagar + 60 framåt) |
-| POST | `/api/v1/bookings` | Skapa/uppdatera bokning |
-| DELETE | `/api/v1/bookings/:bookingId` | Ta bort bokning |
-| GET | `/api/v1/bookings/stream` | SSE-stream för bokningsuppdateringar |
-| GET | `/api/v1/trips` | Senaste 30 dagars resor |
-| POST | `/api/v1/trips` | Logga ny resa |
-| PUT | `/api/v1/trips/:id` | Redigera resa |
-| DELETE | `/api/v1/trips/:id` | Ta bort resa |
-| GET | `/api/v1/trips/stream` | SSE-stream för reseuppdateringar |
-| GET | `/api/v1/admin/*` | Admin-endpoints (kräver isAdmin=true) |
+| Metod | Sökväg | Auth | Beskrivning |
+|---|---|---|---|
+| GET | `/health` | — | Hälsokontroll |
+| POST | `/api/v1/auth/login` | — | Logga in |
+| POST | `/api/v1/auth/logout` | session | Logga ut |
+| GET | `/api/v1/auth/me` | session | Inloggad användares profil |
+| GET | `/api/v1/auth/google` | — | Starta Google OAuth (om aktiverat) |
+| GET | `/api/v1/users` | session | Alla användare |
+| GET | `/api/v1/cars` | session | Alla bilar |
+| GET | `/api/v1/destinations` | session | Alla destinationer |
+| GET | `/api/v1/settings` | session | Appinställningar |
+| GET | `/api/v1/bookings` | session | Bokningar (datumintervall) |
+| POST | `/api/v1/bookings` | session | Skapa/uppdatera bokning |
+| DELETE | `/api/v1/bookings/:id` | session | Ta bort bokning |
+| GET | `/api/v1/bookings/stream` | session | SSE-stream för bokningsuppdateringar |
+| GET | `/api/v1/trips` | session | Senaste 30 dagars resor |
+| POST | `/api/v1/trips` | session | Logga ny resa |
+| PUT | `/api/v1/trips/:id` | session | Redigera resa |
+| DELETE | `/api/v1/trips/:id` | session | Ta bort resa |
+| GET | `/api/v1/trips/stream` | session | SSE-stream för reseuppdateringar |
+| GET | `/api/v1/admin/*` | session + isAdmin | Admin-endpoints |
 
 ---
 
@@ -195,10 +209,11 @@ Authorization: Bearer <firebase-id-token>
 | Lager | Teknologi |
 |---|---|
 | Frontend | React 18, Vite 5, Redux Toolkit, TailwindCSS, shadcn/ui, date-fns |
-| Backend | Node.js 20, Express 4, TypeScript 5 |
+| Backend | Node.js 22, Express 4, TypeScript 5 |
 | ORM | Prisma 5 |
 | Databas | PostgreSQL 17 |
-| Auth | Firebase Authentication + Firebase Admin SDK |
+| Auth | Passport.js (passport-local + optionell passport-google-oauth20) |
+| Session | express-session + connect-pg-simple (PostgreSQL) |
 | Realtid | SSE (Server-Sent Events) |
 | Monorepo | pnpm workspaces |
 | Container | Docker + nginx |
@@ -210,8 +225,9 @@ Authorization: Bearer <firebase-id-token>
 ```
 ghcarpool/
 ├── docker-compose.yml
-├── .env.example
-├── package.json                   # pnpm workspace root
+├── .env.example               # Mall för produktion/compose
+├── .env.dev                   # Färdig konfiguration för lokal dev
+├── package.json               # pnpm workspace root
 ├── pnpm-workspace.yaml
 ├── packages/
 │   ├── backend/
@@ -224,19 +240,21 @@ ghcarpool/
 │   │       ├── server.ts          # HTTP-server entry point
 │   │       ├── db/prisma.ts       # PrismaClient singleton
 │   │       ├── lib/
-│   │       │   ├── firebase-admin.ts
+│   │       │   ├── passport.ts    # LocalStrategy + optionell GoogleStrategy
 │   │       │   ├── serializers.ts
 │   │       │   ├── session.ts
 │   │       │   └── sse.ts
 │   │       ├── middleware/
 │   │       │   └── auth.ts        # requireAuth + requireAdmin
 │   │       ├── routes/
+│   │       │   ├── auth.ts        # /auth/login, /logout, /me, /google
 │   │       │   ├── admin.ts
 │   │       │   ├── bookings.ts
 │   │       │   ├── general.ts
 │   │       │   └── trips.ts
 │   │       └── scripts/
-│   │           └── seed.ts        # Seed-data / Firestore-migration
+│   │           ├── seed.ts        # Seed-data
+│   │           └── set-password.ts # Sätt lösenord på befintlig användare
 │   └── frontend/
 │       ├── Dockerfile
 │       ├── nginx.conf

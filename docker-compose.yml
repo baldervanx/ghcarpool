@@ -33,9 +33,10 @@ services:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-ghcarpool}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ghcarpool}"
       SESSION_SECRET: ${SESSION_SECRET}
       FRONTEND_URL:   ${FRONTEND_URL:-http://localhost}
-      # Firebase Admin — välj ett av alternativen (se README)
-      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
-      GOOGLE_APPLICATION_CREDENTIALS:  ${GOOGLE_APPLICATION_CREDENTIALS:-}
+      # Google OAuth (optionellt — utelämna för att inaktivera)
+      GOOGLE_CLIENT_ID:     ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL:  ${GOOGLE_CALLBACK_URL:-}
     networks:
       - internal
     # Exponeras ej direkt — nginx proxar /api
@@ -48,11 +49,8 @@ services:
       context: .
       dockerfile: packages/frontend/Dockerfile
       args:
-        VITE_API_URL:               /api
-        VITE_FIREBASE_API_KEY:      ${VITE_FIREBASE_API_KEY}
-        VITE_FIREBASE_AUTH_DOMAIN:  ${VITE_FIREBASE_AUTH_DOMAIN}
-        VITE_FIREBASE_PROJECT_ID:   ${VITE_FIREBASE_PROJECT_ID}
-        VITE_FIREBASE_APP_ID:       ${VITE_FIREBASE_APP_ID}
+        VITE_API_URL: /api/v1
+        VITE_GOOGLE_AUTH_ENABLED: ${VITE_GOOGLE_AUTH_ENABLED:-false}
     restart: unless-stopped
     depends_on:
       - backend

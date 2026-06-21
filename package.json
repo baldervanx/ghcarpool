@@ -10,6 +10,6 @@
     "lint": "pnpm -r lint"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@firebase/util", "esbuild", "msw", "protobufjs", "re2"]
+    "onlyBuiltDependencies": ["@firebase/util", "bcrypt", "esbuild", "msw", "protobufjs", "re2"]
   }
 }

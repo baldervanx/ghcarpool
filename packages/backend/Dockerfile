@@ -1,9 +1,12 @@
 # ── Stage 1: builder ────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 # pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# OpenSSL krävs av Prisma på Alpine
+RUN apk add --no-cache openssl
 
 # Workspace manifest files first (better layer cache)
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -20,10 +23,13 @@ RUN pnpm --filter @ghcarpool/backend exec prisma generate
 RUN pnpm --filter @ghcarpool/backend run build
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
+
+# OpenSSL krävs av Prisma på Alpine
+RUN apk add --no-cache openssl
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 

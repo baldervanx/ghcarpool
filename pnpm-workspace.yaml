@@ -5,6 +5,7 @@ allowBuilds:
   '@firebase/util': true
   '@prisma/client': true
   '@prisma/engines': true
+  bcrypt: true
   esbuild: true
   msw: true
   prisma: true
@@ -16,6 +17,7 @@ settings:
     - '@firebase/util'
     - '@prisma/client'
     - '@prisma/engines'
+    - bcrypt
     - esbuild
     - msw
     - prisma

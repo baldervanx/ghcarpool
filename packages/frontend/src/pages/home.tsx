@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import { getAuth, signOut } from 'firebase/auth';
+import { useDispatch, useSelector } from 'react-redux';
+import { AppDispatch, AppStore, Booking, Car, fetchAuthState } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,11 +11,9 @@ import { useTheme } from '@/components/theme-context';
 import { Sun, Moon } from 'lucide-react';
 import CarPoolCSVExporter from "@/components/ui/car-pool-csv-export";
 import HelpDialog from '@/components/help-dialog';
-import {useSelector} from "react-redux";
 import {format, differenceInCalendarDays} from "date-fns";
 import { sv } from 'date-fns/locale';
 import {useNavigate} from "react-router-dom";
-import type {AppStore, Booking, Car} from '@/store';
 
 interface BookingCar extends Booking {
   car: Car;
@@ -28,21 +27,25 @@ interface RecurrenceInfo {
 }
 
 export const HomePage = () => {
+  const dispatch = useDispatch<AppDispatch>();
   const { settings, updateSettings } = useAccessibility();
   const navigate = useNavigate();
   const { cars } = useSelector((state: AppStore) => state.car);
   const { darkMode, toggleDarkMode } = useTheme();
-  //const { trips, loading: tripsLoading } = useSelector((state: AppStore) => state.trip);
   const { bookings, loading: bookingsLoading } = useSelector((state: AppStore) => state.booking);
   const { user, loading: userLoading } = useSelector((state: AppStore) => state.auth);
   const [ activeBookings, setActiveBookings ] = useState<BookingCar[]>([]);
-  const auth = getAuth();
+
+  const handleLogout = async () => {
+    await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+    dispatch(fetchAuthState());
+  };
 
   useEffect(() => {
     // Find all bookings for today
     const dateStr = format(new Date(), 'yyyy-MM-dd');
     const currentDayBookings = bookings.filter(b => b.date === dateStr);
-    const currentUser = user.user_id;
+    const currentUser = user?.user_id;
     // Find bookings where current user is booked
     const flatBookings = currentDayBookings
         .flatMap(dayBooking =>
@@ -53,8 +56,8 @@ export const HomePage = () => {
               date: dayBooking.date
             }))
         ).filter(booking =>
-            booking.users.some(user => user.id === currentUser)
-        );
+            booking.users.some(u => u.id === currentUser)
+        ).filter((booking): booking is BookingCar => booking.car !== undefined);
     const sortedBookings = flatBookings.sort((a, b) => {
       if (a.logged && !b.logged) return 1;
       if (!a.logged && b.logged) return -1;
@@ -103,7 +106,6 @@ export const HomePage = () => {
   }
 
   function bookingStatus(booking: BookingCar): string {
-    // Can perhaps use time to give more details in the title.
     return booking.logged ? "Kört" : "Bokat";
   }
 
@@ -115,7 +117,7 @@ export const HomePage = () => {
 
   function isLastDayOfMultiDay(booking: BookingCar): boolean {
     const rec = booking.recurrenceId ? recurrenceMap[booking.recurrenceId] : undefined;
-    if (!rec?.isMultiDay) return true; // Only restrict when multi-day
+    if (!rec?.isMultiDay) return true;
     return booking.date === rec.end;
   }
 
@@ -142,11 +144,6 @@ export const HomePage = () => {
     return { start: startBooking?.startTime, end: endBooking?.endTime };
   }
 
-  // TODO: The bookings should be sorted:
-  //      1. past booking that hasn't been logged at the top (include such bookings from yesterday)
-  //      2. ongoing booking that will need to be logged soon
-  //      3. coming bookings later the same day
-  //      4. past bookings that has been logged, just remaining there to confirm that it was booked.
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-2xl mx-auto space-y-4">
@@ -190,7 +187,7 @@ export const HomePage = () => {
                               Logga
                             </Button>
                           )}
-                          <Button  variant="outline"
+                          <Button variant="outline"
                             className="ml-auto"
                             onClick={() => changeBooking(booking)}
                           >
@@ -211,7 +208,6 @@ export const HomePage = () => {
             </div>
         )}
 
-        {/* This card should be collapsed (accordion?) by default, as it is not that frequently used. */}
         <Accordion type="single" collapsible>
           <AccordionItem value="settings">
             <AccordionTrigger className="py-0">
@@ -264,15 +260,12 @@ export const HomePage = () => {
         </Accordion>
 
         <div className="flex gap-4 mb-8">
-          <Button
-              variant="outline"
-              onClick={() => signOut(auth)}
-          >
+          <Button variant="outline" onClick={handleLogout}>
             Logga ut
           </Button>
         </div>
 
-        {(user.isAdmin) && (
+        {user?.isAdmin && (
             <CarPoolCSVExporter/>
         )}
 

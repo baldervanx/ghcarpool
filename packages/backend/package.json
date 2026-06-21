@@ -2,6 +2,8 @@
   "name": "@ghcarpool/backend",
   "version": "1.0.0",
   "scripts": {
+    "migrate:firestore": "tsx scripts/migrate-from-firestore.ts",
+    "set-password": "tsx scripts/set-password.ts",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
@@ -16,6 +18,7 @@
     "date-fns": "^4.4.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-async-errors": "^3.1.1",
     "express-session": "^1.18.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
@@ -36,11 +39,13 @@
     "@types/passport-local": "^1.0.38",
     "@types/pg": "^8.11.10",
     "@types/supertest": "^6.0.2",
+    "firebase-admin": "^14.0.0",
     "jest": "^29.7.0",
     "prisma": "^5.22.0",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.6.3"
   },
   "pnpm": {

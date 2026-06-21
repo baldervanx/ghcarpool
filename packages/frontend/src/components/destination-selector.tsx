@@ -1,12 +1,14 @@
 import {useSelector} from "react-redux";
 import type {AppStore} from "@/store";
-import React, {useEffect, useState} from "react";
+import React, {useCallback, useEffect, useState} from "react";
 import {Combobox, ComboboxOptions} from "@/components/ui/combobox";
 import {Label} from "@/components/ui/label";
 
 interface DestinationSelectorProps {
+    // value är ett destinations-ID (CUID) eller tom sträng
     value: string,
-    onChange: (destination: string) => void,
+    // onChange anropas med destinations-ID (inte namn)
+    onChange: (destinationId: string) => void,
     onDistanceChange: (distance: string) => void,
     disabled?: boolean
 }
@@ -21,37 +23,47 @@ export const DestinationSelector = ({
     const [actualDestinations, setActualDestinations] = useState(destinations);
     const [selectedDestination, setSelectedDestination] = useState('');
 
-    useEffect(() => {
-        setSelectedFromName(value || "Annan");
-    }, [value]);
+    // Hittar rätt intern selected baserat på ett inkommande ID eller namn (bakåtkompatibilitet)
+    const resolveSelected = useCallback((val: string) => {
+        if (!val) { setSelectedDestination(''); return; }
 
-    const setSelectedFromName = (name: string) => {
-        const destObj = actualDestinations.find(d => d.name === name);
-        if (destObj) {
-            setSelectedDestination(destObj.id);
-        } else {
-            // Must here also create the custom destination entry
-            setActualDestinations([...actualDestinations, {id: name, name, shortName: ""}]);
-            setSelectedDestination(name);
-        }
-    }
+        // Primärt: matcha på ID (det normala fallet — backend skickar ID)
+        const byId = actualDestinations.find(d => d.id === val);
+        if (byId) { setSelectedDestination(byId.id); return; }
+
+        // Fallback: matcha på namn (äldre data eller manuell inmatning)
+        const byName = actualDestinations.find(d => d.name === val);
+        if (byName) { setSelectedDestination(byName.id); return; }
+
+        // Fritext som inte matchar — skapa temporär post
+        setActualDestinations(prev => {
+            if (prev.some(d => d.id === val)) return prev;
+            return [...prev, {id: val, name: val, shortName: ""}];
+        });
+        setSelectedDestination(val);
+    }, [actualDestinations]);
+
+    useEffect(() => {
+        resolveSelected(value);
+    }, [value, resolveSelected]);
 
     const handleDestinationChange = (option: ComboboxOptions) => {
         setSelectedDestination(option.value);
         const destination = destinations.find(d => d.id === option.value);
         if (destination) {
-            onChange(destination.name);
-            // The "Other" destination doesn't have a distance
+            // Skicka ID till parent (inte namn — undviker FK-violation i backend)
+            onChange(destination.id);
             onDistanceChange(destination.distance?.toString() || "");
         } else {
-            // This is the case when the custom added destination is selected.
+            // Fritext/anpassad destination — option.value är friteksten
             onChange(option.value);
             onDistanceChange("");
         }
     };
 
     const handleCustomDestinationChange = (label: string) => {
-        onChange(label); // This will actually trigger useEffect which in turn will create it.
+        // Fritext: parent håller texten som ID-placeholder tills den sparas
+        onChange(label);
     };
 
     return (

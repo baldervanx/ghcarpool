@@ -61,6 +61,12 @@ router.get('/stream', (req: Request, res: Response) => {
   req.on('close', () => unsubscribe(client));
 });
 
+// Hjälpfunktion: tom sträng behandlas som null (skyddas mot FK-violation)
+function emptyToNull(v: string | undefined | null): string | null {
+  if (v == null || v === '') return null;
+  return v;
+}
+
 // ---- POST /api/v1/bookings  (create or update booking) ----
 router.post('/', async (req: Request, res: Response) => {
   const {
@@ -91,6 +97,17 @@ router.post('/', async (req: Request, res: Response) => {
 
   const byUserId = req.user!.id;
 
+  // Validera destinationId om det är angivet — returnera 400 istället för att
+  // låta Prisma kasta P2003 FK-violation (som annars ger 500/502).
+  const resolvedDestinationId = emptyToNull(destinationId);
+  if (resolvedDestinationId !== null) {
+    const destExists = await prisma.destination.findUnique({ where: { id: resolvedDestinationId }, select: { id: true } });
+    if (!destExists) {
+      res.status(400).json({ error: `Destination '${resolvedDestinationId}' finns inte` });
+      return;
+    }
+  }
+
   const dcb = await prisma.$transaction(async (tx) => {
     // Find or create the DateCarBooking container
     let parent = await tx.dateCarBooking.findUnique({
@@ -114,9 +131,9 @@ router.post('/', async (req: Request, res: Response) => {
           startTime,
           endTime,
           distance,
-          destinationId: destinationId ?? null,
-          comment: comment ?? null,
-          recurrenceId: recurrenceId ?? null,
+          destinationId: resolvedDestinationId,
+          comment: emptyToNull(comment),
+          recurrenceId: emptyToNull(recurrenceId),
           users: { create: userIds.map(uid => ({ userId: uid })) },
         },
       });
@@ -128,9 +145,9 @@ router.post('/', async (req: Request, res: Response) => {
           startTime,
           endTime,
           distance,
-          destinationId: destinationId ?? null,
-          comment: comment ?? null,
-          recurrenceId: recurrenceId ?? null,
+          destinationId: resolvedDestinationId,
+          comment: emptyToNull(comment),
+          recurrenceId: emptyToNull(recurrenceId),
           byUserId,
           users: { create: userIds.map(uid => ({ userId: uid })) },
         },

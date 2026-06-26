@@ -38,7 +38,7 @@ export function TripLog() {
     setLoadingHistorical(true);
     try {
       const result = await api.get(`/admin/trips?carId=${carId}&month=${month}`);
-      setHistoricalTrips(result);
+      setHistoricalTrips([...result].sort((a, b) => b.odo - a.odo));
     } catch (error) {
       console.error("Error fetching historical trips: ", error);
       setHistoricalTrips([]);
@@ -68,7 +68,8 @@ export function TripLog() {
       if (user.isAdmin && selectedMonth !== currentMonth) {
         setCarTrips(historicalTrips);
       } else {
-        const relevantTrips = trips.filter(trip => trip.car.id === selectedCar);
+        const relevantTrips = trips.filter(trip => trip.car.id === selectedCar)
+            .sort((a, b) => b.odo - a.odo);
         setCarTrips(relevantTrips);
       }
     } else {

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
-import { serializeTrip } from '../lib/serializers';
+import { serializeTrip, serializeDateCarBooking } from '../lib/serializers';
 import { subscribe, unsubscribe, sendEvent } from '../lib/sse';
 
 const router = Router();
@@ -11,6 +11,8 @@ const tripInclude = { users: true } as const;
 
 // SSE channel — trips are global (everyone sees the same log)
 const TRIPS_CHANNEL = 'trips';
+// Bookings channel — används för att notifiera om logged-uppdatering
+const bookingChannel = (userId: string) => `bookings:${userId}`;
 
 // ---- GET /api/v1/trips  (initial load, last 30 days) ----
 router.get('/', async (_req: Request, res: Response) => {
@@ -20,7 +22,7 @@ router.get('/', async (_req: Request, res: Response) => {
   const trips = await prisma.trip.findMany({
     where: { timestamp: { gte: since } },
     include: tripInclude,
-    orderBy: { odo: 'asc' },
+    orderBy: { odo: 'desc' },
   });
 
   res.json(trips.map(serializeTrip));
@@ -83,6 +85,28 @@ router.post('/', async (req: Request, res: Response) => {
 
   const serialized = serializeTrip(trip);
   sendEvent(TRIPS_CHANNEL, 'add', serialized);
+
+  // Om en bokning markerades som loggad: broadcast uppdaterad DCB på bookings-kanalen
+  // så att alla berörda klienter ser bocken direkt utan att ladda om.
+  if (bookingId && parentId) {
+    const dcb = await prisma.dateCarBooking.findUnique({
+      where: { id: parentId },
+      include: { bookings: { include: { users: true } } },
+    });
+    if (dcb) {
+      const serializedDcb = serializeDateCarBooking(dcb);
+      // Notifiera alla användare som ingår i bokningen
+      const booking = dcb.bookings.find(b => b.id === bookingId);
+      const affectedUserIds = new Set([
+        byUserId,
+        ...(booking?.users.map(u => u.userId) ?? []),
+      ]);
+      for (const uid of affectedUserIds) {
+        sendEvent(bookingChannel(uid), 'update', serializedDcb);
+      }
+    }
+  }
+
   res.status(201).json(serialized);
 });
 

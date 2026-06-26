@@ -670,7 +670,7 @@ const BookTrip = () => {
 
                 {isMultiDay && (
                   <div className="flex gap-2 items-end">
-                    <div className="space-y-2">
+                    <div className="space-y-2 flex-1 min-w-[10rem]">
                       <Label>Slutdatum</Label>
                       <Input
                           type="date"
@@ -678,14 +678,17 @@ const BookTrip = () => {
                           onChange={(e) => setRecurringEndDate(e.target.value)}
                           min={getBookingDate(bookingDate, 1)}
                           max={getBookingDate(undefined, 96)}
+                          className="px-1.5 w-full appearance-none"
                       />
                     </div>
-                    <TimeSelector
-                        label="Sluttid"
-                        value={bookingEndTime}
-                        onChange={setBookingEndTime}
-                        hourCount={25}
-                    />
+                    <div className="flex-1 min-w-0">
+                      <TimeSelector
+                          label="Sluttid"
+                          value={bookingEndTime}
+                          onChange={setBookingEndTime}
+                          hourCount={25}
+                      />
+                    </div>
                   </div>
                 )}
               </div>

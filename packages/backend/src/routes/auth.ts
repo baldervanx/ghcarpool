@@ -29,9 +29,11 @@ router.post('/logout', (req, res, next) => {
 });
 
 // GET /api/v1/auth/me
+// Returnerar alltid 200. Icke-autentiserade klienter får { user: null }
+// istället för 401, så att dev-tools inte visar ett rött fel vid sidladdning.
 router.get('/me', (req, res) => {
   if (!req.user) {
-    res.status(401).json({ error: 'Ej inloggad' });
+    res.json({ user: null });
     return;
   }
   res.json(req.user);

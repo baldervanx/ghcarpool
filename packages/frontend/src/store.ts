@@ -88,8 +88,19 @@ export const fetchAuthState = createAsyncThunk(
     'auth/fetchAuthState',
     async (_, { dispatch }) => {
         try {
-            const user = await api.get<{ id: string; email: string; isAdmin: boolean }>('/auth/me');
+            // /auth/me returnerar alltid 200:
+            //   inloggad  → { id, email, isAdmin, ... }
+            //   ej inloggad → { user: null }
+            const response = await api.get<
+                { id: string; email: string; isAdmin: boolean } | { user: null }
+            >('/auth/me');
 
+            if (!response || 'user' in response && response.user === null) {
+                dispatch(setAuthState({ user: null, isMember: false, loading: false }));
+                return;
+            }
+
+            const user = response as { id: string; email: string; isAdmin: boolean };
             const users = await dispatch(fetchUsers()).unwrap();
             await Promise.all([
                 dispatch(fetchCars()),

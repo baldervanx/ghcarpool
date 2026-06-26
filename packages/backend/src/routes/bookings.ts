@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { addDays, format, startOfDay } from 'date-fns';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
-import { serializeDateCarBooking } from '../lib/serializers';
+import { serializeDateCarBooking, serializeDestination } from '../lib/serializers';
 import { subscribe, unsubscribe, sendEvent } from '../lib/sse';
 
 const router = Router();
@@ -97,14 +97,41 @@ router.post('/', async (req: Request, res: Response) => {
 
   const byUserId = req.user!.id;
 
-  // Validera destinationId om det är angivet — returnera 400 istället för att
-  // låta Prisma kasta P2003 FK-violation (som annars ger 500/502).
-  const resolvedDestinationId = emptyToNull(destinationId);
-  if (resolvedDestinationId !== null) {
-    const destExists = await prisma.destination.findUnique({ where: { id: resolvedDestinationId }, select: { id: true } });
-    if (!destExists) {
-      res.status(400).json({ error: `Destination '${resolvedDestinationId}' finns inte` });
-      return;
+  // Lös upp destinationId:
+  //   - tom sträng/null → ingen destination
+  //   - ser ut som ett CUID (börjar med "c", 25 tecken) → slå upp i DB, returnera 400 om ej finns
+  //   - annars → behandla som ett namn, find-or-create en temporär destination
+  const rawDestId = emptyToNull(destinationId);
+  let resolvedDestinationId: string | null = null;
+  let newDestination: ReturnType<typeof import('../lib/serializers').serializeDestination> | null = null;
+
+  if (rawDestId !== null) {
+    const looksLikeCuid = /^c[a-z0-9]{24}$/.test(rawDestId);
+    if (looksLikeCuid) {
+      // Normalt fall: kontrollera att destinationen finns
+      const destExists = await prisma.destination.findUnique({
+        where: { id: rawDestId },
+        select: { id: true },
+      });
+      if (!destExists) {
+        res.status(400).json({ error: `Destination '${rawDestId}' finns inte` });
+        return;
+      }
+      resolvedDestinationId = rawDestId;
+    } else {
+      // Fri text: find-or-create en temporär destination baserat på namn
+      const trimmedName = rawDestId.trim();
+      let dest = await prisma.destination.findFirst({
+        where: { name: { equals: trimmedName, mode: 'insensitive' } },
+      });
+      if (!dest) {
+        dest = await prisma.destination.create({
+          data: { name: trimmedName, shortName: '', temporary: true },
+        });
+        // Lägg med i svaret så frontenden kan uppdatera sin destinations-lista
+        newDestination = serializeDestination(dest);
+      }
+      resolvedDestinationId = dest.id;
     }
   }
 
@@ -172,7 +199,12 @@ router.post('/', async (req: Request, res: Response) => {
     sendEvent(bookingChannel(uid), existingBookingId ? 'update' : 'add', serialized);
   }
 
-  res.status(existingBookingId ? 200 : 201).json(serialized);
+  // Inkludera nyss skapad temporär destination i svaret (Alt A: bara avsändaren uppdateras)
+  const responseBody = newDestination
+    ? { ...serialized, newDestination }
+    : serialized;
+
+  res.status(existingBookingId ? 200 : 201).json(responseBody);
 });
 
 // ---- DELETE /api/v1/bookings/:parentId/:bookingId ----

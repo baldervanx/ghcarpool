@@ -3,6 +3,7 @@ import type { Car, Destination } from '@/store';
 
 export interface ApiUser {
   id: string;
+  name: string;
   email: string;
   isAdmin: boolean;
   shortName: string;

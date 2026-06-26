@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { DateCarBooking } from '@/store';
+import type { DateCarBooking, Destination } from '@/store';
 
 export interface BookingsResponse {
   startDate: string;
@@ -21,6 +21,10 @@ export interface CreateBookingPayload {
   existingParentId?: string;
 }
 
+// POST /bookings returnerar DateCarBooking, plus newDestination om en temporär
+// destination skapades automatiskt under bokningen.
+export type SaveBookingResponse = DateCarBooking & { newDestination?: Destination };
+
 export const bookingsApi = {
   list: (startDate?: string, endDate?: string) => {
     const params = new URLSearchParams();
@@ -31,7 +35,7 @@ export const bookingsApi = {
   },
 
   save: (payload: CreateBookingPayload) =>
-    api.post<DateCarBooking>('/bookings', payload),
+    api.post<SaveBookingResponse>('/bookings', payload),
 
   delete: (parentId: string, bookingId: string) =>
     api.delete<{ id: string }>(`/bookings/${parentId}/${bookingId}`),

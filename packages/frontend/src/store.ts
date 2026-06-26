@@ -61,9 +61,10 @@ const createCachedThunk = <T>(key: string, fetchFunction: () => Promise<T>) => {
 };
 
 interface UserDb {
-    id: string;
-    email: string;
-    isAdmin: boolean;
+  id: string;
+  name: string;
+  email: string;
+  isAdmin: boolean;
 }
 // Updated fetch functions using REST API
 export const fetchUsers = createCachedThunk('user', async () => {
@@ -186,11 +187,12 @@ const carSlice = createSlice({
 });
 
 interface UserDb {
-    id: string;
-    email: string;
-    isAdmin: boolean;
-    commentMandatory?: boolean;
-    shortName: string;
+  id: string;
+  name: string;
+  email: string;
+  isAdmin: boolean;
+  commentMandatory?: boolean;
+  shortName: string;
 }
 // User Slice
 interface UserState {
@@ -223,7 +225,8 @@ export interface Destination {
     id: string,
     distance?: number,
     name: string,
-    shortName: string
+    shortName: string,
+    temporary?: boolean,   // true = skapad automatiskt vid bokning, ej granskad av admin
 }
 // Destination Slice
 interface DestinationState {
@@ -238,6 +241,12 @@ const destinationSlice = createSlice({
     reducers: {
         setDestinations: (state, action: PayloadAction<Destination[]>) => {
             state.destinations = action.payload;
+        },
+        addDestination: (state, action: PayloadAction<Destination>) => {
+            // Lägg till om den inte redan finns (undvik dubletter vid snabba bokningar)
+            if (!state.destinations.some(d => d.id === action.payload.id)) {
+                state.destinations.push(action.payload);
+            }
         },
     },
     extraReducers: (builder) => {
@@ -287,6 +296,7 @@ interface Trip {
     distance: number,
     odo: number,
     timestamp: string,
+    timestampISO: string,
     users: IdObject[]
 }
 
@@ -305,7 +315,7 @@ const tripSlice = createSlice({
     } as TripState,
     reducers: {
         setTrips: (state, action: PayloadAction<Trip[]>) => {
-            state.trips = action.payload;
+            state.trips = action.payload.slice().sort(tripSorter);
         },
         setTripsLoading: (state, action: PayloadAction<boolean>) => {
             state.loading = action.payload;
@@ -323,6 +333,7 @@ const tripSlice = createSlice({
             const index = state.trips.findIndex(t => t.id === action.payload.id);
             if (index >= 0) {
                 state.trips[index] = action.payload;
+                state.trips = state.trips.slice().sort(tripSorter);
             } else {
                 // Should typically be coming in at the end anyway
                 state.trips = [...state.trips, action.payload].sort(tripSorter);
@@ -481,6 +492,8 @@ export const {
     addOrUpdateBooking,
     removeBooking
 } = bookingSlice.actions;
+
+export const { setDestinations, addDestination } = destinationSlice.actions;
 
 export type AppStore = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

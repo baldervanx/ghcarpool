@@ -9,7 +9,7 @@ import {CarSelector} from '@/components/CarSelector';
 import {useDispatch, useSelector} from 'react-redux';
 import UserSelector from '@/components/UserSelector';
 import type {AppStore, DateCarBooking, Booking} from '@/store';
-import {setSelectedCar, setSelectedUsers} from '@/store';
+import {setSelectedCar, setSelectedUsers, addDestination} from '@/store';
 import {addDays, differenceInCalendarDays, format} from 'date-fns';
 import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
 import ConfirmationDialog from '@/components/confirmation-dialog';
@@ -287,7 +287,13 @@ const BookTrip = () => {
         }
       }
 
-      await Promise.all(promises);
+      await Promise.all(promises).then(responses => {
+        for (const r of responses) {
+          if (r && 'newDestination' in r && r.newDestination) {
+            dispatch(addDestination(r.newDestination));
+          }
+        }
+      });
       return true;
     } catch (error) {
       console.error('Booking failed:', error);
@@ -341,6 +347,10 @@ const BookTrip = () => {
         userIds: selectedUsers,
         existingBookingId: existingBooking ?? undefined,
         existingParentId: storedDateCarBooking?.id,
+      }).then(response => {
+        if (response.newDestination) {
+          dispatch(addDestination(response.newDestination));
+        }
       });
 
       return true;

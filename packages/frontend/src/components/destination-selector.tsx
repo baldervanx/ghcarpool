@@ -70,12 +70,12 @@ export const DestinationSelector = ({
         <div className="flex flex-col space-y-2">
             <Label>Destination</Label>
             <Combobox
-                options={actualDestinations.map((destination): ComboboxOptions => (
-                    {
-                        value: destination.id,
-                        label: `${destination.name} ${destination.shortName ? "(" + destination.shortName + ")" : ""}`
-                    }
-                ))}
+                options={actualDestinations.map((destination): ComboboxOptions => ({
+                    value: destination.id,
+                    label: destination.temporary
+                        ? `${destination.name} ✱`
+                        : `${destination.name} ${destination.shortName ? '(' + destination.shortName + ')' : ''}`
+                }))}
                 placeholder="Välj destination"
                 selected={selectedDestination}
                 onChange={handleDestinationChange}

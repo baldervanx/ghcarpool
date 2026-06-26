@@ -24,21 +24,28 @@ router.get('/users', async (_req, res: Response) => {
 
 // POST /api/v1/admin/users
 router.post('/users', async (req: Request, res: Response) => {
-  const { email, isAdmin = false, shortName = '', commentMandatory = false } = req.body;
-  const user = await prisma.user.create({
-    data: { email, isAdmin, shortName, commentMandatory },
-  });
-  res.status(201).json(serializeUser(user));
+  const { id, email, name = '', isAdmin = false, shortName = '', commentMandatory = false } = req.body;
+  if (!id) return void res.status(400).json({ error: 'id (signatur, t.ex. "AS") krävs' });
+  if (!email) return void res.status(400).json({ error: 'email krävs' });
+  try {
+    const user = await prisma.user.create({
+      data: { id, email, name, isAdmin, shortName, commentMandatory },
+    });
+    res.status(201).json(serializeUser(user));
+  } catch {
+    res.status(409).json({ error: 'Användare med detta id eller denna e-post finns redan' });
+  }
 });
 
 // PUT /api/v1/admin/users/:id
 router.put('/users/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { isAdmin, shortName, commentMandatory } = req.body;
+  const { name, isAdmin, shortName, commentMandatory } = req.body;
   try {
     const user = await prisma.user.update({
       where: { id },
       data: {
+        ...(name !== undefined && { name }),
         ...(isAdmin !== undefined && { isAdmin }),
         ...(shortName !== undefined && { shortName }),
         ...(commentMandatory !== undefined && { commentMandatory }),
@@ -72,9 +79,15 @@ router.get('/cars', async (_req, res: Response) => {
 
 // POST /api/v1/admin/cars
 router.post('/cars', async (req: Request, res: Response) => {
-  const { name, range = 0, order = 0, hasLog = true } = req.body;
-  const car = await prisma.car.create({ data: { name, range, order, hasLog } });
-  res.status(201).json(serializeCar(car));
+  const { id, name, range = 0, order = 0, hasLog = true } = req.body;
+  if (!id) return void res.status(400).json({ error: 'id (reg-nummer, t.ex. "ABC123") krävs' });
+  if (!name) return void res.status(400).json({ error: 'name (smeknamn) krävs' });
+  try {
+    const car = await prisma.car.create({ data: { id, name, range, order, hasLog } });
+    res.status(201).json(serializeCar(car));
+  } catch {
+    res.status(409).json({ error: 'Bil med detta reg-nummer finns redan' });
+  }
 });
 
 // PUT /api/v1/admin/cars/:id
@@ -110,24 +123,43 @@ router.delete('/cars/:id', async (req: Request, res: Response) => {
 // DESTINATIONS
 // ============================================================
 
-// GET /api/v1/admin/destinations
-router.get('/destinations', async (_req, res: Response) => {
+// GET /api/v1/admin/destinations[?temporary=true]
+// Med ?temporary=true returneras även bookingCount per destination
+router.get('/destinations', async (req: Request, res: Response) => {
+  const onlyTemporary = req.query.temporary === 'true';
+
+  if (onlyTemporary) {
+    // Hämta temporära destinationer med antal bokningar kopplade till dem
+    const dests = await prisma.destination.findMany({
+      where: { temporary: true },
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { bookings: true } } },
+    });
+    res.json(dests.map(d => ({
+      ...serializeDestination(d),
+      bookingCount: d._count.bookings,
+    })));
+    return;
+  }
+
   const dests = await prisma.destination.findMany({ orderBy: { name: 'asc' } });
   res.json(dests.map(serializeDestination));
 });
 
 // POST /api/v1/admin/destinations
 router.post('/destinations', async (req: Request, res: Response) => {
-  const { name, shortName, distance } = req.body;
+  const { name, shortName = '', distance } = req.body;
   const dest = await prisma.destination.create({
-    data: { name, shortName, distance: distance ?? null },
+    data: { name, shortName, distance: distance ?? null, temporary: false },
   });
   res.status(201).json(serializeDestination(dest));
 });
 
 // PUT /api/v1/admin/destinations/:id
+// Används även för att "promota" en temporär destination: sätt temporary=false,
+// ange shortName och eventuellt distance.
 router.put('/destinations/:id', async (req: Request, res: Response) => {
-  const { name, shortName, distance } = req.body;
+  const { name, shortName, distance, temporary } = req.body;
   try {
     const dest = await prisma.destination.update({
       where: { id: req.params.id },
@@ -135,6 +167,7 @@ router.put('/destinations/:id', async (req: Request, res: Response) => {
         ...(name !== undefined && { name }),
         ...(shortName !== undefined && { shortName }),
         ...(distance !== undefined && { distance }),
+        ...(temporary !== undefined && { temporary: Boolean(temporary) }),
       },
     });
     res.json(serializeDestination(dest));
@@ -144,10 +177,19 @@ router.put('/destinations/:id', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/v1/admin/destinations/:id
+// Vägrar ta bort om det finns bokningar som refererar till destinationen.
 router.delete('/destinations/:id', async (req: Request, res: Response) => {
+  const id = req.params.id;
   try {
-    await prisma.destination.delete({ where: { id: req.params.id } });
-    res.json({ id: req.params.id });
+    const bookingCount = await prisma.booking.count({ where: { destinationId: id } });
+    if (bookingCount > 0) {
+      res.status(409).json({
+        error: `Kan inte ta bort destination — ${bookingCount} bokning${bookingCount === 1 ? '' : 'ar'} refererar till den`,
+      });
+      return;
+    }
+    await prisma.destination.delete({ where: { id } });
+    res.json({ id });
   } catch {
     res.status(404).json({ error: 'Destination hittades inte' });
   }
@@ -201,7 +243,7 @@ router.get('/trips', async (req: Request, res: Response) => {
   const trips = await prisma.trip.findMany({
     where,
     include: { users: true },
-    orderBy: { timestamp: 'desc' },
+    orderBy: { odo: 'desc' },
   });
   res.json(trips.map(t => serializeTrip(t)));
 });

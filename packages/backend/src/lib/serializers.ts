@@ -21,6 +21,7 @@ import type {
 export function serializeUser(u: PrismaUser) {
   return {
     id: u.id,
+    name: u.name,
     email: u.email,
     isAdmin: u.isAdmin,
     shortName: u.shortName,
@@ -48,6 +49,7 @@ export function serializeDestination(d: PrismaDestination) {
     name: d.name,
     shortName: d.shortName,
     distance: d.distance ?? undefined,
+    temporary: d.temporary,
   };
 }
 
@@ -114,5 +116,6 @@ export function serializeTrip(t: TripWithUsers) {
     byUser: { id: t.byUserId },
     users: t.users.map(tu => ({ id: tu.userId })),
     timestamp: fmt.format(t.timestamp),
+    timestampISO: t.timestamp.toISOString(),
   };
 }

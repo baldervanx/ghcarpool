@@ -21,15 +21,19 @@ export async function createTestUser(overrides: {
   const email = overrides.email ?? `user-${Date.now()}-${Math.random().toString(36).slice(2)}@test.com`;
   const password = overrides.password ?? 'test-pw-123';
   const passwordHash = await bcrypt.hash(password, 4); // kostnadsfaktor 4 = snabbt i test
+  // Generera ett unikt test-id baserat på tidsstämpel
+  const id = `T${Date.now().toString(36).toUpperCase().slice(-6)}`;
   const user = await prisma.user.create({
-    data: { email, isAdmin: overrides.isAdmin ?? false, passwordHash },
+    data: { id, email, isAdmin: overrides.isAdmin ?? false, passwordHash },
   });
   return { user, password };
 }
 
 export async function createTestCar(overrides: { name?: string; order?: number } = {}) {
+  const id = `CAR${Date.now().toString(36).toUpperCase().slice(-5)}`;
   return prisma.car.create({
     data: {
+      id,
       name: overrides.name ?? `Bil-${Date.now()}`,
       order: overrides.order ?? 0,
       hasLog: true,

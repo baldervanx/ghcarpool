@@ -55,9 +55,12 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
         try {
           const email = profile.emails?.[0]?.value;
           if (!email) return done(new Error('Google-profil saknar e-post'));
+          // Generera ett initialt id från e-postprefixet (versaler, max 8 tecken).
+          // En admin kan byta till rätt signatur via /admin/users efteråt.
+          const autoId = email.split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'USER';
           const user = await prisma.user.upsert({
             where: { email },
-            create: { email },
+            create: { id: autoId, email },
             update: {},
             select: { id: true, email: true, isAdmin: true },
           });

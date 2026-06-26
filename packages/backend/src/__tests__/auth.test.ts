@@ -11,13 +11,13 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   await prisma.user.upsert({
     where: { email: TEST_EMAIL },
-    create: { email: TEST_EMAIL, passwordHash },
+    create: { id: `TAUTH${Date.now().toString(36).slice(-4).toUpperCase()}`, email: TEST_EMAIL, passwordHash },
     update: { passwordHash },
   });
   const adminHash = await bcrypt.hash('admin123', 10);
   await prisma.user.upsert({
     where: { email: ADMIN_EMAIL },
-    create: { email: ADMIN_EMAIL, isAdmin: true, passwordHash: adminHash },
+    create: { id: `TADM${Date.now().toString(36).slice(-4).toUpperCase()}`, email: ADMIN_EMAIL, isAdmin: true, passwordHash: adminHash },
     update: { isAdmin: true, passwordHash: adminHash },
   });
 });

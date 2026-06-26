@@ -47,27 +47,23 @@ async function main() {
   console.log('Settings:', settings);
 
   // ── Cars ─────────────────────────────────────────────────────────────────
+  // id = reg-nummer (används som referens i appen), name = smeknamn
   const carsData = [
-    { name: 'Volvo XC60 (ABC 123)', range: 400, order: 1, hasLog: true },
-    { name: 'Tesla Model 3 (DEF 456)', range: 500, order: 2, hasLog: true },
-    { name: 'VW Passat (GHI 789)', range: 0, order: 3, hasLog: true },
-    { name: 'Cykelbud (ingen log)', range: 0, order: 4, hasLog: false },
+    { id: 'ABC123', name: 'Volvon',  range: 400, order: 1, hasLog: true },
+    { id: 'DEF456', name: 'Teslan',  range: 500, order: 2, hasLog: true },
+    { id: 'GHI789', name: 'Passaten', range: 0,   order: 3, hasLog: true },
+    { id: 'CYKEL1', name: 'Cykelbud', range: 0,   order: 4, hasLog: false },
   ];
 
   const cars: Record<string, string> = {};
   for (const c of carsData) {
     const car = await prisma.car.upsert({
-      where: { id: c.name }, // Används bara för seed — riktiga ids är cuid
+      where: { id: c.id },
       create: c,
-      update: {},
-    }).catch(async () => {
-      // Upsert by name om id inte stämmer
-      const existing = await prisma.car.findFirst({ where: { name: c.name } });
-      if (existing) return existing;
-      return prisma.car.create({ data: c });
+      update: { name: c.name, range: c.range, order: c.order, hasLog: c.hasLog },
     });
-    cars[c.name] = car.id;
-    console.log('Car:', car.name, '->', car.id);
+    cars[c.id] = car.id;
+    console.log('Car:', car.id, '->', car.name);
   }
 
   // ── Destinations ─────────────────────────────────────────────────────────
@@ -90,12 +86,13 @@ async function main() {
   // ── Users ─────────────────────────────────────────────────────────────────
   // Seed-användare får alla lösenordet "dev123" för lokal testning.
   // I produktion sätts riktiga lösenord med: pnpm exec ts-node src/scripts/set-password.ts
+  // id = signatur (visas i bokningsvyn), name = fullständigt namn
   const usersData = [
-    { email: 'admin@example.com', shortName: 'ADM', isAdmin: true,  commentMandatory: false },
-    { email: 'anna@example.com',  shortName: 'ANA', isAdmin: false, commentMandatory: false },
-    { email: 'bjorn@example.com', shortName: 'BJN', isAdmin: false, commentMandatory: true  },
-    { email: 'cecilia@example.com', shortName: 'CEC', isAdmin: false, commentMandatory: false },
-    { email: 'david@example.com', shortName: 'DAV', isAdmin: false, commentMandatory: false },
+    { id: 'ADM', name: 'Admin Adminsson',   email: 'admin@example.com', shortName: 'Admin', isAdmin: true,  commentMandatory: false },
+    { id: 'ANA', name: 'Anna Andersson',    email: 'anna@example.com',  shortName: 'Anna',  isAdmin: false, commentMandatory: false },
+    { id: 'BJN', name: 'Björn Björnsson',   email: 'bjorn@example.com', shortName: 'Björn', isAdmin: false, commentMandatory: true  },
+    { id: 'CEC', name: 'Cecilia Cecilsson', email: 'cecilia@example.com', shortName: 'Cille', isAdmin: false, commentMandatory: false },
+    { id: 'DAV', name: 'David Davidsson',   email: 'david@example.com', shortName: 'David', isAdmin: false, commentMandatory: false },
   ];
 
   const users: Record<string, string> = {};
@@ -103,17 +100,17 @@ async function main() {
     const user = await prisma.user.upsert({
       where: { email: u.email },
       create: { ...u, passwordHash },
-      update: { shortName: u.shortName, isAdmin: u.isAdmin, passwordHash },
+      update: { name: u.name, shortName: u.shortName, isAdmin: u.isAdmin, passwordHash },
     });
     users[u.email] = user.id;
-    console.log('User:', user.email, '->', user.id);
+    console.log('User:', user.id, user.email);
   }
   console.log(`\nAlla seed-användare har lösenordet: ${SEED_PASSWORD}\n`);
 
   // ── Trips — historik (senaste 30 dagar) ──────────────────────────────────
-  const volvoId = cars['Volvo XC60 (ABC 123)'];
-  const teslaId = cars['Tesla Model 3 (DEF 456)'];
-  const passatId = cars['VW Passat (GHI 789)'];
+  const volvoId = cars['ABC123'];
+  const teslaId = cars['DEF456'];
+  const passatId = cars['GHI789'];
   const adminId = users['admin@example.com'];
   const annaId = users['anna@example.com'];
   const bjornId = users['bjorn@example.com'];

@@ -76,6 +76,7 @@ function toDate(value: unknown): Date {
 interface FsUser {
   id: string;
   email: string;
+  name?: string;            // Fullständigt namn, t.ex. "Anders Svensson"
   isAdmin?: boolean;
   shortName?: string;
   commentMandatory?: boolean;
@@ -141,6 +142,7 @@ async function migrateUsers(users: FsUser[]): Promise<number> {
     await prisma.user.upsert({
       where: { email: u.email },
       update: {
+        name: u.name ?? '',
         isAdmin: u.isAdmin ?? false,
         shortName: u.shortName ?? '',
         commentMandatory: u.commentMandatory ?? false,
@@ -148,6 +150,7 @@ async function migrateUsers(users: FsUser[]): Promise<number> {
       create: {
         id: u.id,
         email: u.email,
+        name: u.name ?? '',
         isAdmin: u.isAdmin ?? false,
         shortName: u.shortName ?? '',
         commentMandatory: u.commentMandatory ?? false,

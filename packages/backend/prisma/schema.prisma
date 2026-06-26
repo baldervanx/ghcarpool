@@ -9,7 +9,8 @@ datasource db {
 }
 
 model User {
-  id               String   @id @default(cuid())
+  id               String   @id          // Signaturen anges explicit, t.ex. "AS"
+  name             String   @default("") // Fullständigt namn, t.ex. "Anders Svensson"
   email            String   @unique
   isAdmin          Boolean  @default(false)
   shortName        String   @default("")
@@ -34,8 +35,8 @@ model Session {
 }
 
 model Car {
-  id      String  @id @default(cuid())
-  name    String
+  id      String  @id          // Reg-numret anges explicit, t.ex. "ABC123"
+  name    String               // Smeknamn, t.ex. "Volvon"
   range   Int     @default(0)
   order   Int     @default(0)
   hasLog  Boolean @default(true)
@@ -47,8 +48,9 @@ model Car {
 model Destination {
   id        String  @id @default(cuid())
   name      String
-  shortName String
+  shortName String  @default("")
   distance  Int?
+  temporary Boolean @default(false)  // true = skapad automatiskt, ej granskad av admin
 
   bookings Booking[]
 }

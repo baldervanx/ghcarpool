@@ -12,7 +12,8 @@ interface TripRow {
   users: { id: string }[];
   cost: number;
   comment?: string;
-  timestamp: string; // ISO-string från backend
+  timestamp: string;    // formaterad visningssträng ("20/06 14:30")
+  timestampISO: string; // ISO 8601, används för datumfiltrering
   byUser: { id: string };
 }
 
@@ -44,7 +45,7 @@ const CarPoolCSVExporter = () => {
 
       const allTrips = [...prevMonthTrips, ...thisMonthTrips]
         .filter(t => {
-          const ts = new Date(t.timestamp);
+          const ts = new Date(t.timestampISO);
           return ts >= startDate && ts < endDate;
         })
         .sort((a, b) => {
@@ -57,7 +58,7 @@ const CarPoolCSVExporter = () => {
       let csvData  = '\ufeff'; // BOM för Excel
       let currentCarId = '';
 
-      for (const { car, odo, distance, users, cost, comment, timestamp, byUser } of allTrips) {
+      for (const { car, odo, distance, users, cost, comment, timestampISO, byUser } of allTrips) {
         if (car.id !== currentCarId) {
           csvData += '\n\n';
           csvData += `${car.id}\n`;
@@ -65,7 +66,7 @@ const CarPoolCSVExporter = () => {
           currentCarId = car.id;
         }
         const userIds = users.map(u => u.id).concat(fill).slice(0, 3);
-        const ts      = new Date(timestamp).toISOString();
+        const ts      = timestampISO;
         const costStr = cost != null ? cost.toFixed(2).replace('.', ',') : '';
         csvData += `${odo};${distance ?? ''};${userIds.join(';')};${costStr};"${comment ?? ''}";${ts};${byUser?.id}\n`;
       }
@@ -91,10 +92,11 @@ const CarPoolCSVExporter = () => {
       onClick={handleExport}
       disabled={loading}
       variant="outline"
+      size="icon"
       className="fixed bottom-4 left-4 rounded-full h-12 w-12 shadow-lg [&_svg]:size-6"
       aria-label="Export to CSV"
     >
-      <Download className="mr-2" />
+      <Download />
     </Button>
   );
 };

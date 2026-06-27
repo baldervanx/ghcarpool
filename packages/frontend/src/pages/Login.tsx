@@ -30,6 +30,11 @@ export function Login() {
         setError(body.error ?? 'Inloggning misslyckades');
         return;
       }
+      // Rensa localStorage-cachen så att fetchAuthState alltid hämtar
+      // en färsk användarlista från backend efter inloggning. Utan detta
+      // kan en gammal/ogiltig cache göra att isMember=false och man
+      // hamnar tillbaka på inloggningssidan trots lyckad autentisering.
+      localStorage.removeItem('user');
       dispatch(fetchAuthState());
     } finally {
       setLoading(false);

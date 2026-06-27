@@ -18,7 +18,7 @@ import type {
   ErrorLogComment,
   Expense,
   CarInfo,
-} from '../../generated/prisma/client';
+} from '../generated/prisma/client';
 
 // ---- Users ----
 

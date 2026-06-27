@@ -1,15 +1,16 @@
 import 'dotenv/config';
 import { defineConfig } from 'prisma/config';
 
+// DATABASE_URL behövs bara av CLI-kommandon (migrate deploy, migrate diff etc.).
+// prisma generate kräver ingen URL — utelämna datasource-blocket vid byggtid
+// så att Prisma inte kastar "datasource.url is required" när variabeln saknas.
+// Vid runtime sätts DATABASE_URL av Docker → blocket inkluderas och migrate fungerar.
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
   },
-  // DATABASE_URL behövs bara av migrate-kommandon, inte av prisma generate.
-  // process.env används direkt (inte den strikta env()) för att undvika kast
-  // vid byggtid när variabeln inte är satt.
-  datasource: {
-    url: process.env.DATABASE_URL ?? '',
-  },
+  ...(process.env.DATABASE_URL
+    ? { datasource: { url: process.env.DATABASE_URL } }
+    : {}),
 });

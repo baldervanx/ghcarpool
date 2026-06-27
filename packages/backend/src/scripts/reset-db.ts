@@ -39,13 +39,19 @@ async function main() {
   console.log('Rensar alla tabeller...\n');
 
   // Rätt ordning: child-tabeller före parent-tabeller (omvänd FK-kedja)
-  //   TripUser, BookingUser  →  Trip, Booking  →  DateCarBooking, Session
-  //   →  Destination, Settings, Car, User
+  //   ErrorLogComment → ErrorLog
+  //   TripUser, BookingUser → Trip, Booking
+  //   ErrorLog, Expense, CarInfo, DateCarBooking → Car
+  //   → Session, Settings, Destination, Car, User
   const [
+    errorLogCommentCount,
     tripUserCount,
     bookingUserCount,
     tripCount,
     bookingCount,
+    errorLogCount,
+    expenseCount,
+    carInfoCount,
     dcbCount,
     sessionCount,
     settingsCount,
@@ -53,10 +59,14 @@ async function main() {
     carCount,
     userCount,
   ] = await prisma.$transaction([
+    prisma.errorLogComment.deleteMany(),
     prisma.tripUser.deleteMany(),
     prisma.bookingUser.deleteMany(),
     prisma.trip.deleteMany(),
     prisma.booking.deleteMany(),
+    prisma.errorLog.deleteMany(),
+    prisma.expense.deleteMany(),
+    prisma.carInfo.deleteMany(),
     prisma.dateCarBooking.deleteMany(),
     prisma.session.deleteMany(),
     prisma.settings.deleteMany(),
@@ -66,10 +76,14 @@ async function main() {
   ]);
 
   const rows: [string, { count: number }][] = [
+    ['ErrorLogComment', errorLogCommentCount],
     ['TripUser',        tripUserCount],
     ['BookingUser',     bookingUserCount],
     ['Trip',            tripCount],
     ['Booking',         bookingCount],
+    ['ErrorLog',        errorLogCount],
+    ['Expense',         expenseCount],
+    ['CarInfo',         carInfoCount],
     ['DateCarBooking',  dcbCount],
     ['Session',         sessionCount],
     ['Settings',        settingsCount],

@@ -19,7 +19,10 @@
 
 import 'dotenv/config';
 import * as path from 'path';
-import * as admin from 'firebase-admin';
+import * as fs from 'fs';
+import bcrypt from 'bcrypt';
+import { initializeApp, cert, deleteApp, getApp } from 'firebase-admin/app';
+import { getFirestore, Timestamp, DocumentReference } from 'firebase-admin/firestore';
 import { PrismaClient } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
@@ -30,10 +33,9 @@ const SERVICE_ACCOUNT_PATH =
   process.env.SERVICE_ACCOUNT ??
   path.resolve(__dirname, '..', 'serviceAccount.json');
 
-let serviceAccount: admin.ServiceAccount;
+let serviceAccount: Parameters<typeof cert>[0];
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  serviceAccount = require(SERVICE_ACCOUNT_PATH) as admin.ServiceAccount;
+  serviceAccount = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_PATH, 'utf8'));
 } catch {
   console.error(
     `[migrate] Hittade inte service account-fil: ${SERVICE_ACCOUNT_PATH}\n` +
@@ -42,11 +44,11 @@ try {
   process.exit(1);
 }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+initializeApp({
+  credential: cert(serviceAccount),
 });
 
-const db = admin.firestore();
+const db = getFirestore();
 const prisma = new PrismaClient();
 
 // ---------------------------------------------------------------------------
@@ -58,25 +60,36 @@ async function getAll<T extends object>(collectionName: string): Promise<(T & { 
   const snap = await db.collection(collectionName).get();
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as T) }));
 }
-
-/** Konverterar Firebase Timestamp → Date, eller returnerar now() som fallback */
 function toDate(value: unknown): Date {
-  if (value && typeof value === 'object' && 'toDate' in value) {
-    return (value as admin.firestore.Timestamp).toDate();
+  if (value instanceof Timestamp) {
+    return value.toDate();
   }
   if (value instanceof Date) return value;
   if (typeof value === 'string' || typeof value === 'number') return new Date(value);
   return new Date();
 }
 
+/** Extraherar id ur antingen en sträng eller en DocumentReference */
+function refId(value: unknown): string | undefined {
+  if (typeof value === 'string') return value || undefined;
+  if (value instanceof DocumentReference) return value.id;
+  return undefined;
+}
+
+/** Extraherar id-array ur antingen string[] eller DocumentReference[] */
+function refIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(refId).filter((id): id is string => !!id);
+}
+
 // ---------------------------------------------------------------------------
-// Firestore-typer (löst – vi castar det vi behöver)
+// Firestore-typer (löst – fält kan vara strängar eller DocumentReferences)
 // ---------------------------------------------------------------------------
 
 interface FsUser {
   id: string;
   email: string;
-  name?: string;            // Fullständigt namn, t.ex. "Anders Svensson"
+  name?: string;
   isAdmin?: boolean;
   shortName?: string;
   commentMandatory?: boolean;
@@ -99,46 +112,53 @@ interface FsDestination {
 
 interface FsSettings {
   costPerKm?: number;
+  cost_per_km?: number; // alternativt fältnamn i Firestore
 }
 
 interface FsBooking {
   startTime: number;
   endTime: number;
   distance?: number;
-  destinationId?: string;
+  destination?: unknown;   // DocumentReference eller sträng
   comment?: string;
   recurrenceId?: string;
-  logged?: string;      // Trip.id
-  byUserId: string;
-  userIds?: string[];   // deltagare
+  logged?: string;         // Trip.id
+  byUser?: unknown;        // DocumentReference (userId)
+  users?: unknown[];       // DocumentReference[] (userIds)
 }
 
 interface FsDateCarBooking {
   id: string;
-  date: string;         // "yyyy-MM-dd"
-  carId: string;
-  bookings?: Record<string, FsBooking>; // nästlad map i Firestore
+  date: string;            // "yyyy-MM-dd"
+  car?: unknown;           // DocumentReference (carId)
+  bookings?: Record<string, FsBooking>;
 }
 
 interface FsTrip {
   id: string;
-  carId: string;
+  car?: unknown;           // DocumentReference (carId)
   odo: number;
   distance: number;
   cost: number;
   comment?: string;
   timestamp?: unknown;
-  byUserId: string;
-  userIds?: string[];
+  byUser?: unknown;        // DocumentReference (userId)
+  users?: unknown[];       // DocumentReference[] (userIds)
 }
 
 // ---------------------------------------------------------------------------
 // Migreringslogik
 // ---------------------------------------------------------------------------
 
-async function migrateUsers(users: FsUser[]): Promise<number> {
+async function migrateUsers(users: FsUser[]): Promise<{ count: number; migratedIds: Set<string> }> {
   let count = 0;
+  const migratedIds = new Set<string>();
+  const temporaryHash = await bcrypt.hash('temporary', 12);
   for (const u of users) {
+    if (!u.email) {
+      console.warn(`[migrate] Hoppar över user ${u.id}: saknar email`);
+      continue;
+    }
     await prisma.user.upsert({
       where: { email: u.email },
       update: {
@@ -154,12 +174,13 @@ async function migrateUsers(users: FsUser[]): Promise<number> {
         isAdmin: u.isAdmin ?? false,
         shortName: u.shortName ?? '',
         commentMandatory: u.commentMandatory ?? false,
-        passwordHash: null, // Inga lösenord från Firebase — sätt via admin-verktyg efteråt
+        passwordHash: temporaryHash,
       },
     });
+    migratedIds.add(u.id);
     count++;
   }
-  return count;
+  return { count, migratedIds };
 }
 
 async function migrateCars(cars: FsCar[]): Promise<number> {
@@ -214,8 +235,8 @@ async function migrateSettings(rawDocs: (FsSettings & { id: string })[]): Promis
   if (!main) return 0;
   await prisma.settings.upsert({
     where: { id: 'main' },
-    update: { costPerKm: main.costPerKm ?? 1.0 },
-    create: { id: 'main', costPerKm: main.costPerKm ?? 1.0 },
+    update: { costPerKm: main.costPerKm ?? main.cost_per_km ?? 1.0 },
+    create: { id: 'main', costPerKm: main.costPerKm ?? main.cost_per_km ?? 1.0 },
   });
   return 1;
 }
@@ -225,27 +246,27 @@ async function migrateDateCarBookings(
   knownUserIds: Set<string>,
   knownCarIds: Set<string>,
   knownDestinationIds: Set<string>,
+  destinationsByName: Map<string, string>,
 ): Promise<{ dcbCount: number; bookingCount: number }> {
   let dcbCount = 0;
   let bookingCount = 0;
 
   for (const dcb of dcbs) {
+    const carId = refId(dcb.car);
     // Skippa om bilen inte finns (referensintegritet)
-    if (!knownCarIds.has(dcb.carId)) {
-      console.warn(`[migrate] Hoppar över DCB ${dcb.id}: bil ${dcb.carId} saknas`);
+    if (!carId || !knownCarIds.has(carId)) {
+      console.warn(`[migrate] Hoppar över DCB ${dcb.id}: bil ${carId} saknas`);
       continue;
     }
 
-    // Skapa eller uppdatera DateCarBooking
-    await prisma.dateCarBooking.upsert({
-      where: { id: dcb.id },
-      update: {},
-      create: {
-        id: dcb.id,
-        date: dcb.date,
-        carId: dcb.carId,
-      },
+    // Skapa eller uppdatera DateCarBooking via unique(date, carId)
+    const existingDcb = await prisma.dateCarBooking.findUnique({
+      where: { date_carId: { date: dcb.date, carId } },
     });
+    const dcbRecord = existingDcb ?? await prisma.dateCarBooking.create({
+      data: { id: dcb.id, date: dcb.date, carId },
+    });
+    const dcbId = dcbRecord.id;
     dcbCount++;
 
     // Nästlade bookings kan vara antingen en array eller en map i Firestore
@@ -256,20 +277,35 @@ async function migrateDateCarBookings(
       ? (bookingsRaw as FsBooking[]).map((b, i) => [String(i), b])
       : Object.entries(bookingsRaw as Record<string, FsBooking>);
 
-    for (const [bookingId, booking] of bookingEntries) {
+    for (const [mapKey, booking] of bookingEntries) {
+      // Firestore lagrar booking-ID som ett fält inuti objektet, inte som kartnyckeln
+      // (kartnyckeln är ofta "0", "1" osv)
+      const bookingId: string = (booking as any).id ?? `${dcbId}_${mapKey}`;
+      const byUserId = refId(booking.byUser);
       // byUser måste finnas
-      if (!knownUserIds.has(booking.byUserId)) {
+      if (!byUserId || !knownUserIds.has(byUserId)) {
         console.warn(
-          `[migrate] Hoppar över bokning ${bookingId}: byUser ${booking.byUserId} saknas`,
+          `[migrate] Hoppar över bokning ${bookingId}: byUser ${byUserId} saknas`,
         );
         continue;
       }
 
-      // Rensa destinationId – bara sätta om det finns i Postgres
-      const destinationId =
-        booking.destinationId && knownDestinationIds.has(booking.destinationId)
-          ? booking.destinationId
-          : null;
+      // destination kan vara ett namn (sträng) eller en DocumentReference
+      // Slå upp ID via namn, annars via refId
+      let destinationId: string | null = null;
+      if (booking.destination) {
+        const rawDestRef = refId(booking.destination);
+        if (rawDestRef && knownDestinationIds.has(rawDestRef)) {
+          destinationId = rawDestRef;
+        } else if (typeof booking.destination === 'string') {
+          // destination är ett namn – slå upp ID
+          const byName = destinationsByName.get(booking.destination.toLowerCase());
+          destinationId = byName ?? null;
+        }
+      }
+
+      // logged kan vara en DocumentReference (Trip.id)
+      const logged = refId(booking.logged) ?? null;
 
       await prisma.booking.upsert({
         where: { id: bookingId },
@@ -280,26 +316,27 @@ async function migrateDateCarBookings(
           destinationId,
           comment: booking.comment ?? null,
           recurrenceId: booking.recurrenceId ?? null,
-          logged: booking.logged ?? null,
+          logged,
         },
         create: {
           id: bookingId,
-          parentId: dcb.id,
+          parentId: dcbId,
           startTime: booking.startTime,
           endTime: booking.endTime,
           distance: booking.distance ?? 0,
           destinationId,
           comment: booking.comment ?? null,
           recurrenceId: booking.recurrenceId ?? null,
-          logged: booking.logged ?? null,
-          byUserId: booking.byUserId,
+          logged,
+          byUserId,
         },
       });
       bookingCount++;
 
       // BookingUsers
-      const userIds = booking.userIds ?? [booking.byUserId];
-      for (const uid of userIds) {
+      const userIds = refIds(booking.users);
+      const allUserIds = userIds.length > 0 ? userIds : [byUserId];
+      for (const uid of allUserIds) {
         if (!knownUserIds.has(uid)) continue;
         await prisma.bookingUser.upsert({
           where: { bookingId_userId: { bookingId, userId: uid } },
@@ -320,39 +357,42 @@ async function migrateTrips(
 ): Promise<number> {
   let count = 0;
   for (const t of trips) {
-    if (!knownCarIds.has(t.carId)) {
-      console.warn(`[migrate] Hoppar över trip ${t.id}: bil ${t.carId} saknas`);
+    const carId = refId(t.car);
+    if (!carId || !knownCarIds.has(carId)) {
+      console.warn(`[migrate] Hoppar över trip ${t.id}: bil ${carId} saknas`);
       continue;
     }
-    if (!knownUserIds.has(t.byUserId)) {
-      console.warn(`[migrate] Hoppar över trip ${t.id}: byUser ${t.byUserId} saknas`);
+    const byUserId = refId(t.byUser);
+    if (!byUserId || !knownUserIds.has(byUserId)) {
+      console.warn(`[migrate] Hoppar över trip ${t.id}: byUser ${byUserId} saknas`);
       continue;
     }
 
     await prisma.trip.upsert({
       where: { id: t.id },
       update: {
-        odo: t.odo,
-        distance: t.distance,
-        cost: t.cost,
+        odo: t.odo ?? 0,
+        distance: t.distance ?? 0,
+        cost: t.cost ?? 0,
         comment: t.comment ?? null,
         timestamp: toDate(t.timestamp),
       },
       create: {
         id: t.id,
-        carId: t.carId,
-        odo: t.odo,
-        distance: t.distance,
-        cost: t.cost,
+        carId,
+        odo: t.odo ?? 0,
+        distance: t.distance ?? 0,
+        cost: t.cost ?? 0,
         comment: t.comment ?? null,
         timestamp: toDate(t.timestamp),
-        byUserId: t.byUserId,
+        byUserId,
       },
     });
     count++;
 
-    const userIds = t.userIds ?? [t.byUserId];
-    for (const uid of userIds) {
+    const userIds = refIds(t.users);
+    const allUserIds = userIds.length > 0 ? userIds : [byUserId];
+    for (const uid of allUserIds) {
       if (!knownUserIds.has(uid)) continue;
       await prisma.tripUser.upsert({
         where: { tripId_userId: { tripId: t.id, userId: uid } },
@@ -388,21 +428,24 @@ async function main() {
 
   console.log('[migrate] Skriver till PostgreSQL...');
 
-  const userCount = await migrateUsers(users);
+  const { count: userCount, migratedIds: migratedUserIds } = await migrateUsers(users);
   const carCount = await migrateCars(cars);
   const destCount = await migrateDestinations(destinations);
   const settingsCount = await migrateSettings(settingsDocs);
 
-  // Bygg upp Set:ar för FK-validering
-  const knownUserIds = new Set(users.map((u) => u.id));
+  // Bygg upp Set:ar för FK-validering — använd bara faktiskt migrerade users
+  const knownUserIds = migratedUserIds;
   const knownCarIds = new Set(cars.map((c) => c.id));
   const knownDestinationIds = new Set(destinations.map((d) => d.id));
+  // Map: destination name (lowercase) → id, för att slå upp destinations via namn
+  const destinationsByName = new Map(destinations.map((d) => [d.name.toLowerCase(), d.id]));
 
   const { dcbCount, bookingCount } = await migrateDateCarBookings(
     dcbs,
     knownUserIds,
     knownCarIds,
     knownDestinationIds,
+    destinationsByName,
   );
 
   const tripCount = await migrateTrips(trips, knownUserIds, knownCarIds);
@@ -416,8 +459,8 @@ async function main() {
   console.log(`  Migrerade: ${bookingCount} bookings`);
   console.log(`  Migrerade: ${tripCount} trips`);
   console.log(
-    '\n[migrate] OBS: Migrerade användare saknar lösenord (passwordHash = null).\n' +
-      '  Sätt lösenord manuellt via: node dist/scripts/set-password.js <email> <lösenord>',
+    '\n[migrate] OBS: Alla migrerade användare har fått lösenordet "temporary".\n' +
+      '  Sätt nytt lösenord via: node dist/scripts/set-password.js <email> <lösenord>',
   );
 }
 
@@ -428,5 +471,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
-    await admin.app().delete();
+    try { await deleteApp(getApp()); } catch { /* ignorera om redan borttagen */ }
   });

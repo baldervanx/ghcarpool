@@ -51,6 +51,7 @@ export const TEST_BOOKINGS = [
 export const TEST_BOOKINGS_RESPONSE: BookingsResponse = {
   startDate: '2026-06-16',
   endDate:   '2026-06-22',
+  since:     null,
   bookings:  TEST_BOOKINGS as any,
 };
 

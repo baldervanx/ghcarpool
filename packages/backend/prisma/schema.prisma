@@ -70,15 +70,17 @@ model Settings {
 }
 
 model DateCarBooking {
-  id    String @id @default(cuid())
-  date  String // ISO date "yyyy-MM-dd"
-  car   Car    @relation(fields: [carId], references: [id])
-  carId String
+  id        String   @id @default(cuid())
+  date      String   // ISO date "yyyy-MM-dd"
+  car       Car      @relation(fields: [carId], references: [id])
+  carId     String
+  updatedAt DateTime @updatedAt
 
   bookings Booking[]
 
   @@unique([date, carId])
   @@index([date])
+  @@index([updatedAt])
 }
 
 model Booking {

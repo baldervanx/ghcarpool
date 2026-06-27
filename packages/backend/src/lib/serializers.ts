@@ -71,6 +71,7 @@ export function serializeSettings(s: PrismaSettings) {
 type BookingWithUsers = PrismaBooking & { users: BookingUser[] };
 type DateCarBookingFull = PrismaDateCarBooking & {
   bookings: BookingWithUsers[];
+  updatedAt: Date;
 };
 
 function serializeBookingEntry(b: BookingWithUsers, parentId: string) {
@@ -94,6 +95,7 @@ export function serializeDateCarBooking(dcb: DateCarBookingFull) {
     id: dcb.id,
     date: dcb.date,
     car: { id: dcb.carId },
+    updatedAt: dcb.updatedAt.toISOString(),
     bookings: dcb.bookings.map(b => serializeBookingEntry(b, dcb.id)),
   };
 }

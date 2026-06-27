@@ -4,6 +4,7 @@ import type { DateCarBooking, Destination } from '@/store';
 export interface BookingsResponse {
   startDate: string;
   endDate: string;
+  since: string | null;
   bookings: DateCarBooking[];
 }
 
@@ -26,10 +27,17 @@ export interface CreateBookingPayload {
 export type SaveBookingResponse = DateCarBooking & { newDestination?: Destination };
 
 export const bookingsApi = {
-  list: (startDate?: string, endDate?: string) => {
+  /**
+   * Hämta bokningar för ett datumfönster.
+   * @param startDate  ISO "yyyy-MM-dd"
+   * @param endDate    ISO "yyyy-MM-dd"
+   * @param since      ISO 8601 — returnerar bara DCBs ändrade sedan detta datum (delta-sync)
+   */
+  list: (startDate?: string, endDate?: string, since?: string) => {
     const params = new URLSearchParams();
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
+    if (since) params.set('since', since);
     const qs = params.toString();
     return api.get<BookingsResponse>(`/bookings${qs ? '?' + qs : ''}`);
   },

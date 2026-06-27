@@ -378,6 +378,7 @@ export interface DateCarBooking {
     id: string;
     date: string;
     car: IdObject;
+    updatedAt?: string; // ISO 8601 — satt av backend sedan migrering
     bookings: Array<Booking>;
 }
 
@@ -387,13 +388,19 @@ interface BookingState {
     bookingsByDate: Record<string, DateCarBooking[]>; // Lookup map by date
     loading: boolean;
     range: Record<string, any>;
+    /** Månader (format "yyyy-MM") som har laddats från backend sedan appen startades */
+    loadedMonths: string[];
+    /** Månader (format "yyyy-MM") som håller på att laddas just nu */
+    loadingMonths: string[];
 }
 
 const initialState: BookingState = {
     bookings: [],
     bookingsByDate: {},
     loading: false,
-    range: {}
+    range: {},
+    loadedMonths: [],
+    loadingMonths: [],
 };
 
 const bookingsMapRebuilder = (bookings: DateCarBooking[]): Record<string, DateCarBooking[]> => {
@@ -452,7 +459,33 @@ const bookingSlice = createSlice({
                     b => b.id !== action.payload.id
                 );
             }
-        }
+        },
+        /**
+         * Markera en eller flera månader ("yyyy-MM") som fullständigt laddade.
+         * Används av lazy-load-hooken efter lyckad fetch.
+         */
+        markMonthsLoaded: (state, action: PayloadAction<string[]>) => {
+            const incoming = action.payload;
+            state.loadedMonths = [
+                ...state.loadedMonths.filter(m => !incoming.includes(m)),
+                ...incoming,
+            ];
+            // Rensa från loadingMonths
+            state.loadingMonths = state.loadingMonths.filter(m => !incoming.includes(m));
+        },
+        /**
+         * Sätt/avmarkera en månad ("yyyy-MM") som håller på att laddas.
+         */
+        setLoadingMonth: (state, action: PayloadAction<{ month: string; loading: boolean }>) => {
+            const { month, loading } = action.payload;
+            if (loading) {
+                if (!state.loadingMonths.includes(month)) {
+                    state.loadingMonths.push(month);
+                }
+            } else {
+                state.loadingMonths = state.loadingMonths.filter(m => m !== month);
+            }
+        },
     }
 });
 
@@ -501,7 +534,9 @@ export const {
     setBookingsLoading,
     addMultipleBookings,
     addOrUpdateBooking,
-    removeBooking
+    removeBooking,
+    markMonthsLoaded,
+    setLoadingMonth,
 } = bookingSlice.actions;
 
 export const { setDestinations, addDestination } = destinationSlice.actions;

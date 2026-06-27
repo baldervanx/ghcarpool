@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { addDays, format, startOfDay } from 'date-fns';
+import { format, startOfMonth, endOfMonth, addMonths } from 'date-fns';
+import { Prisma } from '@prisma/client';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
 import { serializeDateCarBooking, serializeDestination } from '../lib/serializers';
@@ -19,19 +20,35 @@ const dcbInclude = {
   },
 } as const;
 
-// Calculates the same window as the frontend hook:
-// 15 days of history + ~3 months forward
+// Defaultfönster: innevarande månad + 3 månader framåt
 function defaultDateRange() {
-  const pastDays = 15;
-  const totalDays = 14 * 8; // 8 pages × 14 days
-  const start = addDays(startOfDay(new Date()), -pastDays);
+  const now = new Date();
+  const start = startOfMonth(now);
+  const end = endOfMonth(addMonths(now, 3));
   return {
     startDate: format(start, 'yyyy-MM-dd'),
-    endDate: format(addDays(start, totalDays), 'yyyy-MM-dd'),
+    endDate: format(end, 'yyyy-MM-dd'),
   };
 }
 
-// ---- GET /api/v1/bookings  (initial load) ----
+// Touch updatedAt på en DateCarBooking så att ?since= fångar ändringen.
+// Använder raw SQL eftersom Prisma inte tillåter att man explicit sätter @updatedAt
+// men en tom update() triggrar inte alltid @updatedAt i äldre Prisma-versioner.
+async function touchParent(parentId: string) {
+  await prisma.$executeRaw`
+    UPDATE "DateCarBooking"
+    SET "updatedAt" = NOW()
+    WHERE id = ${parentId}
+  `;
+}
+
+// ---- GET /api/v1/bookings  (initial load + lazy month load) ----
+//
+// Query params:
+//   ?startDate=yyyy-MM-dd   Inklusive startgräns (default: startOfMonth idag)
+//   ?endDate=yyyy-MM-dd     Inklusive slutgräns  (default: slut på idag+3 månader)
+//   ?since=ISO8601          Returnera bara DCBs vars updatedAt > since (delta-sync)
+//
 router.get('/', async (req: Request, res: Response) => {
   const { startDate, endDate } = {
     ...defaultDateRange(),
@@ -39,8 +56,15 @@ router.get('/', async (req: Request, res: Response) => {
     ...(req.query.endDate ? { endDate: req.query.endDate as string } : {}),
   };
 
+  const sinceRaw = req.query.since as string | undefined;
+
   const dcbs = await prisma.dateCarBooking.findMany({
-    where: { date: { gte: startDate, lte: endDate } },
+    where: {
+      date: { gte: startDate, lte: endDate },
+      ...(sinceRaw && !isNaN(new Date(sinceRaw).getTime())
+        ? { updatedAt: { gt: new Date(sinceRaw) } }
+        : {}),
+    },
     include: dcbInclude,
     orderBy: { date: 'asc' },
   });
@@ -48,6 +72,7 @@ router.get('/', async (req: Request, res: Response) => {
   res.json({
     startDate,
     endDate,
+    since: sinceRaw ?? null,
     bookings: dcbs.map(serializeDateCarBooking),
   });
 });
@@ -216,6 +241,14 @@ router.post('/', async (req: Request, res: Response) => {
         });
       }
 
+      // Touch updatedAt på parent så ?since= fångar ändringen.
+      // Raw SQL eftersom Prisma @updatedAt inte kan sättas explicit i data: {}.
+      await tx.$executeRaw`
+        UPDATE "DateCarBooking"
+        SET "updatedAt" = NOW()
+        WHERE id = ${parent.id}
+      `;
+
       // Re-fetch the full parent with all bookings
       return tx.dateCarBooking.findUniqueOrThrow({
         where: { id: parent.id },
@@ -284,6 +317,8 @@ router.delete('/:parentId/:bookingId', async (req: Request, res: Response) => {
   ]);
 
   if (parent) {
+    // Touch updatedAt så delta-sync (?since=) fångar borttagningen
+    await touchParent(parent.id);
     const serialized = serializeDateCarBooking(parent);
     for (const uid of affectedUserIds) {
       sendEvent(bookingChannel(uid), 'update', serialized);

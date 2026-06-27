@@ -29,18 +29,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import {ChevronDown, ChevronLeft, ChevronRight} from "lucide-react";
+import {ChevronDown, ChevronLeft, ChevronRight, Loader2} from "lucide-react";
 import {cn, useAccessibleCn} from "@/lib/utils";
 import {useSelector} from "react-redux";
 import BookingCell, {CarDate} from "@/components/booking-cell"
 import type {AppStore, Booking} from '@/store';
+import { useBookingMonthLoader } from '@/db/use-booking-month-loader';
 
 const BookingOverview = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { cars } = useSelector((state: AppStore) => state.car);
   const { destinations } = useSelector((state: AppStore) => state.destination);
-  const { bookings, loading } = useSelector((state: AppStore) => state.booking);
+  const { bookings, loading, loadingMonths } = useSelector((state: AppStore) => state.booking);
   const accessibleCn = useAccessibleCn();
   const tableRef = useRef(null);
   const todayRowRef = useRef(null);
@@ -49,6 +50,8 @@ const BookingOverview = () => {
     pageIndex: 1, // 1 = nuvarande månad (0 = föregående månad)
     pageSize: 1, // 1 månad per sida
   });
+
+  const { loadMonth } = useBookingMonthLoader();
 
   // Bestäm den aktuella månaden baserat på sidnumret
   const currentMonth = useMemo(() =>
@@ -59,6 +62,29 @@ const BookingOverview = () => {
   // Beräkna föregående och nästa månad för knapparna
   const prevMonth = useMemo(() => subMonths(currentMonth, 1), [currentMonth]);
   const nextMonth = useMemo(() => addMonths(currentMonth, 1), [currentMonth]);
+
+  // Aktuell månads nyckel "yyyy-MM"
+  const currentMonthKey = useMemo(() => format(currentMonth, 'yyyy-MM'), [currentMonth]);
+
+  // Ladda aktuell månad om den inte redan finns — körs varje gång månaden byter
+  useEffect(() => {
+    loadMonth(currentMonthKey);
+  }, [currentMonthKey, loadMonth]);
+
+  // Prefetch nästa och föregående månad tyst i bakgrunden
+  useEffect(() => {
+    const prevKey = format(prevMonth, 'yyyy-MM');
+    const nextKey = format(nextMonth, 'yyyy-MM');
+    // Liten fördröjning så att UI renderas klart först
+    const t = setTimeout(() => {
+      loadMonth(prevKey);
+      loadMonth(nextKey);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [currentMonthKey, loadMonth, prevMonth, nextMonth]);
+
+  // Håller månaden på att laddas?
+  const isCurrentMonthLoading = loadingMonths.includes(currentMonthKey);
 
   // Använd location.state för att navigera till specifikt datum
   useEffect(() => {
@@ -87,11 +113,10 @@ const BookingOverview = () => {
       const tableElement: Element = tableRef.current;
 
       if (scrollContainer) {
-        // Beräkna positionen för att rada 2 (efter header) ska vara dagens datum
+        // Beräkna positionen för att rad 2 (efter header) ska vara dagens datum
         const tableHeader = tableElement.firstChild;
         // @ts-ignore
         const headerHeight = tableHeader ? tableHeader.offsetHeight : 0;
-        //const rowHeight = todayRow.offsetHeight;
 
         const todayRowTop = todayRow.getBoundingClientRect().top;
         const containerTop = scrollContainer.getBoundingClientRect().top;
@@ -187,14 +212,12 @@ const BookingOverview = () => {
 
   const handleNextClick = () => {
     table.nextPage();
-    // Vänta tills state uppdaterats innan scrollning
-    setTimeout(scrollToToday, 100);
+    setTimeout(() => scrollToToday(), 100);
   };
 
   const handlePrevClick = () => {
     table.previousPage();
-    // Vänta tills state uppdaterats innan scrollning
-    setTimeout(scrollToToday, 100);
+    setTimeout(() => scrollToToday(), 100);
   };
 
   if (loading) {
@@ -283,7 +306,10 @@ const BookingOverview = () => {
               disabled={!table.getCanPreviousPage()}
               className="capitalize"
           >
-            <ChevronLeft className="h-4 w-4" />
+            {loadingMonths.includes(format(prevMonth, 'yyyy-MM'))
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <ChevronLeft className="h-4 w-4" />
+            }
             {format(prevMonth, 'MMMM', {locale: sv})}
           </Button>
           <Button
@@ -291,7 +317,10 @@ const BookingOverview = () => {
               size="sm"
               onClick={handleTodayClick}
           >
-            <ChevronDown className="h-4 w-4" />
+            {isCurrentMonthLoading
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <ChevronDown className="h-4 w-4" />
+            }
             Idag
           </Button>
           <Button
@@ -302,7 +331,10 @@ const BookingOverview = () => {
               className="capitalize"
           >
             {format(nextMonth, 'MMMM', {locale: sv})}
-            <ChevronRight className="h-4 w-4" />
+            {loadingMonths.includes(format(nextMonth, 'yyyy-MM'))
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <ChevronRight className="h-4 w-4" />
+            }
           </Button>
         </div>
       </div>

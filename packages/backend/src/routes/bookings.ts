@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { format, startOfMonth, endOfMonth, addMonths } from 'date-fns';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/prisma/client';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
 import { serializeDateCarBooking, serializeDestination } from '../lib/serializers';

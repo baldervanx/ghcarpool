@@ -13,11 +13,15 @@
  * Befintliga rader med samma unika nyckel hoppas över (upsert/skipDuplicates).
  */
 
-import { PrismaClient } from '@prisma/client';
+import 'dotenv/config';
+import { PrismaClient } from '../../generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { addDays, format, subDays } from 'date-fns';
 import bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

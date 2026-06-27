@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "prisma-cli": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-cli/SKILL.md",
+      "computedHash": "1cfdc0011df8699a2ece587f229a1e892df2a9a3eec40b5407492cb4c6570e95"
+    },
+    "prisma-driver-adapter-implementation": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-driver-adapter-implementation/SKILL.md",
+      "computedHash": "2e00b0d05f0da23796f6d44684e19219b74cf993f8a2df6e5b044812f375bbc6"
+    },
+    "prisma-upgrade-v7": {
+      "source": "prisma/skills",
+      "sourceType": "github",
+      "skillPath": "prisma-upgrade-v7/SKILL.md",
+      "computedHash": "2e4d54a4c7a0fc2476e81686718a765f5eb2cacfb2fb0822f3109c76bf4a9bb0"
+    }
+  }
+}

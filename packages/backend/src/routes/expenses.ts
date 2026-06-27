@@ -56,7 +56,7 @@ router.post('/', upload.single('receipt'), async (req: Request, res: Response) =
     return;
   }
 
-  const receiptData = req.file?.buffer ?? null;
+  const receiptData = (req.file?.buffer ?? null) as Uint8Array<ArrayBuffer> | null;
   const receiptMime = req.file?.mimetype ?? null;
 
   const expense = await prisma.expense.create({

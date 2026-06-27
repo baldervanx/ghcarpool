@@ -115,15 +115,145 @@ describe('POST /api/v1/trips', () => {
   });
 });
 
+// ─── POST /api/v1/trips — backend-validering ─────────────────────────────────
+
+describe('POST /api/v1/trips — backend-validering', () => {
+  it('returnerar 400 om obligatoriska fält saknas (ingen carId)', async () => {
+    const res = await userAgent.post('/api/v1/trips').send({
+      odo: 5000,
+      distance: 10,
+      cost: 15,
+      userIds: [userId],
+      // carId saknas
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Obligatoriska fält/);
+  });
+
+  it('returnerar 400 om odo saknas eller är 0', async () => {
+    const res = await userAgent.post('/api/v1/trips').send({
+      carId,
+      odo: 0,
+      distance: 10,
+      cost: 15,
+      userIds: [userId],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/positiva/);
+  });
+
+  it('returnerar 409 om odo är lägre än senaste registrerade för bilen', async () => {
+    // Skapa en bil att testa med (isolerad från andra tester)
+    const odoCar = await createTestCar({ name: 'OdoTestBil' });
+
+    try {
+      // Registrera resa med odo=50000
+      const first = await userAgent.post('/api/v1/trips').send({
+        carId: odoCar.id,
+        odo: 50000,
+        distance: 100,
+        cost: 150,
+        userIds: [userId],
+      });
+      expect(first.status).toBe(201);
+
+      // Försök registrera resa med lägre odo=49999
+      const second = await userAgent.post('/api/v1/trips').send({
+        carId: odoCar.id,
+        odo: 49999,
+        distance: 50,
+        cost: 75,
+        userIds: [userId],
+      });
+      expect(second.status).toBe(409);
+      expect(second.body.error).toMatch(/odo/);
+    } finally {
+      await prisma.trip.deleteMany({ where: { carId: odoCar.id } });
+      await prisma.car.delete({ where: { id: odoCar.id } });
+    }
+  });
+
+  it('returnerar 409 om odo är samma som senaste registrerade', async () => {
+    const odoCar2 = await createTestCar({ name: 'OdoTestBil2' });
+
+    try {
+      const first = await userAgent.post('/api/v1/trips').send({
+        carId: odoCar2.id,
+        odo: 60000,
+        distance: 100,
+        cost: 150,
+        userIds: [userId],
+      });
+      expect(first.status).toBe(201);
+
+      const second = await userAgent.post('/api/v1/trips').send({
+        carId: odoCar2.id,
+        odo: 60000, // samma värde
+        distance: 50,
+        cost: 75,
+        userIds: [userId],
+      });
+      expect(second.status).toBe(409);
+    } finally {
+      await prisma.trip.deleteMany({ where: { carId: odoCar2.id } });
+      await prisma.car.delete({ where: { id: odoCar2.id } });
+    }
+  });
+
+  it('accepterar ny resa med odo högre än senaste', async () => {
+    const odoCar3 = await createTestCar({ name: 'OdoTestBil3' });
+
+    try {
+      const first = await userAgent.post('/api/v1/trips').send({
+        carId: odoCar3.id,
+        odo: 70000,
+        distance: 100,
+        cost: 150,
+        userIds: [userId],
+      });
+      expect(first.status).toBe(201);
+
+      const second = await userAgent.post('/api/v1/trips').send({
+        carId: odoCar3.id,
+        odo: 70100, // strikt högre
+        distance: 100,
+        cost: 150,
+        userIds: [userId],
+      });
+      expect(second.status).toBe(201);
+    } finally {
+      await prisma.trip.deleteMany({ where: { carId: odoCar3.id } });
+      await prisma.car.delete({ where: { id: odoCar3.id } });
+    }
+  });
+});
+
 // ─── PUT /api/v1/trips/:id ────────────────────────────────────────────────────
 
 describe('PUT /api/v1/trips/:id', () => {
   let tripId: string;
+  let putCar: { id: string };
+
+  beforeAll(async () => {
+    putCar = await createTestCar({ name: 'PutCar' });
+  });
+
+  afterAll(async () => {
+    await prisma.trip.deleteMany({ where: { carId: putCar.id } });
+    await prisma.car.delete({ where: { id: putCar.id } });
+  });
 
   beforeEach(async () => {
+    // Hämta senaste odo för putCar och lägg på 1000 för att garantera stigande värde
+    const latest = await prisma.trip.findFirst({
+      where: { carId: putCar.id },
+      orderBy: { odo: 'desc' },
+      select: { odo: true },
+    });
+    const nextOdo = (latest?.odo ?? 0) + 1000;
     const res = await userAgent.post('/api/v1/trips').send({
-      carId,
-      odo: 13000,
+      carId: putCar.id,
+      odo: nextOdo,
       distance: 50,
       cost: 75,
       userIds: [userId],
@@ -193,11 +323,27 @@ describe('PUT /api/v1/trips/:id', () => {
 
 describe('DELETE /api/v1/trips/:id', () => {
   let tripId: string;
+  let delCar: { id: string };
+
+  beforeAll(async () => {
+    delCar = await createTestCar({ name: 'DelCar' });
+  });
+
+  afterAll(async () => {
+    await prisma.trip.deleteMany({ where: { carId: delCar.id } });
+    await prisma.car.delete({ where: { id: delCar.id } });
+  });
 
   beforeEach(async () => {
+    const latest = await prisma.trip.findFirst({
+      where: { carId: delCar.id },
+      orderBy: { odo: 'desc' },
+      select: { odo: true },
+    });
+    const nextOdo = (latest?.odo ?? 0) + 1000;
     const res = await userAgent.post('/api/v1/trips').send({
-      carId,
-      odo: 20000,
+      carId: delCar.id,
+      odo: nextOdo,
       distance: 30,
       cost: 45,
       userIds: [userId],

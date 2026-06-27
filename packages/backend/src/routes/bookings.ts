@@ -97,6 +97,20 @@ router.post('/', async (req: Request, res: Response) => {
 
   const byUserId = req.user!.id;
 
+  // ---- Grundläggande input-validering ----
+  if (!date || !carId || !Array.isArray(userIds) || userIds.length === 0) {
+    res.status(400).json({ error: 'Obligatoriska fält saknas: date, carId, userIds' });
+    return;
+  }
+  if (typeof startTime !== 'number' || typeof endTime !== 'number') {
+    res.status(400).json({ error: 'startTime och endTime måste vara tal (minuter från midnatt)' });
+    return;
+  }
+  if (endTime <= startTime) {
+    res.status(400).json({ error: 'endTime måste vara större än startTime' });
+    return;
+  }
+
   // Lös upp destinationId:
   //   - tom sträng/null → ingen destination
   //   - ser ut som ett CUID (börjar med "c", 25 tecken) → slå upp i DB, returnera 400 om ej finns
@@ -135,58 +149,87 @@ router.post('/', async (req: Request, res: Response) => {
     }
   }
 
-  const dcb = await prisma.$transaction(async (tx) => {
-    // Find or create the DateCarBooking container
-    let parent = await tx.dateCarBooking.findUnique({
-      where: { date_carId: { date, carId } },
-      include: dcbInclude,
-    });
-
-    if (!parent) {
-      parent = await tx.dateCarBooking.create({
-        data: { date, carId },
+  let dcb;
+  try {
+    dcb = await prisma.$transaction(async (tx) => {
+      // Find or create the DateCarBooking container
+      let parent = await tx.dateCarBooking.findUnique({
+        where: { date_carId: { date, carId } },
         include: dcbInclude,
       });
-    }
 
-    if (existingBookingId && existingParentId) {
-      // UPDATE existing booking
-      await tx.bookingUser.deleteMany({ where: { bookingId: existingBookingId } });
-      await tx.booking.update({
-        where: { id: existingBookingId },
-        data: {
-          startTime,
-          endTime,
-          distance,
-          destinationId: resolvedDestinationId,
-          comment: emptyToNull(comment),
-          recurrenceId: emptyToNull(recurrenceId),
-          users: { create: userIds.map(uid => ({ userId: uid })) },
-        },
-      });
-    } else {
-      // CREATE new booking
-      await tx.booking.create({
-        data: {
-          parentId: parent.id,
-          startTime,
-          endTime,
-          distance,
-          destinationId: resolvedDestinationId,
-          comment: emptyToNull(comment),
-          recurrenceId: emptyToNull(recurrenceId),
-          byUserId,
-          users: { create: userIds.map(uid => ({ userId: uid })) },
-        },
-      });
-    }
+      if (!parent) {
+        parent = await tx.dateCarBooking.create({
+          data: { date, carId },
+          include: dcbInclude,
+        });
+      }
 
-    // Re-fetch the full parent with all bookings
-    return tx.dateCarBooking.findUniqueOrThrow({
-      where: { id: parent.id },
-      include: dcbInclude,
+      // ---- Överlappningskontroll inuti transaktionen ----
+      // Hämta befintliga bokningar för detta datum/bil (exklusive den vi eventuellt uppdaterar)
+      const existingBookings = parent.bookings.filter(
+        (b) => b.id !== existingBookingId,
+      );
+      const overlapping = existingBookings.find(
+        (b) => startTime < b.endTime && endTime > b.startTime,
+      );
+      if (overlapping) {
+        const fmt = (m: number) =>
+          `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+        throw Object.assign(
+          new Error(
+            `Tidskollision med befintlig bokning ${fmt(overlapping.startTime)}–${fmt(overlapping.endTime)}`,
+          ),
+          { httpStatus: 409 },
+        );
+      }
+
+      if (existingBookingId && existingParentId) {
+        // UPDATE existing booking
+        await tx.bookingUser.deleteMany({ where: { bookingId: existingBookingId } });
+        await tx.booking.update({
+          where: { id: existingBookingId },
+          data: {
+            startTime,
+            endTime,
+            distance,
+            destinationId: resolvedDestinationId,
+            comment: emptyToNull(comment),
+            recurrenceId: emptyToNull(recurrenceId),
+            users: { create: userIds.map(uid => ({ userId: uid })) },
+          },
+        });
+      } else {
+        // CREATE new booking
+        await tx.booking.create({
+          data: {
+            parentId: parent.id,
+            startTime,
+            endTime,
+            distance,
+            destinationId: resolvedDestinationId,
+            comment: emptyToNull(comment),
+            recurrenceId: emptyToNull(recurrenceId),
+            byUserId,
+            users: { create: userIds.map(uid => ({ userId: uid })) },
+          },
+        });
+      }
+
+      // Re-fetch the full parent with all bookings
+      return tx.dateCarBooking.findUniqueOrThrow({
+        where: { id: parent.id },
+        include: dcbInclude,
+      });
     });
-  });
+  } catch (err: unknown) {
+    const e = err as Error & { httpStatus?: number };
+    if (e.httpStatus) {
+      res.status(e.httpStatus).json({ error: e.message });
+      return;
+    }
+    throw err;
+  }
 
   const serialized = serializeDateCarBooking(dcb);
 

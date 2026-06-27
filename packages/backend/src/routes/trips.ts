@@ -58,30 +58,70 @@ router.post('/', async (req: Request, res: Response) => {
 
   const byUserId = req.user!.id;
 
-  const trip = await prisma.$transaction(async (tx) => {
-    const created = await tx.trip.create({
-      data: {
-        carId,
-        odo,
-        distance,
-        cost,
-        comment: comment ?? null,
-        byUserId,
-        users: { create: userIds.map(uid => ({ userId: uid })) },
-      },
-      include: tripInclude,
-    });
+  // ---- Grundläggande input-validering ----
+  if (!carId || !Array.isArray(userIds) || userIds.length === 0) {
+    res.status(400).json({ error: 'Obligatoriska fält saknas: carId, userIds' });
+    return;
+  }
+  if (typeof odo !== 'number' || typeof distance !== 'number' || typeof cost !== 'number') {
+    res.status(400).json({ error: 'odo, distance och cost måste vara tal' });
+    return;
+  }
+  if (odo <= 0 || distance <= 0) {
+    res.status(400).json({ error: 'odo och distance måste vara positiva' });
+    return;
+  }
 
-    // Mark the booking as logged if provided
-    if (bookingId && parentId) {
-      await tx.booking.update({
-        where: { id: bookingId },
-        data: { logged: created.id },
+  let trip;
+  try {
+    trip = await prisma.$transaction(async (tx) => {
+      // ---- Odo-monoton-validering inuti transaktionen ----
+      // Senaste registrerade resan för den här bilen (låst med SELECT FOR UPDATE via Prisma)
+      const latestTrip = await tx.trip.findFirst({
+        where: { carId },
+        orderBy: { odo: 'desc' },
+        select: { odo: true },
       });
-    }
+      if (latestTrip && odo <= latestTrip.odo) {
+        throw Object.assign(
+          new Error(
+            `Nytt odo-värde (${odo}) måste vara högre än senast registrerade (${latestTrip.odo})`,
+          ),
+          { httpStatus: 409 },
+        );
+      }
 
-    return created;
-  });
+      const created = await tx.trip.create({
+        data: {
+          carId,
+          odo,
+          distance,
+          cost,
+          comment: comment ?? null,
+          byUserId,
+          users: { create: userIds.map(uid => ({ userId: uid })) },
+        },
+        include: tripInclude,
+      });
+
+      // Mark the booking as logged if provided
+      if (bookingId && parentId) {
+        await tx.booking.update({
+          where: { id: bookingId },
+          data: { logged: created.id },
+        });
+      }
+
+      return created;
+    });
+  } catch (err: unknown) {
+    const e = err as Error & { httpStatus?: number };
+    if (e.httpStatus) {
+      res.status(e.httpStatus).json({ error: e.message });
+      return;
+    }
+    throw err;
+  }
 
   const serialized = serializeTrip(trip);
   sendEvent(TRIPS_CHANNEL, 'add', serialized);

@@ -142,12 +142,14 @@ describe('POST /api/v1/bookings', () => {
   });
 
   it('returnerar 400 vid ogiltigt destinationId (inte 500/502)', async () => {
+    // Använd ett CUID-format ID (^c[a-z0-9]{24}$) som med säkerhet inte finns
+    const fakeCuid = 'c' + 'x'.repeat(24);
     const res = await userAgent.post('/api/v1/bookings').send({
       date: TEST_DATE,
       carId,
       startTime: 300,
       endTime: 360,
-      destinationId: 'ej-ett-riktigt-id',
+      destinationId: fakeCuid,
       userIds: [userId],
     });
     expect(res.status).toBe(400);
@@ -178,9 +180,11 @@ describe('POST /api/v1/bookings', () => {
   });
 
   it('uppdaterar befintlig bokning och returnerar 200', async () => {
+    // Använd ett eget datum för att undvika kollision med andra tester
+    const UPDATE_DATE = '2099-01-16';
     // Skapa en bokning att uppdatera
     const createRes = await userAgent.post('/api/v1/bookings').send({
-      date: TEST_DATE,
+      date: UPDATE_DATE,
       carId,
       startTime: 600,
       endTime: 720,
@@ -192,7 +196,7 @@ describe('POST /api/v1/bookings', () => {
     const bookingId = createRes.body.bookings[0].id;
 
     const updateRes = await userAgent.post('/api/v1/bookings').send({
-      date: TEST_DATE,
+      date: UPDATE_DATE,
       carId,
       startTime: 600,
       endTime: 780, // ändrat sluttid
@@ -204,6 +208,91 @@ describe('POST /api/v1/bookings', () => {
     expect(updateRes.status).toBe(200);
     const updated = updateRes.body.bookings.find((b: { id: string }) => b.id === bookingId);
     expect(updated?.endTime).toBe(780);
+
+    // Städa upp
+    await prisma.booking.deleteMany({ where: { parent: { date: UPDATE_DATE, carId } } });
+    await prisma.dateCarBooking.deleteMany({ where: { date: UPDATE_DATE, carId } });
+  });
+});
+
+// ─── POST /api/v1/bookings — backend-validering ───────────────────────────────
+
+const VAL_DATE = '2099-01-17'; // Eget datum för valideringstester, undviker kollision
+
+describe('POST /api/v1/bookings — backend-validering', () => {
+  afterEach(async () => {
+    // Rensa alla bokningar skapade av detta describe-block
+    await prisma.booking.deleteMany({ where: { parent: { date: VAL_DATE, carId } } });
+    await prisma.dateCarBooking.deleteMany({ where: { date: VAL_DATE, carId } });
+  });
+
+  it('returnerar 400 om obligatoriska fält saknas (ingen carId)', async () => {
+    const res = await userAgent.post('/api/v1/bookings').send({
+      date: VAL_DATE,
+      startTime: 480,
+      endTime: 540,
+      userIds: [userId],
+      // carId saknas
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Obligatoriska fält/);
+  });
+
+  it('returnerar 400 om endTime <= startTime', async () => {
+    const res = await userAgent.post('/api/v1/bookings').send({
+      date: VAL_DATE,
+      carId,
+      startTime: 600,
+      endTime: 600, // lika med startTime
+      userIds: [userId],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/endTime/);
+  });
+
+  it('returnerar 409 vid tidskollision med befintlig bokning', async () => {
+    // Skapa en bas-bokning 08:00–10:00
+    const base = await userAgent.post('/api/v1/bookings').send({
+      date: VAL_DATE,
+      carId,
+      startTime: 480,  // 08:00
+      endTime: 600,    // 10:00
+      userIds: [userId],
+    });
+    expect([200, 201]).toContain(base.status);
+
+    // Försök skapa en överlappande bokning 09:00–11:00
+    const collision = await userAgent.post('/api/v1/bookings').send({
+      date: VAL_DATE,
+      carId,
+      startTime: 540,  // 09:00 — inne i basbokningen
+      endTime: 660,    // 11:00
+      userIds: [userId],
+    });
+    expect(collision.status).toBe(409);
+    expect(collision.body.error).toMatch(/Tidskollision/);
+  });
+
+  it('returnerar 200/201 för bokningar på samma dag som inte överlappar', async () => {
+    // Skapa 12:00–13:00
+    const a = await userAgent.post('/api/v1/bookings').send({
+      date: VAL_DATE,
+      carId,
+      startTime: 720,  // 12:00
+      endTime: 780,    // 13:00
+      userIds: [userId],
+    });
+    expect([200, 201]).toContain(a.status);
+
+    // Skapa 13:00–14:00 — direkt efter, ska gå bra
+    const b = await userAgent.post('/api/v1/bookings').send({
+      date: VAL_DATE,
+      carId,
+      startTime: 780,  // 13:00
+      endTime: 840,    // 14:00
+      userIds: [userId],
+    });
+    expect([200, 201]).toContain(b.status);
   });
 });
 
@@ -212,10 +301,11 @@ describe('POST /api/v1/bookings', () => {
 describe('DELETE /api/v1/bookings/:parentId/:bookingId', () => {
   let parentId: string;
   let bookingId: string;
+  const DEL_DATE = '2099-01-18';
 
   beforeEach(async () => {
     const res = await userAgent.post('/api/v1/bookings').send({
-      date: TEST_DATE,
+      date: DEL_DATE,
       carId,
       startTime: 300,
       endTime: 360,
@@ -224,6 +314,12 @@ describe('DELETE /api/v1/bookings/:parentId/:bookingId', () => {
     expect([200, 201]).toContain(res.status);
     parentId = res.body.id;
     bookingId = res.body.bookings.at(-1).id;
+  });
+
+  afterEach(async () => {
+    // Rensa eventuellt kvar­ varande bokning (t.ex. om testet misslyckades)
+    await prisma.booking.deleteMany({ where: { parent: { date: DEL_DATE, carId } } });
+    await prisma.dateCarBooking.deleteMany({ where: { date: DEL_DATE, carId } });
   });
 
   it('returnerar 401 utan session', async () => {

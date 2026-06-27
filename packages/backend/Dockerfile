@@ -39,9 +39,10 @@ COPY packages/backend/package.json ./packages/backend/
 # Only production deps
 RUN pnpm install --frozen-lockfile --prod --filter @ghcarpool/backend...
 
-# Compiled output + prisma schema (needed for migrations at startup)
+# Compiled output + prisma schema + config (needed for migrations at startup)
 COPY --from=builder /app/packages/backend/dist          ./packages/backend/dist
 COPY --from=builder /app/packages/backend/prisma        ./packages/backend/prisma
+COPY --from=builder /app/packages/backend/prisma.config.ts ./packages/backend/prisma.config.ts
 COPY --from=builder /app/node_modules/.pnpm              ./node_modules/.pnpm
 # Prisma generated client lives inside node_modules
 COPY --from=builder /app/packages/backend/node_modules  ./packages/backend/node_modules

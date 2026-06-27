@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { House, Calendar, CalendarPlus, FileText, FilePlus } from 'lucide-react';
+import { HamburgerMenu } from '@/components/HamburgerMenu';
 
 export function Navbar() {
   const location = useLocation();
@@ -52,6 +53,7 @@ export function Navbar() {
               </Button>
             </Link>
           </div>
+          <HamburgerMenu />
         </div>
       </div>
     </nav>

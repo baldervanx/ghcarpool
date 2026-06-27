@@ -14,6 +14,10 @@ import type {
   BookingUser,
   Trip as PrismaTrip,
   TripUser,
+  ErrorLog,
+  ErrorLogComment,
+  Expense,
+  CarInfo,
 } from '@prisma/client';
 
 // ---- Users ----
@@ -117,5 +121,60 @@ export function serializeTrip(t: TripWithUsers) {
     users: t.users.map(tu => ({ id: tu.userId })),
     timestamp: fmt.format(t.timestamp),
     timestampISO: t.timestamp.toISOString(),
+  };
+}
+
+// ---- Fellogg ----
+
+type ErrorLogFull = ErrorLog & {
+  comments: (ErrorLogComment & { byUser: { id: string } })[];
+};
+
+export function serializeErrorLog(e: ErrorLogFull) {
+  return {
+    id: e.id,
+    carId: e.carId,
+    description: e.description,
+    status: e.status,
+    assignedToId: e.assignedToId ?? null,
+    updatedById: e.updatedById,
+    updatedAt: e.updatedAt.toISOString(),
+    createdAt: e.createdAt.toISOString(),
+    comments: e.comments.map(c => ({
+      id: c.id,
+      text: c.text,
+      byUserId: c.byUserId,
+      createdAt: c.createdAt.toISOString(),
+    })),
+  };
+}
+
+// ---- Utlägg ----
+
+export function serializeExpense(e: Expense) {
+  return {
+    id: e.id,
+    carId: e.carId,
+    amount: e.amount,
+    description: e.description,
+    status: e.status,
+    hasReceipt: e.receiptData !== null,
+    byUserId: e.byUserId,
+    createdAt: e.createdAt.toISOString(),
+    updatedAt: e.updatedAt.toISOString(),
+  };
+}
+
+// ---- Bilinfo ----
+
+export function serializeCarInfo(c: CarInfo) {
+  return {
+    id: c.id,
+    carId: c.carId,
+    inspectionDue: c.inspectionDue ?? null,
+    lastService: c.lastService ?? null,
+    owner: c.owner ?? null,
+    insuranceCompany: c.insuranceCompany ?? null,
+    updatedAt: c.updatedAt.toISOString(),
   };
 }

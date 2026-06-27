@@ -8,6 +8,9 @@ import generalRouter from './routes/general';
 import bookingsRouter from './routes/bookings';
 import tripsRouter from './routes/trips';
 import adminRouter from './routes/admin';
+import errorLogsRouter from './routes/error-logs';
+import expensesRouter from './routes/expenses';
+import carInfoRouter from './routes/car-info';
 
 const app = express();
 
@@ -35,6 +38,9 @@ app.use('/api/v1', generalRouter);
 app.use('/api/v1/bookings', bookingsRouter);
 app.use('/api/v1/trips', tripsRouter);
 app.use('/api/v1/admin', adminRouter);
+app.use('/api/v1/error-logs', errorLogsRouter);
+app.use('/api/v1/expenses', expensesRouter);
+app.use('/api/v1/car-info', carInfoRouter);
 
 // 404 catch-all
 app.use((_req, res) => {

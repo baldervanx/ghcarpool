@@ -35,11 +35,32 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+/** Fetch utan automatisk Content-Type (används för FormData-uppladdning) */
+async function rawRequest<T>(path: string, options: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.error ?? `HTTP ${res.status}`);
+  }
+
+  if (res.status === 204) return undefined as unknown as T;
+  return res.json() as Promise<T>;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
+  patch: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  /** Skicka FormData (multer-uppladdning) — Content-Type sätts automatiskt av webbläsaren */
+  postForm: <T>(path: string, form: FormData) =>
+    rawRequest<T>(path, { method: 'POST', body: form }),
 };

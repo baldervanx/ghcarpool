@@ -22,6 +22,11 @@ model User {
   bookingUsers  BookingUser[]
   tripsMade     Trip[]          @relation("TripByUser")
   tripUsers     TripUser[]
+
+  errorLogsAssigned  ErrorLog[]       @relation("ErrorLogAssignee")
+  errorLogsUpdated   ErrorLog[]       @relation("ErrorLogUpdater")
+  errorLogComments   ErrorLogComment[] @relation("ErrorLogCommentAuthor")
+  expenses           Expense[]        @relation("ExpenseByUser")
 }
 
 // Sessions hanteras av connect-pg-simple, skapar tabellen via migration nedan
@@ -43,6 +48,9 @@ model Car {
 
   dateCarBookings DateCarBooking[]
   trips           Trip[]
+  errorLogs       ErrorLog[]
+  expenses        Expense[]
+  carInfo         CarInfo?
 }
 
 model Destination {
@@ -123,3 +131,73 @@ model TripUser {
 
   @@id([tripId, userId])
 }
+
+// ---- Fellogg ----
+
+model ErrorLog {
+  id           String         @id @default(cuid())
+  car          Car            @relation(fields: [carId], references: [id])
+  carId        String
+  description  String
+  status       ErrorLogStatus @default(OPEN)
+  assignedTo   User?          @relation("ErrorLogAssignee", fields: [assignedToId], references: [id])
+  assignedToId String?
+  updatedBy    User           @relation("ErrorLogUpdater", fields: [updatedById], references: [id])
+  updatedById  String
+  updatedAt    DateTime       @updatedAt
+  createdAt    DateTime       @default(now())
+
+  comments ErrorLogComment[]
+}
+
+model ErrorLogComment {
+  id         String   @id @default(cuid())
+  errorLog   ErrorLog @relation(fields: [errorLogId], references: [id], onDelete: Cascade)
+  errorLogId String
+  text       String
+  byUser     User     @relation("ErrorLogCommentAuthor", fields: [byUserId], references: [id])
+  byUserId   String
+  createdAt  DateTime @default(now())
+}
+
+enum ErrorLogStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+// ---- Utlägg ----
+
+model Expense {
+  id          String        @id @default(cuid())
+  car         Car           @relation(fields: [carId], references: [id])
+  carId       String
+  amount      Float
+  description String
+  status      ExpenseStatus @default(UNPAID)
+  receiptData Bytes?        // JPEG/PNG som binary blob
+  receiptMime String?       // t.ex. "image/jpeg"
+  byUser      User          @relation("ExpenseByUser", fields: [byUserId], references: [id])
+  byUserId    String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+enum ExpenseStatus {
+  UNPAID
+  PAID
+}
+
+// ---- Bilinfo ----
+
+model CarInfo {
+  id               String   @id @default(cuid())
+  car              Car      @relation(fields: [carId], references: [id], onDelete: Cascade)
+  carId            String   @unique
+  inspectionDue    String?  // ISO date "yyyy-MM-dd", nästa besiktning
+  lastService      String?  // ISO date "yyyy-MM-dd", senaste service
+  owner            String?  // Fritext, ägarens namn/organisation
+  insuranceCompany String?  // Fritext, försäkringsbolag
+  updatedAt        DateTime @updatedAt
+}
+

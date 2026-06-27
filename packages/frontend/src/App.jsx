@@ -10,6 +10,9 @@ import { RegisterTrip } from './pages/register-trip';
 import { TripLog } from './pages/TripLog';
 import BookTrip from './pages/book-trip';
 import BookingOverview from './pages/booking-overview';
+import ErrorLog from './pages/error-log';
+import Expenses from './pages/expenses';
+import CarInfoPage from './pages/car-info';
 
 import { AccessibilityProvider } from './lib/utils';
 import { ThemeProvider } from './components/theme-context';
@@ -61,6 +64,18 @@ function App() {
             <Route
                 path="/trip-log"
                 element={<ProtectedRoute><TripLog /></ProtectedRoute>}
+            />
+            <Route
+                path="/error-log"
+                element={<ProtectedRoute><ErrorLog /></ProtectedRoute>}
+            />
+            <Route
+                path="/expenses"
+                element={<ProtectedRoute><Expenses /></ProtectedRoute>}
+            />
+            <Route
+                path="/car-info"
+                element={<ProtectedRoute><CarInfoPage /></ProtectedRoute>}
             />
             <Route
                 path="*"

@@ -2,7 +2,8 @@
 FROM node:26-alpine AS builder
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Node 26 buntar inte längre corepack — installera explicit via npm
+RUN npm install -g corepack@latest --quiet && corepack enable && corepack prepare pnpm@latest --activate
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/frontend/package.json ./packages/frontend/

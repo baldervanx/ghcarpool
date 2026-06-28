@@ -2,9 +2,8 @@
 FROM node:26-alpine AS builder
 WORKDIR /app
 
-# pnpm + uppgradera bundlad npm så att "new major version"-varningen försvinner
-RUN corepack enable && corepack prepare pnpm@latest --activate \
- && npm install -g npm@latest --quiet
+# Node 26 buntar inte längre corepack — installera explicit via npm
+RUN npm install -g corepack@latest --quiet && corepack enable && corepack prepare pnpm@latest --activate
 
 # OpenSSL krävs av Prisma på Alpine
 RUN apk add --no-cache openssl
@@ -32,8 +31,7 @@ ENV NODE_ENV=production
 # OpenSSL krävs av Prisma på Alpine
 RUN apk add --no-cache openssl
 
-RUN corepack enable && corepack prepare pnpm@latest --activate \
- && npm install -g npm@latest --quiet
+RUN npm install -g corepack@latest --quiet && corepack enable && corepack prepare pnpm@latest --activate
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/backend/package.json ./packages/backend/

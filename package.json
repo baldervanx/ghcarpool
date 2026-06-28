@@ -8,8 +8,5 @@
     "build": "pnpm --filter @ghcarpool/frontend build && pnpm --filter @ghcarpool/backend build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["@firebase/util", "bcrypt", "esbuild", "msw", "protobufjs", "re2"]
   }
 }

@@ -64,10 +64,5 @@
     "typescript": "^5.6.3",
     "vite": "^5.4.20",
     "vitest": "^3.0.5"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "msw"
-    ]
   }
 }

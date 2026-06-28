@@ -11,6 +11,7 @@ allowBuilds:
   prisma: true
   protobufjs: true
   re2: true
+  unrs-resolver: true
 
 settings:
   onlyBuiltDependencies:
@@ -23,3 +24,4 @@ settings:
     - prisma
     - protobufjs
     - re2
+    - unrs-resolver

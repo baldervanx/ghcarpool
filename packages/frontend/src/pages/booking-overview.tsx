@@ -45,17 +45,20 @@ const BookingOverview = () => {
   const accessibleCn = useAccessibleCn();
   const tableRef = useRef(null);
   const todayRowRef = useRef(null);
-  const pageCount = 6; // Visa 6 månader
+  const MONTHS_BACK = 12;
+  const MONTHS_FORWARD = 6;
+  const pageCount = MONTHS_BACK + 1 + MONTHS_FORWARD; // 19 månader totalt
   const [pagination, setPagination] = useState({
-    pageIndex: 1, // 1 = nuvarande månad (0 = föregående månad)
+    pageIndex: MONTHS_BACK, // MONTHS_BACK = nuvarande månad
     pageSize: 1, // 1 månad per sida
   });
 
   const { loadMonth } = useBookingMonthLoader();
 
   // Bestäm den aktuella månaden baserat på sidnumret
+  // pageIndex=MONTHS_BACK → nuvarande månad; lägre = bakåt, högre = framåt
   const currentMonth = useMemo(() =>
-          addMonths(startOfMonth(new Date()), pagination.pageIndex - 1),
+          addMonths(startOfMonth(new Date()), pagination.pageIndex - MONTHS_BACK),
       [pagination.pageIndex]
   );
 
@@ -91,7 +94,7 @@ const BookingOverview = () => {
     if (location.state && location.state.date) {
       const selectedDate = new Date(location.state.date);
       const monthDiff = differenceInMonths(selectedDate, startOfMonth(new Date()));
-      setPagination({pageIndex: monthDiff + 1, pageSize: 1}); // +1 eftersom nuvarande månad är index 1
+      setPagination({pageIndex: MONTHS_BACK + monthDiff, pageSize: 1});
     }
   }, [location.state]);
 
@@ -205,7 +208,7 @@ const BookingOverview = () => {
 
   // Hantera klick på "Idag"-knappen
   const handleTodayClick = () => {
-    setPagination({pageIndex: 1, pageSize: 1});
+    setPagination({pageIndex: MONTHS_BACK, pageSize: 1});
     // Vänta tills state uppdaterats innan scrollning
     setTimeout(scrollToToday, 100);
   };

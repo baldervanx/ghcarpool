@@ -105,7 +105,10 @@ export function TripLog() {
                   variant={showMonthFilter ? 'secondary' : 'ghost'}
                   size="icon"
                   aria-label="Filtrera på månad"
-                  onClick={() => setShowMonthFilter(v => !v)}
+                  onClick={() => setShowMonthFilter(v => {
+                    if (v) setSelectedMonth(format(new Date(), 'yyyy-MM')); // återställ vid stängning
+                    return !v;
+                  })}
               >
                 <Filter size={20} />
               </Button>

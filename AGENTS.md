@@ -52,7 +52,7 @@ ghcarpool/
 │   │           ├── seed.ts          # Testdata inkl. passwordHash (dev123)
 │   │           └── set-password.ts  # CLI: sätt lösenord på befintlig user
 │   └── frontend/
-│       ├── Dockerfile               # node:22-alpine builder + nginx:1.27-alpine
+│       ├── Dockerfile               # node:26-alpine builder + nginx:1.27-alpine
 │       ├── nginx.conf               # HTTP på 80, include https.conf
 │       ├── docker-nginx-setup.sh    # Entrypoint: aktiverar HTTPS om cert finns
 │       └── src/

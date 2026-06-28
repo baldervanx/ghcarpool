@@ -1,5 +1,5 @@
 # ── Stage 1: builder ────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 
 # pnpm + uppgradera bundlad npm så att "new major version"-varningen försvinner
@@ -24,7 +24,7 @@ RUN pnpm --filter @ghcarpool/backend exec prisma generate
 RUN pnpm --filter @ghcarpool/backend run build
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production

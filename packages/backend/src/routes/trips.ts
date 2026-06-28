@@ -14,13 +14,26 @@ const TRIPS_CHANNEL = 'trips';
 // Bookings channel — används för att notifiera om logged-uppdatering
 const bookingChannel = (userId: string) => `bookings:${userId}`;
 
-// ---- GET /api/v1/trips  (initial load, last 30 days) ----
-router.get('/', async (_req: Request, res: Response) => {
-  const since = new Date();
-  since.setDate(since.getDate() - 30);
+// ---- GET /api/v1/trips  (initial load, last 30 days, or delta ?since=ISO) ----
+router.get('/', async (req: Request, res: Response) => {
+  const { since: sinceParam } = req.query as { since?: string };
+
+  let since: Date;
+  if (sinceParam) {
+    const parsed = new Date(sinceParam);
+    if (isNaN(parsed.getTime())) {
+      res.status(400).json({ error: 'Ogiltigt since-format. Förväntar ISO 8601.' });
+      return;
+    }
+    since = parsed;
+  } else {
+    // Fallback: senaste 30 dagar (initial load utan cache)
+    since = new Date();
+    since.setDate(since.getDate() - 30);
+  }
 
   const trips = await prisma.trip.findMany({
-    where: { timestamp: { gte: since } },
+    where: { timestamp: { gt: since } },
     include: tripInclude,
     orderBy: { odo: 'desc' },
   });

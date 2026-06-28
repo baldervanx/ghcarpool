@@ -32,7 +32,10 @@ export interface UpdateTripPayload {
 }
 
 export const tripsApi = {
-  list: () => api.get<TripDto[]>('/trips'),
+  list: (since?: string) => {
+    const url = since ? `/trips?since=${encodeURIComponent(since)}` : '/trips';
+    return api.get<TripDto[]>(url);
+  },
   create: (payload: CreateTripPayload) => api.post<TripDto>('/trips', payload),
   update: (id: string, payload: UpdateTripPayload) =>
     api.put<TripDto>(`/trips/${id}`, payload),

@@ -14,6 +14,7 @@ import HelpDialog from '@/components/help-dialog';
 import {format, differenceInCalendarDays} from "date-fns";
 import { sv } from 'date-fns/locale';
 import {useNavigate} from "react-router-dom";
+import { api, ApiError } from '@/api/client';
 
 interface BookingCar extends Booking {
   car: Car;
@@ -36,9 +37,35 @@ export const HomePage = () => {
   const { user, loading: userLoading } = useSelector((state: AppStore) => state.auth);
   const [ activeBookings, setActiveBookings ] = useState<BookingCar[]>([]);
 
+  // Lösenordsbyte
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState(false);
+
   const handleLogout = async () => {
     await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
     dispatch(fetchAuthState());
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError(null);
+    setPwSuccess(false);
+    if (pwNew !== pwConfirm) { setPwError('De nya lösenorden matchar inte'); return; }
+    if (pwNew.length < 8) { setPwError('Nytt lösenord måste vara minst 8 tecken'); return; }
+    setPwLoading(true);
+    try {
+      await api.post('/auth/change-password', { currentPassword: pwCurrent, newPassword: pwNew });
+      setPwSuccess(true);
+      setPwCurrent(''); setPwNew(''); setPwConfirm('');
+    } catch (err) {
+      setPwError(err instanceof ApiError ? err.message : 'Kunde inte byta lösenord');
+    } finally {
+      setPwLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -254,6 +281,62 @@ export const HomePage = () => {
                     {darkMode ? <Sun size={20}/> : <Moon size={20}/>}
                   </Button>
                 </div>
+              </CardContent>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+
+        <Accordion type="single" collapsible>
+          <AccordionItem value="change-password">
+            <AccordionTrigger className="py-0">
+              <CardHeader className="p-3 space-y-3">
+                <CardTitle className="text-xl">Byt lösenord</CardTitle>
+              </CardHeader>
+            </AccordionTrigger>
+            <AccordionContent>
+              <CardContent className="p-4">
+                <form onSubmit={handleChangePassword} className="space-y-3">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Nuvarande lösenord</label>
+                    <input
+                      type="password"
+                      value={pwCurrent}
+                      onChange={e => setPwCurrent(e.target.value)}
+                      className="w-full border rounded px-3 py-2 text-sm bg-background"
+                      autoComplete="current-password"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Nytt lösenord</label>
+                    <input
+                      type="password"
+                      value={pwNew}
+                      onChange={e => setPwNew(e.target.value)}
+                      className="w-full border rounded px-3 py-2 text-sm bg-background"
+                      autoComplete="new-password"
+                      minLength={8}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Bekräfta nytt lösenord</label>
+                    <input
+                      type="password"
+                      value={pwConfirm}
+                      onChange={e => setPwConfirm(e.target.value)}
+                      className="w-full border rounded px-3 py-2 text-sm bg-background"
+                      autoComplete="new-password"
+                      minLength={8}
+                      required
+                    />
+                  </div>
+                  {pwError && <p className="text-red-600 text-sm">{pwError}</p>}
+                  {pwSuccess && <p className="text-green-600 text-sm">Lösenordet har bytts!</p>}
+                  <Button type="submit" size="sm" disabled={pwLoading}>
+                    {pwLoading ? 'Sparar...' : 'Byt lösenord'}
+                  </Button>
+                </form>
               </CardContent>
             </AccordionContent>
           </AccordionItem>

@@ -145,4 +145,7 @@ export const handlers = [
   http.get('/api/v1/admin/trips', () => HttpResponse.json(TEST_ADMIN_TRIPS)),
 
   http.delete('/api/v1/admin/trips/:id', () => new HttpResponse(null, { status: 204 })),
+
+  // Utlägg
+  http.get('/api/v1/expenses', () => HttpResponse.json([])),
 ];

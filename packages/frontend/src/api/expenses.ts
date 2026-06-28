@@ -2,7 +2,7 @@ import { api } from './client';
 
 export interface ExpenseDto {
   id: string;
-  carId: string;
+  carId: string | null;
   amount: number;
   description: string;
   status: 'UNPAID' | 'PAID';
@@ -20,9 +20,9 @@ export const expensesApi = {
     const qs = q.toString();
     return api.get<ExpenseDto[]>(`/expenses${qs ? `?${qs}` : ''}`);
   },
-  create: (data: { carId: string; amount: number; description: string; receipt?: File }) => {
+  create: (data: { carId?: string; amount: number; description: string; receipt?: File }) => {
     const form = new FormData();
-    form.append('carId', data.carId);
+    if (data.carId) form.append('carId', data.carId);
     form.append('amount', String(data.amount));
     form.append('description', data.description);
     if (data.receipt) form.append('receipt', data.receipt);

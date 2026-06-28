@@ -155,12 +155,16 @@ async function migrateUsers(users: FsUser[]): Promise<{ count: number; migratedI
   const migratedIds = new Set<string>();
   const temporaryHash = await bcrypt.hash('temporary', 12);
   for (const u of users) {
+    // Användare utan email (t.ex. rena loggkonton) får en dummy-adress.
+    // De kan inte logga in utan att lösenord och riktig e-post sätts manuellt.
+    const email = u.email || `noemail-${u.id}@ghcarpool.local`;
     if (!u.email) {
-      console.warn(`[migrate] Hoppar över user ${u.id}: saknar email`);
-      continue;
+      console.warn(
+        `[migrate] User ${u.id} saknar email — tilldelar dummy-adress ${email}`,
+      );
     }
     await prisma.user.upsert({
-      where: { email: u.email },
+      where: { email },
       update: {
         name: u.name ?? '',
         isAdmin: u.isAdmin ?? false,
@@ -169,7 +173,7 @@ async function migrateUsers(users: FsUser[]): Promise<{ count: number; migratedI
       },
       create: {
         id: u.id,
-        email: u.email,
+        email,
         name: u.name ?? '',
         isAdmin: u.isAdmin ?? false,
         shortName: u.shortName ?? '',
@@ -460,7 +464,9 @@ async function main() {
   console.log(`  Migrerade: ${tripCount} trips`);
   console.log(
     '\n[migrate] OBS: Alla migrerade användare har fått lösenordet "temporary".\n' +
-      '  Sätt nytt lösenord via: node dist/scripts/set-password.js <email> <lösenord>',
+      '  Sätt nytt lösenord via: node dist/scripts/set-password.js <email> <lösenord>\n' +
+      '  Användare utan email har fått adressen noemail-<id>@ghcarpool.local.\n' +
+      '  Sätt riktig adress + lösenord via psql eller admin-API:et.',
   );
 }
 

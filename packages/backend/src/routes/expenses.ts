@@ -36,10 +36,6 @@ router.post('/', upload.single('receipt'), async (req: Request, res: Response) =
     description?: string;
   };
 
-  if (!carId) {
-    res.status(400).json({ error: 'carId saknas' });
-    return;
-  }
   if (!description || description.trim() === '') {
     res.status(400).json({ error: 'description saknas' });
     return;
@@ -50,10 +46,13 @@ router.post('/', upload.single('receipt'), async (req: Request, res: Response) =
     return;
   }
 
-  const car = await prisma.car.findUnique({ where: { id: carId }, select: { id: true } });
-  if (!car) {
-    res.status(400).json({ error: `Bil '${carId}' finns inte` });
-    return;
+  // Validera carId om det anges
+  if (carId) {
+    const car = await prisma.car.findUnique({ where: { id: carId }, select: { id: true } });
+    if (!car) {
+      res.status(400).json({ error: `Bil '${carId}' finns inte` });
+      return;
+    }
   }
 
   const receiptData = (req.file?.buffer ?? null) as Uint8Array<ArrayBuffer> | null;
@@ -61,7 +60,7 @@ router.post('/', upload.single('receipt'), async (req: Request, res: Response) =
 
   const expense = await prisma.expense.create({
     data: {
-      carId,
+      carId: carId || undefined,
       amount,
       description: description.trim(),
       byUserId: req.user!.id,

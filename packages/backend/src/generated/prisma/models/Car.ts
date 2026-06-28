@@ -395,6 +395,11 @@ export type CarScalarRelationFilter = {
   isNot?: Prisma.CarWhereInput
 }
 
+export type CarNullableScalarRelationFilter = {
+  is?: Prisma.CarWhereInput | null
+  isNot?: Prisma.CarWhereInput | null
+}
+
 export type IntFieldUpdateOperationsInput = {
   set?: number
   increment?: number
@@ -451,10 +456,12 @@ export type CarCreateNestedOneWithoutExpensesInput = {
   connect?: Prisma.CarWhereUniqueInput
 }
 
-export type CarUpdateOneRequiredWithoutExpensesNestedInput = {
+export type CarUpdateOneWithoutExpensesNestedInput = {
   create?: Prisma.XOR<Prisma.CarCreateWithoutExpensesInput, Prisma.CarUncheckedCreateWithoutExpensesInput>
   connectOrCreate?: Prisma.CarCreateOrConnectWithoutExpensesInput
   upsert?: Prisma.CarUpsertWithoutExpensesInput
+  disconnect?: Prisma.CarWhereInput | boolean
+  delete?: Prisma.CarWhereInput | boolean
   connect?: Prisma.CarWhereUniqueInput
   update?: Prisma.XOR<Prisma.XOR<Prisma.CarUpdateToOneWithWhereWithoutExpensesInput, Prisma.CarUpdateWithoutExpensesInput>, Prisma.CarUncheckedUpdateWithoutExpensesInput>
 }

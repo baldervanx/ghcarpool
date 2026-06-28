@@ -39,7 +39,7 @@ export function Expenses() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (cars.length > 0 && !newCarId) setNewCarId(cars[0].id);
+    // Sätt inte default — "Ingen bil" är standard
   }, [cars]);
 
   useEffect(() => {
@@ -59,7 +59,7 @@ export function Expenses() {
     setSubmitting(true);
     try {
       const expense = await expensesApi.create({
-        carId: newCarId,
+        carId: newCarId || undefined,
         amount,
         description: newDesc.trim(),
         receipt: newFile ?? undefined,
@@ -108,12 +108,13 @@ export function Expenses() {
         <h2 className="font-semibold text-sm uppercase tracking-wide">Nytt utlägg</h2>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm font-medium mb-1 block">Bil</label>
+            <label className="text-sm font-medium mb-1 block">Bil (valfritt)</label>
             <select
               value={newCarId}
               onChange={e => setNewCarId(e.target.value)}
               className="w-full border rounded px-3 py-2 text-sm bg-background"
             >
+              <option value="">– Ingen bil –</option>
               {cars.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -163,13 +164,13 @@ export function Expenses() {
         <p className="text-muted-foreground text-sm">Inga utlägg ännu.</p>
       )}
       {expenses.map(expense => {
-        const car = cars.find(c => c.id === expense.carId);
+        const car = expense.carId ? cars.find(c => c.id === expense.carId) : undefined;
         const isOwner = authUser?.uid === expense.byUserId;
         return (
           <div key={expense.id} className="border rounded-lg p-4 space-y-2">
             <div className="flex items-start justify-between gap-2">
               <div className="space-y-1">
-                <p className="font-medium text-sm">{car?.name ?? expense.carId}</p>
+                <p className="font-medium text-sm">{car?.name ?? (expense.carId || 'Ingen bil')}</p>
                 <p className="text-sm">{expense.description}</p>
                 <p className="text-lg font-semibold">{expense.amount.toFixed(2)} kr</p>
                 <p className="text-xs text-muted-foreground">

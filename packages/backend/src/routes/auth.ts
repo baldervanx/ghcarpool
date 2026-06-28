@@ -1,5 +1,8 @@
 import { Router } from 'express';
+import bcrypt from 'bcrypt';
 import passport from '../lib/passport';
+import prisma from '../db/prisma';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -37,6 +40,43 @@ router.get('/me', (req, res) => {
     return;
   }
   res.json(req.user);
+});
+
+// POST /api/v1/auth/change-password (kräver inloggning)
+router.post('/change-password', requireAuth, async (req, res, next) => {
+  const { currentPassword, newPassword } = req.body as {
+    currentPassword?: string;
+    newPassword?: string;
+  };
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: 'currentPassword och newPassword krävs' });
+    return;
+  }
+  if (newPassword.length < 8) {
+    res.status(400).json({ error: 'Nytt lösenord måste vara minst 8 tecken' });
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user?.passwordHash) {
+      res.status(400).json({ error: 'Kontot saknar lösenord (Google-inloggning?)' });
+      return;
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      res.status(401).json({ error: 'Nuvarande lösenord stämmer inte' });
+      return;
+    }
+
+    const hash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hash } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Google OAuth — bara aktiv om strategin är konfigurerad

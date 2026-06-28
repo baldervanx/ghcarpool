@@ -172,8 +172,8 @@ enum ErrorLogStatus {
 
 model Expense {
   id          String        @id @default(cuid())
-  car         Car           @relation(fields: [carId], references: [id])
-  carId       String
+  car         Car?          @relation(fields: [carId], references: [id], onDelete: SetNull)
+  carId       String?
   amount      Float
   description String
   status      ExpenseStatus @default(UNPAID)

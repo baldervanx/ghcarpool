@@ -211,7 +211,7 @@ export type ExpenseGroupByArgs<ExtArgs extends runtime.Types.Extensions.Internal
 
 export type ExpenseGroupByOutputType = {
   id: string
-  carId: string
+  carId: string | null
   amount: number
   description: string
   status: $Enums.ExpenseStatus
@@ -247,7 +247,7 @@ export type ExpenseWhereInput = {
   OR?: Prisma.ExpenseWhereInput[]
   NOT?: Prisma.ExpenseWhereInput | Prisma.ExpenseWhereInput[]
   id?: Prisma.StringFilter<"Expense"> | string
-  carId?: Prisma.StringFilter<"Expense"> | string
+  carId?: Prisma.StringNullableFilter<"Expense"> | string | null
   amount?: Prisma.FloatFilter<"Expense"> | number
   description?: Prisma.StringFilter<"Expense"> | string
   status?: Prisma.EnumExpenseStatusFilter<"Expense"> | $Enums.ExpenseStatus
@@ -256,13 +256,13 @@ export type ExpenseWhereInput = {
   byUserId?: Prisma.StringFilter<"Expense"> | string
   createdAt?: Prisma.DateTimeFilter<"Expense"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Expense"> | Date | string
-  car?: Prisma.XOR<Prisma.CarScalarRelationFilter, Prisma.CarWhereInput>
+  car?: Prisma.XOR<Prisma.CarNullableScalarRelationFilter, Prisma.CarWhereInput> | null
   byUser?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
 }
 
 export type ExpenseOrderByWithRelationInput = {
   id?: Prisma.SortOrder
-  carId?: Prisma.SortOrder
+  carId?: Prisma.SortOrderInput | Prisma.SortOrder
   amount?: Prisma.SortOrder
   description?: Prisma.SortOrder
   status?: Prisma.SortOrder
@@ -280,7 +280,7 @@ export type ExpenseWhereUniqueInput = Prisma.AtLeast<{
   AND?: Prisma.ExpenseWhereInput | Prisma.ExpenseWhereInput[]
   OR?: Prisma.ExpenseWhereInput[]
   NOT?: Prisma.ExpenseWhereInput | Prisma.ExpenseWhereInput[]
-  carId?: Prisma.StringFilter<"Expense"> | string
+  carId?: Prisma.StringNullableFilter<"Expense"> | string | null
   amount?: Prisma.FloatFilter<"Expense"> | number
   description?: Prisma.StringFilter<"Expense"> | string
   status?: Prisma.EnumExpenseStatusFilter<"Expense"> | $Enums.ExpenseStatus
@@ -289,13 +289,13 @@ export type ExpenseWhereUniqueInput = Prisma.AtLeast<{
   byUserId?: Prisma.StringFilter<"Expense"> | string
   createdAt?: Prisma.DateTimeFilter<"Expense"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Expense"> | Date | string
-  car?: Prisma.XOR<Prisma.CarScalarRelationFilter, Prisma.CarWhereInput>
+  car?: Prisma.XOR<Prisma.CarNullableScalarRelationFilter, Prisma.CarWhereInput> | null
   byUser?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
 }, "id">
 
 export type ExpenseOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
-  carId?: Prisma.SortOrder
+  carId?: Prisma.SortOrderInput | Prisma.SortOrder
   amount?: Prisma.SortOrder
   description?: Prisma.SortOrder
   status?: Prisma.SortOrder
@@ -316,7 +316,7 @@ export type ExpenseScalarWhereWithAggregatesInput = {
   OR?: Prisma.ExpenseScalarWhereWithAggregatesInput[]
   NOT?: Prisma.ExpenseScalarWhereWithAggregatesInput | Prisma.ExpenseScalarWhereWithAggregatesInput[]
   id?: Prisma.StringWithAggregatesFilter<"Expense"> | string
-  carId?: Prisma.StringWithAggregatesFilter<"Expense"> | string
+  carId?: Prisma.StringNullableWithAggregatesFilter<"Expense"> | string | null
   amount?: Prisma.FloatWithAggregatesFilter<"Expense"> | number
   description?: Prisma.StringWithAggregatesFilter<"Expense"> | string
   status?: Prisma.EnumExpenseStatusWithAggregatesFilter<"Expense"> | $Enums.ExpenseStatus
@@ -336,13 +336,13 @@ export type ExpenseCreateInput = {
   receiptMime?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  car: Prisma.CarCreateNestedOneWithoutExpensesInput
+  car?: Prisma.CarCreateNestedOneWithoutExpensesInput
   byUser: Prisma.UserCreateNestedOneWithoutExpensesInput
 }
 
 export type ExpenseUncheckedCreateInput = {
   id?: string
-  carId: string
+  carId?: string | null
   amount: number
   description: string
   status?: $Enums.ExpenseStatus
@@ -362,13 +362,13 @@ export type ExpenseUpdateInput = {
   receiptMime?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  car?: Prisma.CarUpdateOneRequiredWithoutExpensesNestedInput
+  car?: Prisma.CarUpdateOneWithoutExpensesNestedInput
   byUser?: Prisma.UserUpdateOneRequiredWithoutExpensesNestedInput
 }
 
 export type ExpenseUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
-  carId?: Prisma.StringFieldUpdateOperationsInput | string
+  carId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   amount?: Prisma.FloatFieldUpdateOperationsInput | number
   description?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.EnumExpenseStatusFieldUpdateOperationsInput | $Enums.ExpenseStatus
@@ -381,7 +381,7 @@ export type ExpenseUncheckedUpdateInput = {
 
 export type ExpenseCreateManyInput = {
   id?: string
-  carId: string
+  carId?: string | null
   amount: number
   description: string
   status?: $Enums.ExpenseStatus
@@ -405,7 +405,7 @@ export type ExpenseUpdateManyMutationInput = {
 
 export type ExpenseUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
-  carId?: Prisma.StringFieldUpdateOperationsInput | string
+  carId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   amount?: Prisma.FloatFieldUpdateOperationsInput | number
   description?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.EnumExpenseStatusFieldUpdateOperationsInput | $Enums.ExpenseStatus
@@ -574,12 +574,12 @@ export type ExpenseCreateWithoutByUserInput = {
   receiptMime?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  car: Prisma.CarCreateNestedOneWithoutExpensesInput
+  car?: Prisma.CarCreateNestedOneWithoutExpensesInput
 }
 
 export type ExpenseUncheckedCreateWithoutByUserInput = {
   id?: string
-  carId: string
+  carId?: string | null
   amount: number
   description: string
   status?: $Enums.ExpenseStatus
@@ -620,7 +620,7 @@ export type ExpenseScalarWhereInput = {
   OR?: Prisma.ExpenseScalarWhereInput[]
   NOT?: Prisma.ExpenseScalarWhereInput | Prisma.ExpenseScalarWhereInput[]
   id?: Prisma.StringFilter<"Expense"> | string
-  carId?: Prisma.StringFilter<"Expense"> | string
+  carId?: Prisma.StringNullableFilter<"Expense"> | string | null
   amount?: Prisma.FloatFilter<"Expense"> | number
   description?: Prisma.StringFilter<"Expense"> | string
   status?: Prisma.EnumExpenseStatusFilter<"Expense"> | $Enums.ExpenseStatus
@@ -683,7 +683,7 @@ export type ExpenseUpdateManyWithWhereWithoutCarInput = {
 
 export type ExpenseCreateManyByUserInput = {
   id?: string
-  carId: string
+  carId?: string | null
   amount: number
   description: string
   status?: $Enums.ExpenseStatus
@@ -702,12 +702,12 @@ export type ExpenseUpdateWithoutByUserInput = {
   receiptMime?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  car?: Prisma.CarUpdateOneRequiredWithoutExpensesNestedInput
+  car?: Prisma.CarUpdateOneWithoutExpensesNestedInput
 }
 
 export type ExpenseUncheckedUpdateWithoutByUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
-  carId?: Prisma.StringFieldUpdateOperationsInput | string
+  carId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   amount?: Prisma.FloatFieldUpdateOperationsInput | number
   description?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.EnumExpenseStatusFieldUpdateOperationsInput | $Enums.ExpenseStatus
@@ -719,7 +719,7 @@ export type ExpenseUncheckedUpdateWithoutByUserInput = {
 
 export type ExpenseUncheckedUpdateManyWithoutByUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
-  carId?: Prisma.StringFieldUpdateOperationsInput | string
+  carId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   amount?: Prisma.FloatFieldUpdateOperationsInput | number
   description?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.EnumExpenseStatusFieldUpdateOperationsInput | $Enums.ExpenseStatus
@@ -790,7 +790,7 @@ export type ExpenseSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   byUserId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
-  car?: boolean | Prisma.CarDefaultArgs<ExtArgs>
+  car?: boolean | Prisma.Expense$carArgs<ExtArgs>
   byUser?: boolean | Prisma.UserDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["expense"]>
 
@@ -805,7 +805,7 @@ export type ExpenseSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   byUserId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
-  car?: boolean | Prisma.CarDefaultArgs<ExtArgs>
+  car?: boolean | Prisma.Expense$carArgs<ExtArgs>
   byUser?: boolean | Prisma.UserDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["expense"]>
 
@@ -820,7 +820,7 @@ export type ExpenseSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   byUserId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
-  car?: boolean | Prisma.CarDefaultArgs<ExtArgs>
+  car?: boolean | Prisma.Expense$carArgs<ExtArgs>
   byUser?: boolean | Prisma.UserDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["expense"]>
 
@@ -839,27 +839,27 @@ export type ExpenseSelectScalar = {
 
 export type ExpenseOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "carId" | "amount" | "description" | "status" | "receiptData" | "receiptMime" | "byUserId" | "createdAt" | "updatedAt", ExtArgs["result"]["expense"]>
 export type ExpenseInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  car?: boolean | Prisma.CarDefaultArgs<ExtArgs>
+  car?: boolean | Prisma.Expense$carArgs<ExtArgs>
   byUser?: boolean | Prisma.UserDefaultArgs<ExtArgs>
 }
 export type ExpenseIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  car?: boolean | Prisma.CarDefaultArgs<ExtArgs>
+  car?: boolean | Prisma.Expense$carArgs<ExtArgs>
   byUser?: boolean | Prisma.UserDefaultArgs<ExtArgs>
 }
 export type ExpenseIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  car?: boolean | Prisma.CarDefaultArgs<ExtArgs>
+  car?: boolean | Prisma.Expense$carArgs<ExtArgs>
   byUser?: boolean | Prisma.UserDefaultArgs<ExtArgs>
 }
 
 export type $ExpensePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Expense"
   objects: {
-    car: Prisma.$CarPayload<ExtArgs>
+    car: Prisma.$CarPayload<ExtArgs> | null
     byUser: Prisma.$UserPayload<ExtArgs>
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
-    carId: string
+    carId: string | null
     amount: number
     description: string
     status: $Enums.ExpenseStatus
@@ -1262,7 +1262,7 @@ readonly fields: ExpenseFieldRefs;
  */
 export interface Prisma__ExpenseClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
-  car<T extends Prisma.CarDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.CarDefaultArgs<ExtArgs>>): Prisma.Prisma__CarClient<runtime.Types.Result.GetResult<Prisma.$CarPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+  car<T extends Prisma.Expense$carArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Expense$carArgs<ExtArgs>>): Prisma.Prisma__CarClient<runtime.Types.Result.GetResult<Prisma.$CarPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   byUser<T extends Prisma.UserDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.UserDefaultArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
@@ -1701,6 +1701,25 @@ export type ExpenseDeleteManyArgs<ExtArgs extends runtime.Types.Extensions.Inter
    * Limit how many Expenses to delete.
    */
   limit?: number
+}
+
+/**
+ * Expense.car
+ */
+export type Expense$carArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Car
+   */
+  select?: Prisma.CarSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Car
+   */
+  omit?: Prisma.CarOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CarInclude<ExtArgs> | null
+  where?: Prisma.CarWhereInput
 }
 
 /**

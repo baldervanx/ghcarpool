@@ -79,7 +79,7 @@ const BookTrip = () => {
           // Handle recurrence logic
           if (bookingData.recurrenceId) {
             setRecurrenceId(bookingData.recurrenceId);
-            fetchRecurrenceData(bookingData.recurrenceId);
+            fetchRecurrenceData(bookingData.recurrenceId, dateCarBooking.car.id);
           }
         }
       }
@@ -93,11 +93,11 @@ const BookTrip = () => {
     }
   }, [location.state, bookings, user.user_id]);
 
-  const fetchRecurrenceData = async (rId: string) => {
+  const fetchRecurrenceData = async (rId: string, carId: string) => {
     // Recurrence-data finns nu i bookings-state via SSE-hooken.
     // Hitta alla bookings med detta recurrenceId i det aktuella car-urvalet.
     const recurringBookings = bookings
-      .filter(b => b.car.id === selectedCar && b.bookings.some(b2 => b2.recurrenceId === rId))
+      .filter(b => b.car.id === carId && b.bookings.some(b2 => b2.recurrenceId === rId))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     if (recurringBookings.length === 0) return;

@@ -1,17 +1,18 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import { getAuth, signOut } from 'firebase/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useAccessibility } from '@/lib/utils';
 import type { TextSize } from "@/lib/utils";
 import { useTheme } from '@/components/theme-context';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, AlertTriangle } from 'lucide-react';
 import CarPoolCSVExporter from "@/components/ui/car-pool-csv-export";
 import HelpDialog from '@/components/help-dialog';
 import {useSelector} from "react-redux";
-import {format, differenceInCalendarDays} from "date-fns";
+import {format, differenceInCalendarDays, addDays} from "date-fns";
 import { sv } from 'date-fns/locale';
 import {useNavigate} from "react-router-dom";
 import type {AppStore, Booking, Car} from '@/store';
@@ -34,11 +35,15 @@ export const HomePage = () => {
   const navigate = useNavigate();
   const { cars } = useSelector((state: AppStore) => state.car);
   const { darkMode, toggleDarkMode } = useTheme();
-  //const { trips, loading: tripsLoading } = useSelector((state: AppStore) => state.trip);
   const { bookings, loading: bookingsLoading } = useSelector((state: AppStore) => state.booking);
   const { user, loading: userLoading } = useSelector((state: AppStore) => state.auth);
+  const { users } = useSelector((state: AppStore) => state.user);
   const [ activeBookings, setActiveBookings ] = useState<BookingCar[]>([]);
   const [ recurrenceMap, setRecurrenceMap ] = useState<Record<string, RecurrenceInfo>>({});
+  // Scenario 1: most recent preceding unlogged booking per active booking (keyed by active booking id)
+  const [ precedingUnlogged, setPrecedingUnlogged ] = useState<Map<string, BookingCar>>(new Map());
+  // Scenario 2: most recent missed (unlogged, past) booking per car for the current user
+  const [ missedPerCar, setMissedPerCar ] = useState<BookingCar[]>([]);
   const auth = getAuth();
 
   useEffect(() => {
@@ -64,7 +69,25 @@ export const HomePage = () => {
       return a.startTime - b.startTime;
     });
     setActiveBookings(sortedBookings);
-  }, [bookings, user]);
+
+    // Scenario 1: for each active booking, find the most recent preceding unlogged booking
+    // on the same car today (made by someone else, or at least unlogged before our slot)
+    const newPrecedingMap = new Map<string, BookingCar>();
+    flatBookings.forEach(activeBooking => {
+      const sameCar = currentDayBookings.find(dcb => dcb.car.id === activeBooking.car?.id);
+      if (!sameCar) return;
+      const car = activeBooking.car;
+      if (!(car?.hasLog ?? true)) return;
+      // Highest-endTime unlogged booking that ends at or before our start, excluding ourselves
+      const preceding = sameCar.bookings
+        .filter(b => b.id !== activeBooking.id && !b.logged && b.endTime <= activeBooking.startTime)
+        .sort((a, b) => b.endTime - a.endTime)[0];
+      if (preceding) {
+        newPrecedingMap.set(activeBooking.id, { ...preceding, car, date: dateStr });
+      }
+    });
+    setPrecedingUnlogged(newPrecedingMap);
+  }, [bookings, user, cars]);
 
   // Fetch recurrence data for any unseen recurrenceIds present in today's active bookings
   useEffect(() => {
@@ -98,6 +121,40 @@ export const HomePage = () => {
       }
     })();
   }, [activeBookings, recurrenceMap]);
+
+  // Scenario 2: most recent unlogged past booking per car for the current user (last 14 days)
+  useEffect(() => {
+    if (!user.user_id) return;
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const twoWeeksAgoStr = format(addDays(new Date(), -14), 'yyyy-MM-dd');
+    const currentUserId = user.user_id;
+
+    const pastMissed: BookingCar[] = bookings
+      .filter(dcb => dcb.date < todayStr && dcb.date >= twoWeeksAgoStr)
+      .flatMap(dcb => {
+        const car = cars.find(c => c.id === dcb.car.id);
+        if (!car || !(car.hasLog ?? true)) return [];
+        return dcb.bookings
+          .filter(b => !b.logged && b.users.some(u => u.id === currentUserId))
+          .map(b => ({ ...b, car, date: dcb.date }));
+      });
+
+    // Keep only the most recent missed booking per car
+    const byCarId = new Map<string, BookingCar>();
+    pastMissed.forEach(b => {
+      const existing = byCarId.get(b.car.id);
+      if (!existing || b.date > existing.date) {
+        byCarId.set(b.car.id, b);
+      }
+    });
+    setMissedPerCar(
+      Array.from(byCarId.values()).sort((a, b) => b.date.localeCompare(a.date))
+    );
+  }, [bookings, user, cars]);
+
+  function getUserShortName(userId: string): string {
+    return users.find(u => u.id === userId)?.shortName ?? '?';
+  }
 
   // FIXME: Move duplicated code to utility
   function timeToString(minutes: number): string {
@@ -164,12 +221,49 @@ export const HomePage = () => {
       <div className="max-w-2xl mx-auto space-y-4">
 
         {!userLoading && !bookingsLoading && (
-            activeBookings.map((booking) => (
+          <>
+            {/* Scenario 2: missed (unlogged) past bookings for the current user */}
+            {missedPerCar.map((booking) => (
+              <Card key={`missed-${booking.id}`} className="border-yellow-500">
+                <CardHeader className="py-4">
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <AlertTriangle className="text-yellow-600 dark:text-yellow-400" size={20} />
+                    {booking.car.name}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="py-4 space-y-2 text-sm">
+                  <p>{`Bokning ${formatDayLabel(booking.date, true)} har inte loggats`}</p>
+                  <Button variant="outline" onClick={() => logBooking(booking)}>
+                    Logga
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+
+            {/* Today's bookings */}
+            {activeBookings.map((booking) => (
                 <Card key={booking.id}>
                   <CardHeader className="py-4">
                     <CardTitle className="text-xl">{`${bookingStatus(booking)} ${booking.car.name}`}</CardTitle>
                   </CardHeader>
                   <CardContent className="py-4 space-y-2 text-sm">
+                    {/* Scenario 1: preceding unlogged booking on the same car today */}
+                    {precedingUnlogged.has(booking.id) && (() => {
+                      const prev = precedingUnlogged.get(booking.id)!;
+                      const userName = getUserShortName(prev.users[0]?.id ?? prev.byUser?.id ?? '');
+                      return (
+                        <Alert variant="warning" className="mb-2">
+                          <AlertTriangle size={16} />
+                          <AlertTitle>Föregående bokning ej loggad</AlertTitle>
+                          <AlertDescription className="flex items-center justify-between gap-2 flex-wrap">
+                            <span>{`Bokning av ${userName} har inte loggats`}</span>
+                            <Button size="sm" variant="outline" onClick={() => logBooking(prev)}>
+                              Logga
+                            </Button>
+                          </AlertDescription>
+                        </Alert>
+                      );
+                    })()}
                     {isMultiDay(booking) && booking.recurrenceId && recurrenceMap[booking.recurrenceId] ? (
                       (() => {
                         const rec = recurrenceMap[booking.recurrenceId];
@@ -214,8 +308,9 @@ export const HomePage = () => {
                     )}
                   </CardContent>
                 </Card>
-          ))
-          )}
+          ))}
+          </>
+            )}
 
         {(userLoading || bookingsLoading) && (
             <div className="w-full h-64 flex items-center justify-center">

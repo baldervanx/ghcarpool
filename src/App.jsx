@@ -14,6 +14,7 @@ import BookingOverview from './pages/booking-overview';
 import { AccessibilityProvider } from './lib/utils';
 import { ThemeProvider } from './components/theme-context';
 import { HomePage } from './pages/home';
+import AdminTrips from './pages/admin-trips';
 import PropTypes from "prop-types";
 import {useListenToTrips} from "@/db/use-listen-to-trips";
 import {useListenToBookings} from "@/db/use-listen-to-bookings";
@@ -63,6 +64,10 @@ function App() {
                 element={<ProtectedRoute><TripLog /></ProtectedRoute>}
             />
             <Route
+                path="/admin-trips"
+                element={<AdminRoute><AdminTrips /></AdminRoute>}
+            />
+            <Route
                 path="*"
                 element={<Navigate to="/home" replace />}
             />
@@ -83,6 +88,24 @@ function ProtectedRoute({ children }) {
 }
 
 ProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
+function AdminRoute({ children }) {
+  const { user, isMember } = useSelector(state => state.auth);
+
+  if (!user || !isMember) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!user.isAdmin) {
+    return <Navigate to="/home" replace />;
+  }
+
+  return children;
+}
+
+AdminRoute.propTypes = {
   children: PropTypes.node.isRequired,
 };
 

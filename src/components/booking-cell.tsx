@@ -77,7 +77,7 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
     return (
       <div
         onClick={() => !readOnly && onClick({car, date})}
-        className={accessibleCn("min-w-[14ch] bg-opacity-100 p-1 rounded cursor-pointer hover:bg-primary/10 dark:hover:bg-primary/10 transition-colors")}
+        className={accessibleCn(`min-w-[14ch] bg-opacity-100 p-1 rounded transition-colors ${!readOnly ? 'cursor-pointer hover:bg-primary/10 dark:hover:bg-primary/10' : 'cursor-default'}`)}
       >
         &nbsp;
       </div>
@@ -110,11 +110,11 @@ const BookingCell = ({ bookings, car, date, destinations, onClick, readOnly, acc
         style={{ transform: `translateX(-${dragOffset}px)` }}
       >
         <div className="space-y-0.5">
-          {bookings.map((booking) => (
-            <div
-              key={booking.id}
-              onClick={() => !readOnly && !booking.logged && onClick(booking)}
-              className={accessibleCn(`min-w-[14ch] bg-gray-100 dark:bg-gray-700 p-1 text-xs ${!readOnly && !booking.logged ? 'cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600' : 'cursor-default opacity-70'} transition-colors flex justify-between items-center`)}
+           {bookings.map((booking) => (
+             <div
+               key={booking.id}
+               onClick={() => !booking.logged && onClick(booking)}
+               className={accessibleCn(`min-w-[14ch] bg-gray-100 dark:bg-gray-700 p-1 text-xs ${!booking.logged ? 'cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600' : 'cursor-default opacity-70'} transition-colors flex justify-between items-center`)}
             >
               <div className="flex flex-col">
                 <span>

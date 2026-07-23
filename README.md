@@ -28,6 +28,9 @@ Emulator for the database:
 Export data, if "export-on-exit" isn't used:
 `firebase emulators:export ./emulated_database`
 
+Create test-data automatically:
+`npm run seed`
+
 Run the app locally:
 `npm run dev`
 

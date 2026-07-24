@@ -755,7 +755,7 @@ const BookTrip = () => {
                 type="date"
                 value={bookingDate}
                 onChange={(e) => setBookingDate(e.target.value)}
-                min={getBookingDate()}
+                min={isEditing ? undefined : getBookingDate()}
                 max={getBookingDate(undefined, 96)}
                 disabled={isEditing && isRecurring}
                 className="px-1.5 w-full appearance-none"

@@ -135,7 +135,8 @@ export const HomePage = () => {
         const car = cars.find(c => c.id === dcb.car.id);
         if (!car || !(car.hasLog ?? true)) return [];
         return dcb.bookings
-          .filter(b => !b.logged && b.users.some(u => u.id === currentUserId))
+          .filter(b => !b.logged && b.users.some(u => u.id === currentUserId)
+            && !(b.recurrenceId && b.endTime === 1440)) // skip multi-day intermediate days
           .map(b => ({ ...b, car, date: dcb.date }));
       });
 

@@ -3,7 +3,7 @@
  *
  * Skapar testdata med:
  *  - 3 användare (alice, bob, charlie/admin)
- *  - 2 bilar (Bil 1, Bil 2) med hasLog=true
+ *  - 3 bilar (Bil 1, Bil 2, Bil 3) med hasLog=true
  *  - 2 destinationer
  *  - inställningar (cost_per_km)
  *  - baslinje-resor (ger bilarna ett mätarställningsvärde)
@@ -12,6 +12,8 @@
  *      Scenario 2 – Igår: Alice 09–15 (ologgad) på Bil 1
  *      Scenario 2 – 3 dagar sedan: Alice 08–18 (ologgad) på Bil 2
  *      Kontrolldata – 5 dagar sedan: Alice (loggad) på Bil 2 → ska EJ visas
+ *      Flerdag-test – Bil 3: pågående flerdag-bokning (2 dagar sedan → imorgon)
+ *        → mellandagarna ska EJ trigga Scenario 2-varning
  *
  * Förutsättning: Emulatorn körs (firebase emulators:start)
  *
@@ -99,7 +101,8 @@ for (const u of usersData) {
 console.log('\n🚗 Skapar bilar...');
 await db.doc('cars/car_bil1').set({ name: 'Bil 1', range: 400, order: 1, hasLog: true });
 await db.doc('cars/car_bil2').set({ name: 'Bil 2', range: 350, order: 2, hasLog: true });
-console.log('   Bil 1, Bil 2 skapade.');
+await db.doc('cars/car_bil3').set({ name: 'Bil 3', range: 300, order: 3, hasLog: true });
+console.log('   Bil 1, Bil 2, Bil 3 skapade.');
 
 // ── Destinationer ─────────────────────────────────────────────────────────────
 
@@ -120,6 +123,7 @@ const rAlice = db.doc('users/user_alice');
 const rBob   = db.doc('users/user_bob');
 const rBil1  = db.doc('cars/car_bil1');
 const rBil2  = db.doc('cars/car_bil2');
+const rBil3  = db.doc('cars/car_bil3');
 
 // ── Baslinjeturer (ger bilarna ett mätarställningsvärde) ─────────────────────
 
@@ -134,7 +138,12 @@ await db.doc('trips/trip_bil2_base').set({
   odo: 20030, distance: 30, cost: 105.0, comment: 'Kontoret',
   timestamp: tsDate(-20),
 });
-console.log('   Bil 1 odo=10050, Bil 2 odo=20030.');
+await db.doc('trips/trip_bil3_base').set({
+  car: rBil3, byUser: rAlice, users: [rAlice],
+  odo: 30080, distance: 80, cost: 280.0, comment: 'Kontoret',
+  timestamp: tsDate(-20),
+});
+console.log('   Bil 1 odo=10050, Bil 2 odo=20030, Bil 3 odo=30080.');
 
 // ── Bokningar ─────────────────────────────────────────────────────────────────
 
@@ -228,6 +237,57 @@ await db.doc('date-car-bookings/dcb_5d_bil2').set({
 });
 console.log(`   ${dateStr(-5)} Bil 2: Alice 10–14 (loggad ✓ – kontrolldata)`);
 
+// ── PÅGÅENDE FLERDAG – Bil 3: Alice (2 dagar sedan → imorgon)
+// Testar att mellandagarna (igår, 2 dagar sedan) EJ triggar Scenario 2-varning,
+// och att sista dagen (imorgon) visas korrekt på hemsidan som en aktiv flerdag-bokning.
+const multiDayRecId = 'rec_multiday_bil3';
+await db.doc(`recurrence/${multiDayRecId}`).set({
+  isMultiDay: true,
+  recurringStartDate: dateStr(-2),
+  recurringEndDate:   dateStr(+1),
+});
+// Dag 1: 2 dagar sedan – startTid 08:00 → 24:00
+await db.doc('date-car-bookings/dcb_md_bil3_d1').set({
+  car: rBil3, date: dateStr(-2),
+  bookings: [{
+    id: 'bk_md_bil3_d1', byUser: rAlice, users: [rAlice],
+    startTime: 480, endTime: 1440,
+    distance: 0, destination: 'Flygplatsen',
+    recurrenceId: multiDayRecId,
+  }],
+});
+// Dag 2: igår – 00:00 → 24:00
+await db.doc('date-car-bookings/dcb_md_bil3_d2').set({
+  car: rBil3, date: dateStr(-1),
+  bookings: [{
+    id: 'bk_md_bil3_d2', byUser: rAlice, users: [rAlice],
+    startTime: 0, endTime: 1440,
+    distance: 0, destination: 'Flygplatsen',
+    recurrenceId: multiDayRecId,
+  }],
+});
+// Dag 3: idag – 00:00 → 24:00
+await db.doc('date-car-bookings/dcb_md_bil3_d3').set({
+  car: rBil3, date: dateStr(0),
+  bookings: [{
+    id: 'bk_md_bil3_d3', byUser: rAlice, users: [rAlice],
+    startTime: 0, endTime: 1440,
+    distance: 0, destination: 'Flygplatsen',
+    recurrenceId: multiDayRecId,
+  }],
+});
+// Dag 4: imorgon – 00:00 → 16:00 (sista dag, med faktisk distans)
+await db.doc('date-car-bookings/dcb_md_bil3_d4').set({
+  car: rBil3, date: dateStr(+1),
+  bookings: [{
+    id: 'bk_md_bil3_d4', byUser: rAlice, users: [rAlice],
+    startTime: 0, endTime: 960,
+    distance: 80, destination: 'Flygplatsen',
+    recurrenceId: multiDayRecId,
+  }],
+});
+console.log(`   ${dateStr(-2)}–${dateStr(+1)} Bil 3: Alice flerdag (pågående) ← Flerdag-test`);
+
 // ── Klart ─────────────────────────────────────────────────────────────────────
 
 console.log('\n✅ Seed-skript klart!\n');
@@ -245,4 +305,5 @@ console.log('     "Bokning av Bob har inte loggats" + Logga-knapp');
 console.log('  🟡 Scenario 2 – Ovanför dagsbokningarna:');
 console.log('     Bil 1: "Bokning igår har inte loggats" + Logga-knapp');
 console.log('     Bil 2: "Bokning [datum] har inte loggats" + Logga-knapp');
+console.log('  ✅ Bil 3 flerdag-bokning visas som aktiv (ingen felaktig Scenario 2-varning)');
 

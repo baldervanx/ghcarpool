@@ -8,7 +8,6 @@ import {
 } from '@tanstack/react-table';
 import {
   format,
-  addDays,
   addMonths,
   startOfMonth,
   endOfMonth,
@@ -158,7 +157,7 @@ const BookingOverview = () => {
                 date={row.original}
                 destinations={destinations}
                 onClick={handleBookingClick}
-                readOnly={row.original < addDays(today, -14)}
+                readOnly={row.original < today}
                 accessibleCn={accessibleCn}
             />
         );

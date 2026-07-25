@@ -306,19 +306,44 @@ export function RegisterTrip() {
         });
       }
 
-      if (isConnectedBooking && connectedBooking) {
-        // Fetch booking and update it with the trip reference
-        const dateCarDocRef = doc(db, 'date-car-bookings', connectedBooking.parent_id);
-        await runTransaction(db, async (transaction) => {
-          const dateBookingsDoc = await transaction.get(dateCarDocRef);
-          if (dateBookingsDoc.exists()) {
-            const existingBookings = dateBookingsDoc.data().bookings;
-            const updatedBookings =
-                existingBookings.map(b => b.id === connectedBooking.id ? {...b, logged: tripRef} : b);
-            transaction.update(dateCarDocRef, {bookings: updatedBookings});
-          }
-        });
-      }
+       if (isConnectedBooking && connectedBooking) {
+         // For multi-day bookings, we need to mark all bookings with the same recurrenceId as logged
+         // For single bookings, just mark the specific booking
+         const recurrenceId = connectedBooking.recurrenceId;
+
+         if (recurrenceId) {
+           // Multi-day or recurring booking: find and update all bookings with this recurrenceId
+           const bookingsToUpdate = bookings.filter(dcb =>
+             dcb.bookings.some(b => b.recurrenceId === recurrenceId)
+           );
+
+           for (const dateCarBooking of bookingsToUpdate) {
+             const dateCarDocRef = doc(db, 'date-car-bookings', dateCarBooking.id);
+             await runTransaction(db, async (transaction) => {
+               const dateBookingsDoc = await transaction.get(dateCarDocRef);
+               if (dateBookingsDoc.exists()) {
+                 const existingBookings = dateBookingsDoc.data().bookings;
+                 const updatedBookings = existingBookings.map(b =>
+                   b.recurrenceId === recurrenceId ? {...b, logged: tripRef} : b
+                 );
+                 transaction.update(dateCarDocRef, {bookings: updatedBookings});
+               }
+             });
+           }
+         } else {
+           // Single booking: mark only this specific booking
+           const dateCarDocRef = doc(db, 'date-car-bookings', connectedBooking.parent_id);
+           await runTransaction(db, async (transaction) => {
+             const dateBookingsDoc = await transaction.get(dateCarDocRef);
+             if (dateBookingsDoc.exists()) {
+               const existingBookings = dateBookingsDoc.data().bookings;
+               const updatedBookings =
+                   existingBookings.map(b => b.id === connectedBooking.id ? {...b, logged: tripRef} : b);
+               transaction.update(dateCarDocRef, {bookings: updatedBookings});
+             }
+           });
+         }
+       }
       navigate('/trip-log');
     } catch (error) {
       console.error('Error saving trip:', error);

@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useMemo} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {db} from '@/db/firebase';
 import {
@@ -19,6 +19,7 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {CarSelector} from '@/components/CarSelector';
 import {useDispatch, useSelector} from 'react-redux';
 import UserSelector from '@/components/UserSelector';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type {AppStore, DateCarBooking, Booking} from '@/store';
 import {setSelectedCar, setSelectedUsers} from '@/store';
 import {addDays, differenceInCalendarDays, format} from 'date-fns';
@@ -36,6 +37,7 @@ const BookTrip = () => {
   const {user} = useSelector((state: AppStore) => state.auth);
   const {selectedUsers, users} = useSelector((state: AppStore) => state.user);
   const {bookings} = useSelector((state: AppStore) => state.booking);
+  const {trips} = useSelector((state: AppStore) => state.trip);
   const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [bookingStartTime, setBookingStartTime] = useState('');
   const [bookingEndTime, setBookingEndTime] = useState('');
@@ -60,6 +62,17 @@ const BookTrip = () => {
   });
   const [isComitting, setIsComitting] = useState(false);
   const [bookingToSwap, setBookingToSwap] = useState<Booking>(null);
+  const [selectedTrip, setSelectedTrip] = useState<string>(null);
+
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // Filter trips for current car
+  const relevantTrips = useMemo(() => {
+    if (!selectedCar || !trips) return [];
+    return trips
+        .filter(trip => trip.car.id === selectedCar)
+        .sort((a, b) => b.odo - a.odo);
+  }, [selectedCar, trips]);
 
   useEffect(() => {
     if (location.state?.parent_id) {
@@ -85,6 +98,9 @@ const BookTrip = () => {
           setDistance(bookingData.distance.toString());
           setDestination(bookingData.destination || '');
           setComment(bookingData.comment || '');
+          if (bookingData.logged) {
+            setSelectedTrip(bookingData.logged);
+          }
 
           // Handle recurrence logic
           if (bookingData.recurrenceId) {
@@ -332,17 +348,18 @@ const BookTrip = () => {
         for (const bookingData of bookingValidations) {
           // Check if the booking is already present
           let currentBookingInData = bookingData.bookings ? bookingData.bookings.find(b => b.recurrenceId === recurrenceId)?.id : null;
-          const newBooking = {
-            id: currentBookingInData || doc(collection(db, 'date-car-bookings')).id,
-            users: selectedUsers.map(u => doc(db, 'users', u)),
-            startTime: timeToNumber(bookingData.startTime),
-            endTime: timeToNumber(bookingData.endTime),
-            distance: Number(bookingData.distance),
-            destination,
-            comment,
-            byUser: doc(db, 'users', user.user_id),
-            recurrenceId: recurrenceRef.id
-          };
+            const newBooking = {
+              id: currentBookingInData || doc(collection(db, 'date-car-bookings')).id,
+              users: selectedUsers.map(u => doc(db, 'users', u)),
+              startTime: timeToNumber(bookingData.startTime),
+              endTime: timeToNumber(bookingData.endTime),
+              distance: Number(bookingData.distance),
+              destination,
+              comment,
+              byUser: doc(db, 'users', user.user_id),
+              recurrenceId: recurrenceRef.id,
+              ...(selectedTrip && { logged: doc(db, 'trips', selectedTrip) })
+            };
 
           if (bookingData.bookings) {
             const existingBookings = bookingData.bookings;
@@ -419,7 +436,8 @@ const BookTrip = () => {
           distance: Number(dist),
           destination,
           comment,
-          byUser: doc(db, 'users', user.user_id)
+          byUser: doc(db, 'users', user.user_id),
+          ...(selectedTrip && { logged: doc(db, 'trips', selectedTrip) })
         };
 
         if (targetDateBookingsDoc?.exists()) {
@@ -910,15 +928,33 @@ const BookTrip = () => {
               </div>
           ))}
 
-          <div className="space-y-2">
-            <Label>Kommentar</Label>
-            <Input
-                value={comment}
-                disabled={isEditing && isRecurring}
-                onChange={e => setComment(e.target.value)}
-                className="w-full"
-            />
-          </div>
+           <div className="space-y-2">
+             <Label>Kommentar</Label>
+             <Input
+                 value={comment}
+                 disabled={isEditing && isRecurring}
+                 onChange={e => setComment(e.target.value)}
+                 className="w-full"
+             />
+           </div>
+
+           {isEditing && bookingDate < today && relevantTrips.length > 0 && (
+             <div className="space-y-2">
+               <Label htmlFor="trip-select">Koppla till loggad resa</Label>
+               <Select value={selectedTrip || ''} onValueChange={(value) => setSelectedTrip(value || null)}>
+                 <SelectTrigger id="trip-select">
+                   <SelectValue placeholder="-- Välj resa --" />
+                 </SelectTrigger>
+                  <SelectContent>
+                    {relevantTrips.map(trip => (
+                        <SelectItem key={trip.id} value={trip.id}>
+                          {trip.odo} - {trip.timestamp} {trip.distance}km
+                        </SelectItem>
+                    ))}
+                  </SelectContent>
+               </Select>
+             </div>
+           )}
 
           <Button
               className="w-full"

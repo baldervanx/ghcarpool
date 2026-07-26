@@ -191,7 +191,6 @@ export function RegisterTrip() {
   }
 
   function connectedBookingLabel(): string {
-    if (!connectedBooking) return 'För bokning';
     const today = format(new Date(), 'yyyy-MM-dd');
     const isToday = !connectedBooking.date || connectedBooking.date === today;
     const datePart = isToday
@@ -476,10 +475,19 @@ export function RegisterTrip() {
                   }}
                   disabled={isProcessing}
               />
-              <Label htmlFor="connected-booking" className="text-sm">
-                {connectedBookingLabel()}
-              </Label>
-            </div>
+               <Label htmlFor="connected-booking" className="text-sm">
+                 {connectedBookingLabel()}
+               </Label>
+             </div>
+         )}
+
+        {connectedBooking && connectedBooking.date && connectedBooking.date !== format(new Date(), 'yyyy-MM-dd') && (
+            <Alert variant="warning">
+              <AlertTriangle size={16} />
+              <AlertDescription>
+                Observera: Du loggar en bokning från {format(new Date(connectedBooking.date + 'T00:00:00'), 'EEE d MMM', { locale: sv })}. Kontrollera att detta är korrekt!
+              </AlertDescription>
+            </Alert>
         )}
 
         {/* FIXME: Använd Alert istället? */}

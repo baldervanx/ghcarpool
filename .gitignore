@@ -16,6 +16,7 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 .idea
+*.iml
 .DS_Store
 *.suo
 *.ntvs*
@@ -35,3 +36,4 @@ firebase-export-*/
 
 # pnpm
 bundle-stats.json
+/packages/frontend/serviceAccount.json

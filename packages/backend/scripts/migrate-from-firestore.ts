@@ -23,7 +23,8 @@ import * as fs from 'fs';
 import bcrypt from 'bcrypt';
 import { initializeApp, cert, deleteApp, getApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp, DocumentReference } from 'firebase-admin/firestore';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../src/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 // ---------------------------------------------------------------------------
 // Init
@@ -49,7 +50,13 @@ initializeApp({
 });
 
 const db = getFirestore();
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL is not set');
+}
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString }),
+});
 
 // ---------------------------------------------------------------------------
 // Hjälpfunktioner

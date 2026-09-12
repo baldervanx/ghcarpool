@@ -1,1 +1,5 @@
 serviceAccount.json
+
+# Prisma Client is generated from prisma/schema.prisma.
+/src/generated/
+/generated/

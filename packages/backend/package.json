@@ -5,11 +5,14 @@
     "migrate:firestore": "tsx scripts/migrate-from-firestore.ts",
     "set-password": "tsx scripts/set-password.ts",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "generate": "prisma generate",
+    "prebuild": "pnpm generate",
     "build": "tsc",
     "start": "node dist/server.js",
     "seed": "ts-node src/scripts/seed.ts",
     "db:reset": "tsx src/scripts/reset-db.ts",
     "db:reseed": "tsx src/scripts/reset-db.ts && ts-node src/scripts/seed.ts",
+    "pretest": "pnpm generate",
     "test": "jest --config jest.config.ts --runInBand"
   },
   "dependencies": {

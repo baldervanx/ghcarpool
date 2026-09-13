@@ -9,9 +9,9 @@
     "prebuild": "pnpm generate",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "ts-node src/scripts/seed.ts",
+    "db:seed": "tsx src/scripts/seed.ts",
     "db:reset": "tsx src/scripts/reset-db.ts",
-    "db:reseed": "tsx src/scripts/reset-db.ts && ts-node src/scripts/seed.ts",
+    "db:reseed": "tsx src/scripts/reset-db.ts && tsx src/scripts/seed.ts",
     "pretest": "pnpm generate",
     "test": "jest --config jest.config.ts --runInBand"
   },

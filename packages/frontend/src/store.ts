@@ -433,6 +433,14 @@ const bookingSlice = createSlice({
             state.bookings = mergeAndRemoveDuplicates(state.bookings, action.payload, "id");
             state.bookingsByDate = bookingsMapRebuilder(state.bookings);
         },
+        replaceBookingsForMonth: (state, action: PayloadAction<{ month: string; bookings: DateCarBooking[] }>) => {
+            const { month, bookings } = action.payload;
+            state.bookings = [
+                ...state.bookings.filter(booking => !booking.date.startsWith(month)),
+                ...bookings.filter(booking => booking.date.startsWith(month)),
+            ];
+            state.bookingsByDate = bookingsMapRebuilder(state.bookings);
+        },
         addOrUpdateBooking: (state, action: PayloadAction<DateCarBooking>) => {
             const index = state.bookings.findIndex(b => b.id === action.payload.id);
             if (index >= 0) {
@@ -533,6 +541,7 @@ export const {
     setBookingsRange,
     setBookingsLoading,
     addMultipleBookings,
+    replaceBookingsForMonth,
     addOrUpdateBooking,
     removeBooking,
     markMonthsLoaded,

@@ -9,11 +9,14 @@ import { Card } from '@/components/ui/card';
 import { CarSelector } from '@/components/CarSelector';
 import UserSelector from '@/components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '@/store';
-import { format } from 'date-fns';
+import { addDays, format } from 'date-fns';
+import { sv } from 'date-fns/locale';
 import type { AppStore } from '@/store';
 import { isOnline } from '@/lib/utils';
 import ConfirmationDialog from "@/components/confirmation-dialog";
 import { tripsApi } from '@/api/trips';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertTriangle } from 'lucide-react';
 
 const MAX_DIST = 9999;
 const LONG_DIST: number = 500;
@@ -92,26 +95,32 @@ export function RegisterTrip() {
     setConnectedBooking(null);
   };
 
-  const setConnectedFromDateBooking = (selectedCarId: string, dateBooking: any) => {
-    if (!dateBooking) return clearConnectedBooking();
-    const candidates = dateBooking.bookings
-        .filter(b => !b.logged)
-        .sort((a, b) => (a.endTime ?? 0) - (b.endTime ?? 0));
-    if (candidates.length === 0) return clearConnectedBooking();
-    const chosen = candidates[0];
-    const augmented = { ...chosen, car: { id: selectedCarId }, date: dateBooking.date };
-    setIsConnectedBooking(true);
-    setConnectedBooking(augmented);
+  const setConnectedFromRecentBooking = (selectedCarId: string) => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const twoWeeksAgo = format(addDays(new Date(), -14), 'yyyy-MM-dd');
+    const recentBookings = bookings
+      .filter(dcb => dcb.car.id === selectedCarId && dcb.date >= twoWeeksAgo && dcb.date <= today)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    for (const dateBooking of recentBookings) {
+      const chosen = dateBooking.bookings
+        .filter(booking => !booking.logged && !(booking.recurrenceId && booking.endTime === 1440))
+        .sort((a, b) => (a.endTime ?? 0) - (b.endTime ?? 0))[0];
+      if (chosen) {
+        setIsConnectedBooking(true);
+        setConnectedBooking({ ...chosen, car: { id: selectedCarId }, date: dateBooking.date, parent_id: dateBooking.id });
+        return;
+      }
+    }
+    clearConnectedBooking();
   };
 
-  // If user navigates directly and selects a car, auto-select today's earliest unlogged booking for that car
+  // If user navigates directly, auto-select the oldest unlogged booking in the loaded 14-day history.
   useEffect(() => {
     if (location.state?.booking) return; // do not override explicit navigation
     if (!selectedCar) return clearConnectedBooking();
 
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const dateBooking = bookings.find(dcb => dcb.car.id === selectedCar && dcb.date === today);
-    setConnectedFromDateBooking(selectedCar, dateBooking);
+    setConnectedFromRecentBooking(selectedCar);
   }, [selectedCar, bookings, location.state]);
 
   useEffect(() => {
@@ -178,9 +187,12 @@ export function RegisterTrip() {
   }
 
   function connectedBookingLabel(): string {
-    if (connectedBooking?.endTime === undefined) return 'För bokning';
+    const datePart = connectedBooking?.date && connectedBooking.date !== format(new Date(), 'yyyy-MM-dd')
+      ? ` (${format(new Date(`${connectedBooking.date}T00:00:00`), 'EEE d MMM', { locale: sv })})`
+      : '';
+    if (connectedBooking?.endTime === undefined) return `För bokning${datePart}`;
     const endStr = timeToString(connectedBooking.endTime);
-    return `För bokning med sluttid ${endStr}`;
+    return `För bokning${datePart} med sluttid ${endStr}`;
   }
 
   const calculateEditOdometer = (newOdo: string, dist: string) => {
@@ -408,6 +420,20 @@ export function RegisterTrip() {
                 {connectedBookingLabel()}
               </Label>
             </div>
+        )}
+
+        {selectedCar && !connectedBooking && (
+            <Alert variant="default" className="border-yellow-500">
+              <AlertTriangle size={16} />
+              <AlertDescription>Ingen ologgad bokning hittades för vald bil. Kontrollera att du loggar rätt resa.</AlertDescription>
+            </Alert>
+        )}
+
+        {connectedBooking?.date && connectedBooking.date !== format(new Date(), 'yyyy-MM-dd') && (
+            <Alert variant="default" className="border-yellow-500">
+              <AlertTriangle size={16} />
+              <AlertDescription>Observera: Du loggar en bokning från {format(new Date(`${connectedBooking.date}T00:00:00`), 'EEE d MMM', { locale: sv })}. Kontrollera att detta är korrekt.</AlertDescription>
+            </Alert>
         )}
 
         {/* FIXME: Använd Alert istället? */}

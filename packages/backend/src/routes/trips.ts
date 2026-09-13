@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import type { Prisma } from '../generated/prisma/client';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
 import { serializeTrip, serializeDateCarBooking } from '../lib/serializers';
@@ -8,17 +9,31 @@ const router = Router();
 router.use(requireAuth);
 
 const tripInclude = { users: true } as const;
+const linkedBookingInclude = { parent: true, users: true } as const;
+type BookingWithParentAndUsers = Prisma.BookingGetPayload<{ include: typeof linkedBookingInclude }>;
+type UpdatedParent = { id: string; userIds: string[] };
 
-// SSE channel — trips are global (everyone sees the same log)
 const TRIPS_CHANNEL = 'trips';
-// Bookings channel — används för att notifiera om logged-uppdatering
 const bookingChannel = (userId: string) => `bookings:${userId}`;
 
-// ---- GET /api/v1/trips  (initial load, last 30 days, or delta ?since=ISO) ----
+function isContiguousMultiDaySeries(bookings: BookingWithParentAndUsers[]) {
+  if (bookings.length < 2) return false;
+
+  const sorted = [...bookings].sort((a, b) => a.parent.date.localeCompare(b.parent.date));
+  if (sorted[0].endTime !== 1440 || sorted[sorted.length - 1].startTime !== 0) return false;
+
+  return sorted.every((booking, index) => {
+    if (index === 0) return true;
+    const previous = new Date(`${sorted[index - 1].parent.date}T00:00:00Z`);
+    previous.setUTCDate(previous.getUTCDate() + 1);
+    return previous.toISOString().slice(0, 10) === booking.parent.date;
+  });
+}
+
 router.get('/', async (req: Request, res: Response) => {
   const { since: sinceParam } = req.query as { since?: string };
-
   let since: Date;
+
   if (sinceParam) {
     const parsed = new Date(sinceParam);
     if (isNaN(parsed.getTime())) {
@@ -27,7 +42,6 @@ router.get('/', async (req: Request, res: Response) => {
     }
     since = parsed;
   } else {
-    // Fallback: senaste 30 dagar (initial load utan cache)
     since = new Date();
     since.setDate(since.getDate() - 30);
   }
@@ -37,41 +51,21 @@ router.get('/', async (req: Request, res: Response) => {
     include: tripInclude,
     orderBy: { odo: 'desc' },
   });
-
   res.json(trips.map(serializeTrip));
 });
 
-// ---- GET /api/v1/trips/stream  (SSE) ----
 router.get('/stream', (req: Request, res: Response) => {
   const client = subscribe(TRIPS_CHANNEL, res);
   req.on('close', () => unsubscribe(client));
 });
 
-// ---- POST /api/v1/trips  (log new trip) ----
 router.post('/', async (req: Request, res: Response) => {
-  const {
-    carId,
-    odo,
-    distance,
-    cost,
-    comment,
-    userIds,
-    bookingId,   // optional: link to a booking
-    parentId,    // optional: parent DateCarBooking id
-  } = req.body as {
-    carId: string;
-    odo: number;
-    distance: number;
-    cost: number;
-    comment?: string;
-    userIds: string[];
-    bookingId?: string;
-    parentId?: string;
+  const { carId, odo, distance, cost, comment, userIds, bookingId, parentId } = req.body as {
+    carId: string; odo: number; distance: number; cost: number; comment?: string;
+    userIds: string[]; bookingId?: string; parentId?: string;
   };
-
   const byUserId = req.user!.id;
 
-  // ---- Grundläggande input-validering ----
   if (!carId || !Array.isArray(userIds) || userIds.length === 0) {
     res.status(400).json({ error: 'Obligatoriska fält saknas: carId, userIds' });
     return;
@@ -86,43 +80,60 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   let trip;
+  let updatedParents: UpdatedParent[] = [];
   try {
     trip = await prisma.$transaction(async (tx) => {
-      // ---- Odo-monoton-validering inuti transaktionen ----
-      // Senaste registrerade resan för den här bilen (låst med SELECT FOR UPDATE via Prisma)
+      const car = await tx.car.findUnique({ where: { id: carId }, select: { hasLog: true } });
+      if (!car) throw Object.assign(new Error('Fordonet hittades inte'), { httpStatus: 404 });
+      if (!car.hasLog) throw Object.assign(new Error('Fordonet saknar körjournal'), { httpStatus: 400 });
+
+      let bookingToLog: BookingWithParentAndUsers | null = null;
+      if (bookingId || parentId) {
+        if (!bookingId || !parentId) {
+          throw Object.assign(new Error('bookingId och parentId måste anges tillsammans'), { httpStatus: 400 });
+        }
+        bookingToLog = await tx.booking.findUnique({ where: { id: bookingId }, include: linkedBookingInclude });
+        if (!bookingToLog || bookingToLog.parentId !== parentId || bookingToLog.parent.carId !== carId) {
+          throw Object.assign(new Error('Bokningen hör inte till angivet fordon och datum'), { httpStatus: 400 });
+        }
+        if (bookingToLog.logged) throw Object.assign(new Error('Bokningen är redan loggad'), { httpStatus: 409 });
+      }
+
       const latestTrip = await tx.trip.findFirst({
-        where: { carId },
-        orderBy: { odo: 'desc' },
-        select: { odo: true },
+        where: { carId }, orderBy: { odo: 'desc' }, select: { odo: true },
       });
       if (latestTrip && odo <= latestTrip.odo) {
         throw Object.assign(
-          new Error(
-            `Nytt odo-värde (${odo}) måste vara högre än senast registrerade (${latestTrip.odo})`,
-          ),
+          new Error(`Nytt odo-värde (${odo}) måste vara högre än senast registrerade (${latestTrip.odo})`),
           { httpStatus: 409 },
         );
       }
 
       const created = await tx.trip.create({
         data: {
-          carId,
-          odo,
-          distance,
-          cost,
-          comment: comment ?? null,
-          byUserId,
+          carId, odo, distance, cost, comment: comment ?? null, byUserId,
           users: { create: userIds.map(uid => ({ userId: uid })) },
         },
         include: tripInclude,
       });
 
-      // Mark the booking as logged if provided
-      if (bookingId && parentId) {
-        await tx.booking.update({
-          where: { id: bookingId },
+      if (bookingToLog) {
+        let bookingsToLog = [bookingToLog];
+        if (bookingToLog.recurrenceId) {
+          const recurrenceBookings = await tx.booking.findMany({
+            where: { recurrenceId: bookingToLog.recurrenceId, parent: { carId } },
+            include: linkedBookingInclude,
+          });
+          if (isContiguousMultiDaySeries(recurrenceBookings)) bookingsToLog = recurrenceBookings;
+        }
+        await tx.booking.updateMany({
+          where: { id: { in: bookingsToLog.map(booking => booking.id) }, logged: null },
           data: { logged: created.id },
         });
+        updatedParents = [...new Map(bookingsToLog.map(booking => [booking.parentId, {
+          id: booking.parentId,
+          userIds: booking.users.map(user => user.userId),
+        }])).values()];
       }
 
       return created;
@@ -139,44 +150,25 @@ router.post('/', async (req: Request, res: Response) => {
   const serialized = serializeTrip(trip);
   sendEvent(TRIPS_CHANNEL, 'add', serialized);
 
-  // Om en bokning markerades som loggad: broadcast uppdaterad DCB på bookings-kanalen
-  // så att alla berörda klienter ser bocken direkt utan att ladda om.
-  if (bookingId && parentId) {
+  for (const updatedParent of updatedParents) {
     const dcb = await prisma.dateCarBooking.findUnique({
-      where: { id: parentId },
-      include: { bookings: { include: { users: true } } },
+      where: { id: updatedParent.id }, include: { bookings: { include: { users: true } } },
     });
-    if (dcb) {
-      const serializedDcb = serializeDateCarBooking(dcb);
-      // Notifiera alla användare som ingår i bokningen
-      const booking = dcb.bookings.find(b => b.id === bookingId);
-      const affectedUserIds = new Set([
-        byUserId,
-        ...(booking?.users.map(u => u.userId) ?? []),
-      ]);
-      for (const uid of affectedUserIds) {
-        sendEvent(bookingChannel(uid), 'update', serializedDcb);
-      }
-    }
+    if (!dcb) continue;
+    const affectedUserIds = new Set([byUserId, ...updatedParent.userIds]);
+    for (const uid of affectedUserIds) sendEvent(bookingChannel(uid), 'update', serializeDateCarBooking(dcb));
   }
 
   res.status(201).json(serialized);
 });
 
-// ---- PUT /api/v1/trips/:id  (edit trip) ----
 router.put('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const { odo, distance, cost, comment, userIds } = req.body as {
-    odo: number;
-    distance: number;
-    cost: number;
-    comment?: string;
-    userIds: string[];
+    odo: number; distance: number; cost: number; comment?: string; userIds: string[];
   };
-
   const existing = await prisma.trip.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: 'Resa hittades inte' }); return; }
-
   if (existing.byUserId !== req.user!.id && !req.user!.isAdmin) {
     res.status(403).json({ error: 'Åtkomst nekad' }); return;
   }
@@ -185,32 +177,22 @@ router.put('/:id', async (req: Request, res: Response) => {
     await tx.tripUser.deleteMany({ where: { tripId: id } });
     return tx.trip.update({
       where: { id },
-      data: {
-        odo,
-        distance,
-        cost,
-        comment: comment ?? null,
-        users: { create: userIds.map(uid => ({ userId: uid })) },
-      },
+      data: { odo, distance, cost, comment: comment ?? null, users: { create: userIds.map(uid => ({ userId: uid })) } },
       include: tripInclude,
     });
   });
-
   const serialized = serializeTrip(trip);
   sendEvent(TRIPS_CHANNEL, 'update', serialized);
   res.json(serialized);
 });
 
-// ---- DELETE /api/v1/trips/:id ----
 router.delete('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const existing = await prisma.trip.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: 'Resa hittades inte' }); return; }
-
   if (existing.byUserId !== req.user!.id && !req.user!.isAdmin) {
     res.status(403).json({ error: 'Åtkomst nekad' }); return;
   }
-
   await prisma.trip.delete({ where: { id } });
   sendEvent(TRIPS_CHANNEL, 'remove', { id });
   res.json({ id });

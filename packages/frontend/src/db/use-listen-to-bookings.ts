@@ -16,6 +16,7 @@ import {
   format,
   startOfMonth,
   endOfMonth,
+  addDays,
   addMonths,
   isBefore,
   endOfDay,
@@ -40,11 +41,11 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
 
-/** Månader som ska laddas vid start: innevarande + 3 framåt */
+/** Bokningsfönster vid start: de senaste 14 dagarna + innevarande månad och 3 framåt. */
 function defaultDateRange() {
   const now = new Date();
   return {
-    startDate: format(startOfMonth(now), 'yyyy-MM-dd'),
+    startDate: format(addDays(now, -14), 'yyyy-MM-dd'),
     endDate: format(endOfMonth(addMonths(now, 3)), 'yyyy-MM-dd'),
   };
 }

@@ -1,0 +1,17 @@
+# Store and check out all detected text files with Unix LF line endings.
+* text=auto eol=lf
+
+# Shell scripts must always use LF; CRLF breaks /bin/sh and Alpine entrypoints.
+*.sh text eol=lf
+
+# Keep common binary assets out of text normalization.
+*.7z binary
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.pdf binary
+*.png binary
+*.tar binary
+*.webp binary
+

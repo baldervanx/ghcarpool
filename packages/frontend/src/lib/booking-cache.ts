@@ -6,11 +6,12 @@
  * Nyckelformat: "bookings:month:yyyy-MM"
  * Värdeformat:  { bookings: DateCarBooking[], cachedAt: ISO8601 }
  *
- * Låsta månader (endOfMonth < idag) cachas permanent utan TTL.
+ * Låsta månader (14 dagar efter endOfMonth) cachas permanent utan TTL.
  * Icke-låsta månader cachas men uppdateras alltid vid delta-sync.
  */
 
 import type { DateCarBooking } from '@/store';
+import { addDays, endOfMonth } from 'date-fns';
 
 const PREFIX = 'bookings:month:';
 
@@ -56,13 +57,13 @@ export function bookingCacheInvalidate(monthKey: string): void {
 }
 
 /**
- * Avgör om en månad är "låst" — dvs alla dagar i månaden är passerade.
- * Låsta månader behöver aldrig hämtas om från servern.
+ * Avgör om en månad är "låst" — dvs 14 hela dagar har passerat sedan
+ * månadens slut. Grace-perioden behövs eftersom bokningar kan loggas sent.
  */
 export function isMonthLocked(monthKey: string): boolean {
   // monthKey = "yyyy-MM"
-  // Sista dag i månaden = nästa månads första dag - 1
   const [y, m] = monthKey.split('-').map(Number);
-  const lastDay = new Date(y, m, 0); // dag 0 i nästa månad = sista i denna
-  return lastDay < new Date();
+  const monthStart = new Date(y, m - 1, 1);
+  const lockAt = addDays(endOfMonth(monthStart), 14);
+  return new Date() >= lockAt;
 }

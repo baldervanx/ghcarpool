@@ -211,6 +211,13 @@ router.post('/', async (req: Request, res: Response) => {
 
       if (existingBookingId && existingParentId) {
         // UPDATE existing booking
+        const existingBooking = parent.bookings.find((booking) => booking.id === existingBookingId);
+        if (!existingBooking || parent.id !== existingParentId) {
+          throw Object.assign(new Error('Bokning hittades inte'), { httpStatus: 404 });
+        }
+        if (existingBooking.logged) {
+          throw Object.assign(new Error('Loggad bokning kan inte ändras'), { httpStatus: 409 });
+        }
         await tx.bookingUser.deleteMany({ where: { bookingId: existingBookingId } });
         await tx.booking.update({
           where: { id: existingBookingId },
@@ -294,6 +301,10 @@ router.delete('/:parentId/:bookingId', async (req: Request, res: Response) => {
 
   if (!booking || booking.parentId !== parentId) {
     res.status(404).json({ error: 'Bokning hittades inte' });
+    return;
+  }
+  if (booking.logged) {
+    res.status(409).json({ error: 'Loggad bokning kan inte tas bort' });
     return;
   }
 

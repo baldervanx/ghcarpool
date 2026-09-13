@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, AppStore, Booking, Car, fetchAuthState } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { BookingWarnings } from '@/components/booking-warnings';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useAccessibility } from '@/lib/utils';
@@ -174,6 +175,8 @@ export const HomePage = () => {
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-2xl mx-auto space-y-4">
+
+        <BookingWarnings onLog={logBooking} />
 
         {!userLoading && !bookingsLoading && (
             activeBookings.map((booking) => (

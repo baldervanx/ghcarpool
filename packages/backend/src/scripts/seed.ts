@@ -4,10 +4,10 @@
  * Kör lokalt:
  *   cd packages/backend
  *   DATABASE_URL="postgresql://ghcarpool:***@127.0.0.1:5432/ghcarpool_dev" \
- *     npx ts-node src/scripts/seed.ts
+ *     pnpm exec tsx src/scripts/seed.ts
  *
- * Via Docker efter uppstart:
- *   docker compose exec backend node packages/backend/dist/scripts/seed.js
+ * Via Podman efter uppstart:
+ *   podman compose exec backend pnpm exec tsx src/scripts/seed.ts
  *
  * Skriptet är idempotent — kör det flera gånger utan risk för dubletter.
  * Befintliga rader med samma unika nyckel hoppas över (upsert/skipDuplicates).
@@ -233,6 +233,204 @@ async function main() {
       },
     });
     console.log(`Booking ${date} ${slot.start}-${slot.end} car=${slot.carId.slice(0, 8)} -> ${booking.id.slice(0, 8)}`);
+  }
+
+  // ── Historik, multi-day och repeating ────────────────────────────────────
+  // Dessa fixtures används för att testa varningar och loggning av tidigare
+  // bokningar. Samma seed kan köras flera gånger utan att skapa dubletter.
+  type LoggedTripSeed = {
+    carId: string;
+    odo: number;
+    distance: number;
+    byUserId: string;
+    userIds: string[];
+  };
+
+  type BookingFixture = {
+    date: string;
+    carId: string;
+    startTime: number;
+    endTime: number;
+    distance: number;
+    byUserId: string;
+    userIds: string[];
+    destinationId: string;
+    comment: string;
+    recurrenceId?: string;
+    loggedTrip?: LoggedTripSeed;
+  };
+
+  async function createBookingFixture(fixture: BookingFixture) {
+    const parent = await prisma.dateCarBooking.upsert({
+      where: { date_carId: { date: fixture.date, carId: fixture.carId } },
+      create: { date: fixture.date, carId: fixture.carId },
+      update: {},
+    });
+
+    let booking = await prisma.booking.findFirst({
+      where: {
+        parentId: parent.id,
+        byUserId: fixture.byUserId,
+        startTime: fixture.startTime,
+        recurrenceId: fixture.recurrenceId ?? null,
+      },
+    });
+
+    if (!booking) {
+      booking = await prisma.booking.create({
+        data: {
+          parentId: parent.id,
+          startTime: fixture.startTime,
+          endTime: fixture.endTime,
+          distance: fixture.distance,
+          destinationId: fixture.destinationId,
+          comment: fixture.comment,
+          recurrenceId: fixture.recurrenceId,
+          byUserId: fixture.byUserId,
+          users: {
+            create: fixture.userIds.map(userId => ({ userId })),
+          },
+        },
+      });
+    }
+
+    if (fixture.loggedTrip && !booking.logged) {
+      let trip = await prisma.trip.findFirst({
+        where: {
+          carId: fixture.loggedTrip.carId,
+          odo: fixture.loggedTrip.odo,
+          byUserId: fixture.loggedTrip.byUserId,
+        },
+      });
+
+      if (!trip) {
+        trip = await prisma.trip.create({
+          data: {
+            carId: fixture.loggedTrip.carId,
+            odo: fixture.loggedTrip.odo,
+            distance: fixture.loggedTrip.distance,
+            cost: fixture.loggedTrip.distance * 1.5,
+            comment: `Seed: ${fixture.comment}`,
+            timestamp: new Date(`${fixture.date}T12:00:00`),
+            byUserId: fixture.loggedTrip.byUserId,
+            users: {
+              create: fixture.loggedTrip.userIds.map(userId => ({ userId })),
+            },
+          },
+        });
+      }
+
+      booking = await prisma.booking.update({
+        where: { id: booking.id },
+        data: { logged: trip.id },
+      });
+    }
+
+    console.log(
+      `Fixture booking ${fixture.date} ${fixture.startTime}-${fixture.endTime}`
+      + ` car=${fixture.carId} ${booking.logged ? '(logged)' : '(unlogged)'}`,
+    );
+  }
+
+  const historicalFixtures: BookingFixture[] = [
+    {
+      date: dateStr(subDays(today, 1)),
+      carId: volvoId,
+      startTime: timeMin(7),
+      endTime: timeMin(9),
+      distance: 25,
+      destinationId: dests['Lager Norr'],
+      byUserId: annaId,
+      userIds: [annaId],
+      comment: 'Seed historik - glömd igår',
+    },
+    {
+      date: dateStr(subDays(today, 2)),
+      carId: teslaId,
+      startTime: timeMin(10),
+      endTime: timeMin(12),
+      distance: 18,
+      destinationId: dests['Lager Syd'],
+      byUserId: ceciliaId,
+      userIds: [ceciliaId],
+      comment: 'Seed historik - förrgår',
+      loggedTrip: { carId: teslaId, odo: 42090, distance: 18, byUserId: ceciliaId, userIds: [ceciliaId] },
+    },
+    {
+      date: dateStr(subDays(today, 4)),
+      carId: passatId,
+      startTime: timeMin(9),
+      endTime: timeMin(11),
+      distance: 45,
+      destinationId: dests['Flygplatsen'],
+      byUserId: annaId,
+      userIds: [annaId, bjornId],
+      comment: 'Seed historik - loggad',
+      loggedTrip: { carId: passatId, odo: 155130, distance: 45, byUserId: annaId, userIds: [annaId, bjornId] },
+    },
+    {
+      date: dateStr(subDays(today, 3)),
+      carId: volvoId,
+      startTime: timeMin(13),
+      endTime: timeMin(15),
+      distance: 12,
+      destinationId: dests['Huvudkontoret'],
+      byUserId: bjornId,
+      userIds: [bjornId],
+      comment: 'Seed historik - loggad',
+      loggedTrip: { carId: volvoId, odo: 87482, distance: 12, byUserId: bjornId, userIds: [bjornId] },
+    },
+    {
+      date: dateStr(subDays(today, 6)),
+      carId: teslaId,
+      startTime: timeMin(8),
+      endTime: timeMin(10),
+      distance: 45,
+      destinationId: dests['Flygplatsen'],
+      byUserId: bjornId,
+      userIds: [bjornId],
+      comment: 'Seed historik - glömd',
+    },
+  ];
+
+  for (const fixture of historicalFixtures) await createBookingFixture(fixture);
+
+  const multiDayRecurrenceId = 'seed-multiday-ending-today';
+  for (const daysAgo of [2, 1, 0]) {
+    await createBookingFixture({
+      date: dateStr(subDays(today, daysAgo)),
+      carId: passatId,
+      startTime: daysAgo === 2 ? timeMin(8) : 0,
+      endTime: daysAgo === 0 ? timeMin(16) : 1440,
+      distance: 60,
+      destinationId: dests['Kundbesök City'],
+      byUserId: annaId,
+      userIds: [annaId, bjornId],
+      comment: 'Seed multi-day som slutar idag',
+      recurrenceId: multiDayRecurrenceId,
+    });
+  }
+
+  const repeatingRecurrenceId = 'seed-repeating-includes-today';
+  for (const daysAgo of [6, 3, 0, -3]) {
+    await createBookingFixture({
+      date: dateStr(subDays(today, daysAgo)),
+      carId: volvoId,
+      startTime: timeMin(14),
+      endTime: timeMin(16),
+      distance: 25,
+      destinationId: dests['Lager Norr'],
+      byUserId: ceciliaId,
+      userIds: [ceciliaId],
+      comment: 'Seed repeating - förekomst',
+      recurrenceId: repeatingRecurrenceId,
+      ...(daysAgo === 6
+        ? { loggedTrip: { carId: volvoId, odo: 87445, distance: 25, byUserId: ceciliaId, userIds: [ceciliaId] } }
+        : daysAgo === 3
+          ?  { loggedTrip: { carId: volvoId, odo: 87470, distance: 25, byUserId: ceciliaId, userIds: [ceciliaId] } }
+
+  : {}),
+    });
   }
 
   console.log('\nSeed complete.');

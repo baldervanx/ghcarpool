@@ -11,15 +11,15 @@ import adminRouter from './routes/admin';
 import errorLogsRouter from './routes/error-logs';
 import expensesRouter from './routes/expenses';
 import carInfoRouter from './routes/car-info';
+import { proxyConfiguration } from './middleware/proxy';
 import { frontendMiddleware } from './middleware/frontend';
 
 const app = express();
+const { trustProxy, corsOptions } = proxyConfiguration();
+app.set('trust proxy', trustProxy);
 
 app.use(express.json());
-app.use(cors({
-  origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
-  credentials: true,
-}));
+if (corsOptions) app.use(cors(corsOptions));
 
 // Session måste initieras före passport
 app.use(buildSessionMiddleware());

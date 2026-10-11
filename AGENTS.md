@@ -47,7 +47,8 @@ ghcarpool/
 │   │       │   └── sse.ts           # SSE-hjälpfunktioner
 │   │       ├── middleware/
 │   │       │   ├── auth.ts          # requireAuth, requireAdmin
-│   │       │   └── frontend.ts      # Statisk frontend + säker HTML SPA-fallback
+│   │       │   ├── frontend.ts      # Statisk frontend + säker HTML SPA-fallback
+│   │       │   └── proxy.ts         # Validerad trust proxy, origin och dev-CORS
 │   │       ├── routes/
 │   │       │   ├── auth.ts          # POST /login, POST /logout, GET /me
 │   │       │   ├── general.ts       # GET /users, /cars, /destinations, /settings
@@ -143,8 +144,10 @@ Viktiga detaljer:
 | `POSTGRES_PASSWORD` | — | **Obligatorisk** |
 | `POSTGRES_DB` | `ghcarpool` | DB-namn |
 | `SESSION_SECRET` | — | **Obligatorisk**, minst 32 tecken |
-| `FRONTEND_URL` | `http://localhost:3001` | CORS-origin + OAuth-redirect-bas |
+| `FRONTEND_URL` | — | **Obligatorisk i produktion**, publik HTTP(S)-origin utan path/query/fragment |
 | `APP_PORT` | `3001` | HTTP-port på värddatorn; intern app-port alltid `3001` |
+| `APP_BIND_ADDRESS` | `127.0.0.1` | Privat host-bind; containerproxy bör använda privat delat nät |
+| `TRUST_PROXY` | `false` | `false`/`0`, positivt hop count, IP/CIDR-lista eller Express-nätalias |
 | `COOKIE_SECURE` | `false` | Sätt `true` om HTTPS används |
 | `RUN_MIGRATIONS` | `false` | Kontrollerad opt-in till startup-migrationer |
 | `GOOGLE_CLIENT_ID` | *(tom)* | Aktiverar Google OAuth om satt |
@@ -235,6 +238,21 @@ Välj korrekt appservice/arbetskatalog när sådana skript används.
 - `COOKIE_SECURE=true` kräver HTTPS. Sätt det aldrig vid HTTP — sessionen bryts.
 - `SameSite=Lax` + `credentials: 'include'` i fetch — krävs för att cookien ska skickas.
 
+**HTTPS bakom extern proxy:**
+- `FRONTEND_URL=https://<publik-origin>`, `COOKIE_SECURE=true`, intern HTTP `3001`.
+- `TRUST_PROXY` ska matcha proxyadressen Express ser (även efter Docker-NAT).
+  `TRUST_PROXY=1` är endast säkert med exakt en betrodd hop på alla vägar och
+  spärrad direktåtkomst. `true`/ogiltig config avvisas vid startup.
+- Host-proxy: bind loopback. Containerproxy: privat infra-ägt nät/Compose-override,
+  `app:3001`, ingen host-publicering. Inga certifikat i appen.
+- Proxyn måste rensa klientens forwarding-headers och sätta Host,
+  X-Forwarded-Proto och X-Forwarded-For; inga identitetsheaders används för auth.
+- Produktion har ingen CORS; dev stöder lokal Vite-origin med credentials.
+- SSE ska inte buffras/cachas och kräver lång timeout (t.ex. 3600 s);
+  heartbeats skickas var 25:e sekund. Kontrollera upprepade heartbeats och
+  ändrings-event med session; initialdata hämtas via REST, inte init-event.
+- Lägg aldrig till Caddy/Authelia-konfiguration i detta repository.
+
 **Prisma på Alpine:**
 - Installera OpenSSL i build- och runtime-stage för Prisma CLI.
 - Generera Prisma 7-klienten före tsc; ändra inte schemat för gamla engine-targets.
@@ -250,8 +268,8 @@ cd packages/backend && pnpm test
 - Tester i `src/__tests__/` — kräver lokal PostgreSQL (från `DATABASE_URL` i `.env`)
 - `setupFiles: ['dotenv/config']` laddar `.env` automatiskt
 - `--forceExit` krävs pga. öppna DB-connections
-- App/static-tester kan köras utan DB:
-  `pnpm exec jest --config jest.config.ts --runInBand src/__tests__/frontend.test.ts src/__tests__/app.test.ts`.
+- App/static/proxy-tester kan köras utan DB:
+  `pnpm exec jest --config jest.config.ts --runInBand src/__tests__/frontend.test.ts src/__tests__/proxy.test.ts src/__tests__/app.test.ts`.
 
 ### Frontend (Vitest + MSW)
 ```bash

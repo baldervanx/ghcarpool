@@ -36,8 +36,10 @@ cp .env.example .env
 |---|---|
 | `POSTGRES_PASSWORD` | Välj ett starkt URL-säkert lösenord, t.ex. `openssl rand -hex 32` |
 | `SESSION_SECRET` | Generera: `openssl rand -hex 32` |
-| `FRONTEND_URL` | CORS-origin + OAuth-redirect-bas, default `http://localhost:3001` i Compose |
-| `APP_PORT` | Publicerad HTTP-port, default `3001` |
+| `FRONTEND_URL` | Publik HTTP(S)-origin utan sökväg, query eller fragment; obligatorisk i produktion |
+| `APP_PORT` | Publicerad HTTP-port (default `3001`), bunden till `APP_BIND_ADDRESS` (default `127.0.0.1`) |
+| `TRUST_PROXY` | Default `false`; välj betrodd proxy-IP/CIDR för HTTPS bakom proxy |
+| `COOKIE_SECURE` | `true` för publik HTTPS, `false` endast för HTTP |
 | `RUN_MIGRATIONS` | Default `false`; migrationer är en separat deploy-åtgärd |
 
 Google OAuth är **frivilligt** — lämna `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` tomma för att hoppa över det.
@@ -90,6 +92,55 @@ docker compose exec app node dist/scripts/seed.js
 ```bash
 docker compose down          # Behåller data i pgdata-volymen
 ```
+
+### HTTPS bakom extern reverse proxy
+
+Exakt appkonfiguration för en proxy på samma värddator:
+
+```dotenv
+APP_BIND_ADDRESS=127.0.0.1
+APP_PORT=3001
+FRONTEND_URL=https://carpool.example
+TRUST_PROXY=loopback
+COOKIE_SECURE=true
+RUN_MIGRATIONS=false
+```
+
+Byt exempel-origin till er riktiga publika origin. TLS termineras i den externa
+proxyn, som ansluter med HTTP till `127.0.0.1:3001`. Inga certifikat monteras i appen.
+`TRUST_PROXY` avser källadressen **som Express faktiskt ser**; Docker-NAT kan göra
+att en värdproxy syns som en bridge-gateway i stället för loopback. Använd då den
+specifika betrodda IP-adressen/CIDR:n, inte `loopback`.
+
+För en containerproxy: anslut `app` till ett privat, externt delat nät via en
+infra-ägd Compose-override, ta bort host-publiceringen och använd `app:3001`.
+Sätt `TRUST_PROXY` till proxyns IP eller dedikerade nät-CIDR. Publicera inte
+appporten eller PostgreSQL mot internet. Compose publicerar ingen DB-port.
+
+`TRUST_PROXY` accepterar `false`/`0`, ett positivt heltal (hop count), IP/CIDR-listor
+separerade med kommatecken eller Express-namnen `loopback`, `linklocal`, `uniquelocal`.
+`true`, felaktiga CIDR och andra ogiltiga värden stoppar startup.
+`TRUST_PROXY=1` är bara säkert om varje möjlig väg går via exakt en betrodd proxy
+och direktåtkomst till appporten är spärrad. Breda privata CIDR/nät måste vara
+dedikerade till betrodda proxies. Proxyn ska rensa klientens forwarding-headers
+och sätta korrekt `Host`, `X-Forwarded-Proto` och `X-Forwarded-For`.
+Appen litar inte på identitetsheaders. Befintliga auth-routes behålls.
+
+Produktion skickar inga CORS-headers: browsern använder same-origin frontend/API.
+Utveckling behåller credentialed CORS för `FRONTEND_URL` (default lokal Vite
+`http://localhost:5173`) och Vites befintliga `/api`-proxy.
+HTTPS-origin i produktion kräver `COOKIE_SECURE=true`; felaktiga origins och
+icke-boolska cookie-värden stoppar startup. Sessionscookien är HttpOnly och SameSite=Lax.
+
+**SSE:** Proxyn måste skicka `/api/v1/bookings/stream` och `/api/v1/trips/stream`
+utan buffring eller cache, spola event direkt och tillåta långlivade anslutningar.
+Använd HTTP/1.1 eller motsvarande streamingstöd till appen och en lästimeout med
+god marginal över appens heartbeat på 25 sekunder (t.ex. 3600 sekunder).
+Bevara session-cookie, query-parametrar och forwarding-headers. Kontrollera med
+en inloggad session att `Content-Type: text/event-stream` och upprepade heartbeats
+når browsern och att ändringar ger event direkt. Initialdata hämtas via REST;
+stream-routes skickar inte ett init-event. Ett lyckat `/health` verifierar inte proxy/SSE eller DB.
+Ingen Caddy- eller Authelia-konfiguration ska läggas i detta repository.
 
 ---
 
@@ -169,7 +220,9 @@ pnpm exec ts-node src/scripts/set-password.ts user@example.com lösenord123
 | `SESSION_SECRET` | Ja | Hemlig nyckel för express-session (min 32 tecken) |
 | `PORT` | Nej | HTTP-port, default `3001` |
 | `NODE_ENV` | Nej | `development` eller `production` |
-| `FRONTEND_URL` | Nej | Tillåten CORS-origin, default `http://localhost:5173` |
+| `FRONTEND_URL` | Produktion: Ja | Publik origin; dev-CORS default `http://localhost:5173` |
+| `TRUST_PROXY` | Nej | Default `false`; betrodd proxy-IP/CIDR eller fast hop count |
+| `COOKIE_SECURE` | Nej | `true` vid publik HTTPS; default `false` |
 | `RUN_MIGRATIONS` | Nej | Container-entrypoint: opt-in startup migrationer, default `false` |
 | `GOOGLE_CLIENT_ID` | Nej | Google OAuth — utelämnas för att inaktivera |
 | `GOOGLE_CLIENT_SECRET` | Nej | Google OAuth — utelämnas för att inaktivera |

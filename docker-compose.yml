@@ -32,7 +32,8 @@ services:
       PORT: 3001
       DATABASE_URL: "postgresql://${POSTGRES_USER:-ghcarpool}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ghcarpool}"
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+      FRONTEND_URL: ${FRONTEND_URL:?Set the public FRONTEND_URL origin}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -45,7 +46,7 @@ services:
       start_period: 30s
       retries: 3
     ports:
-      - "${APP_PORT:-3001}:3001"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3001}:3001"
     networks:
       - internal
 

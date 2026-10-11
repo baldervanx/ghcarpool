@@ -1,6 +1,6 @@
 # Produktionsberedskap: loggkontroll, en app-container, reverse proxy och OIDC
 
-**Status:** Fas 1–2 implementerade och riktat verifierade 2026-10-11; fas 3–4 återstår att färdigställa som separata commits. Full test-/lint-gate och manuella produktionskontroller återstår.
+**Status:** Fas 1–3 implementerade och riktat verifierade 2026-10-11; fas 4 återstår att färdigställa som separat commit. Full test-/lint-gate och manuella produktionskontroller återstår.
 **Utgångspunkt:** `feature/firebase-to-postgres-migration`  
 **Relaterad legacy-commit:** `283db8a` på `feature/log-checking`
 
@@ -274,6 +274,14 @@ utan åtkomst till en verklig container eller databas.
 5. Dokumentera att proxyn måste vidarebefordra långlivade SSE-anslutningar utan olämplig buffring eller kort timeout.
 
 README kan innehålla ett kort, generiskt exempel på nödvändiga proxyegenskaper, men ingen Caddy-konfiguration.
+
+**Status 2026-10-11:** Validerad `TRUST_PROXY`-konfiguration, publik origin och
+cookie-säkerhet är miljöstyrda. Same-origin-produktion skickar inga breda
+CORS-headers; lokal Vite-origin stöds fortsatt. Appporten binds till loopback
+som standard och dokumentationen beskriver privat proxy-nät samt SSE utan
+buffring eller kort timeout. 84 app-/static-/proxytester och backendens
+typkontroll passerar, inklusive säkra cookies och ignorerade förfalskade
+forwarding-headers när avsändaren inte är betrodd.
 
 ## Fas 4 – OIDC med Authelia
 

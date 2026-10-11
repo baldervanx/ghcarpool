@@ -10,6 +10,7 @@
 **/certs
 **/*.pem
 **/*.key
+**/serviceAccount.json
 .hermes
 .agents
 scripts

@@ -255,6 +255,14 @@ som standard; `RUN_MIGRATIONS=true` är ett uttryckligt, felstoppande alternativ
 vid startup. Container-/sessions-/SSE-verifiering har gjorts isolerat och
 upprepas mot det slutliga imaget när även fas 3–4 är integrerade.
 
+Databasverktyget `scripts/run-db-scripts.sh` använder också den nya app-servicen:
+projektets Compose-labels identifierar exakt en container, och `CONTAINER_NAME`
+är ett uttryckligt alternativ för manuellt namngivna stackar. Reset använder
+kompilerad kod; Firestore-import använder imagets låsta verktyg och korrekta
+recurrence-/Prisma-moduler. Temporära credentials tas bort även vid fel.
+`bash scripts/tests/run-db-scripts.test.sh` verifierar detta med en fake-runtime,
+utan åtkomst till en verklig container eller databas.
+
 ## Fas 3 – Proxykompatibilitet utan Caddy-konfiguration här
 
 **Berörda delar:** `packages/backend/src/app.ts`, `packages/backend/src/lib/session.ts`, `.env.example`, `README.md`.

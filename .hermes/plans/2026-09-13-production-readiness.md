@@ -1,6 +1,6 @@
 # Produktionsberedskap: loggkontroll, en app-container, reverse proxy och OIDC
 
-**Status:** Fas 1 implementerad och riktat verifierad 2026-10-11; fas 2–4 återstår att färdigställa som separata commits. Full test-/lint-gate och manuella produktionskontroller återstår.
+**Status:** Fas 1–2 implementerade och riktat verifierade 2026-10-11; fas 3–4 återstår att färdigställa som separata commits. Full test-/lint-gate och manuella produktionskontroller återstår.
 **Utgångspunkt:** `feature/firebase-to-postgres-migration`  
 **Relaterad legacy-commit:** `283db8a` på `feature/log-checking`
 
@@ -247,6 +247,13 @@ av det befintliga expenses-testet och de sju orelaterade JSX-lintfelen ovan.
 6. Låt migrationskörning vara en kontrollerad deploy/startup-åtgärd och dokumentera dess beteende.
 
 Verifiera `/health`, API-404 som JSON, SPA-direktlänkar, session och SSE i den samlade containern.
+
+**Status 2026-10-11:** Samlat Node 26-image och produktionsservicarna `app` +
+`db` är implementerade. nginx och separata package-Dockerfiles är borttagna.
+43 app-/static-regressioner passerar. Migrationer är en separat deploy-åtgärd
+som standard; `RUN_MIGRATIONS=true` är ett uttryckligt, felstoppande alternativ
+vid startup. Container-/sessions-/SSE-verifiering har gjorts isolerat och
+upprepas mot det slutliga imaget när även fas 3–4 är integrerade.
 
 ## Fas 3 – Proxykompatibilitet utan Caddy-konfiguration här
 

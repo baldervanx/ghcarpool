@@ -7,13 +7,13 @@ Samåkningssystem för arbetsplatser. Låter användare boka bilar, logga resor 
 ```
 packages/
   frontend/   React 18 + Vite + Redux Toolkit + TailwindCSS + shadcn/ui
-  backend/    Node 22 + Express + TypeScript + Prisma ORM
+  backend/    Node 26 + Express + TypeScript + Prisma ORM
 ```
 
 - **Auth**: Session-baserad inloggning med e-post + lösenord (Passport.js). Google OAuth är optionellt (styrs av env-variabler). Ingen extern autentiseringstjänst krävs.
 - **Databas**: PostgreSQL 17 + Prisma. Alla skrivningar går via backend. Sessioner lagras i databasen.
 - **Realtid**: SSE (Server-Sent Events). Backend broadcastar `add/update/remove`-events när data förändras.
-- **Deployment**: Docker Compose. nginx serverar frontend och proxar `/api` till backend.
+- **Deployment**: Två produktionsservicar i Docker Compose: `app` (Express + byggd React-app) och `db` (PostgreSQL). TLS/reverse proxy och Authelia hanteras i ett externt infra-repository; inga sådana konfigurationer finns här.
 
 ---
 
@@ -34,27 +34,47 @@ cp .env.example .env
 
 | Variabel | Beskrivning |
 |---|---|
-| `POSTGRES_PASSWORD` | Välj ett starkt lösenord |
+| `POSTGRES_PASSWORD` | Välj ett starkt URL-säkert lösenord, t.ex. `openssl rand -hex 32` |
 | `SESSION_SECRET` | Generera: `openssl rand -hex 32` |
-| `FRONTEND_URL` | URL som backend tillåter CORS-anrop från (default `http://localhost`) |
-| `APP_PORT` | Porten nginx lyssnar på (default `80`) |
+| `FRONTEND_URL` | CORS-origin + OAuth-redirect-bas, default `http://localhost:3001` i Compose |
+| `APP_PORT` | Publicerad HTTP-port, default `3001` |
+| `RUN_MIGRATIONS` | Default `false`; migrationer är en separat deploy-åtgärd |
 
 Google OAuth är **frivilligt** — lämna `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` tomma för att hoppa över det.
 
-### 3. Starta
+### 3. Bygg, migrera och starta
 
 ```bash
-docker compose up --build -d
+docker compose build app
+docker compose up -d db
+# Vänta tills db är healthy innan migrationskommandot körs:
+docker compose ps db
+docker compose run --rm --no-deps app ./node_modules/.bin/prisma migrate deploy
+docker compose up -d app
 ```
 
-Appen är nu tillgänglig på http://localhost (eller `APP_PORT` om du ändrat den).
+Med HTTP-värdena i `.env.example` är appen tillgänglig på http://localhost:3001.
+Appen kör som användaren `node`, med HTTP på port `3001` inuti containern.
+Frontend byggs med `VITE_API_URL=/api/v1`; frontend och API använder samma publika origin.
+Express serverar statiska filer efter API-routes och erbjuder SPA-fallback endast för
+GET/HEAD-navigation som accepterar HTML. `/api`, `/health`, saknade assets och andra
+filnamn returnerar aldrig SPA:n. `index.html` revalideras; Vite-assets cachas immutable.
+Saknad frontend-build stoppar produktionsstarten med ett tydligt fel.
+
+**Migrationer:** Vanliga starter och omstarter ändrar inte schema. Kör ovanstående
+`migrate deploy` en gång per release innan ny app får trafik. `RUN_MIGRATIONS=true`
+är en explicit opt-in till migrationer före varje start; migrationsfel stoppar då
+starten med felkod. Inget läge kör seed, reset eller `migrate dev`. Vid separat
+migrationskörning måste deploy-processen stoppa releasen om kommandot misslyckas.
+App-imaget behåller backendens låsta verktygsberoenden för Prisma CLI och operatörsskript.
+Backup, återställning och rollback hanteras i infra-repositoryt.
 
 ### 4. Skapa första användaren
 
 Första gången behöver du sätta ett lösenord på en befintlig databasanvändare (eller använda seed-scriptet nedan som skapar exempelanvändare med lösenord):
 
 ```bash
-docker compose exec backend node packages/backend/dist/scripts/set-password.js user@example.com nyttlösenord
+docker compose exec app node dist/scripts/set-password.js user@example.com nyttlösenord
 ```
 
 ### 5. Seed-data (valfritt)
@@ -62,14 +82,13 @@ docker compose exec backend node packages/backend/dist/scripts/set-password.js u
 Fyll databasen med testdata (bilar, destinationer, inställningar, exempelanvändare och bokningar):
 
 ```bash
-docker compose exec backend node packages/backend/dist/scripts/seed.js
+docker compose exec app node dist/scripts/seed.js
 ```
 
 ### 6. Stoppa
 
 ```bash
 docker compose down          # Behåller data i pgdata-volymen
-docker compose down -v       # Tar även bort databasen
 ```
 
 ---
@@ -78,7 +97,7 @@ docker compose down -v       # Tar även bort databasen
 
 ### Förutsättningar
 
-- Node.js 22
+- Node.js 24 eller 26 (produktionsimaget använder 26)
 - pnpm >= 9  (`npm install -g pnpm`)
 - PostgreSQL 17 (se nedan)
 
@@ -151,6 +170,7 @@ pnpm exec ts-node src/scripts/set-password.ts user@example.com lösenord123
 | `PORT` | Nej | HTTP-port, default `3001` |
 | `NODE_ENV` | Nej | `development` eller `production` |
 | `FRONTEND_URL` | Nej | Tillåten CORS-origin, default `http://localhost:5173` |
+| `RUN_MIGRATIONS` | Nej | Container-entrypoint: opt-in startup migrationer, default `false` |
 | `GOOGLE_CLIENT_ID` | Nej | Google OAuth — utelämnas för att inaktivera |
 | `GOOGLE_CLIENT_SECRET` | Nej | Google OAuth — utelämnas för att inaktivera |
 | `GOOGLE_CALLBACK_URL` | Nej | Google OAuth callback, default `/api/v1/auth/google/callback` |
@@ -159,7 +179,7 @@ pnpm exec ts-node src/scripts/set-password.ts user@example.com lösenord123
 
 | Variabel | Beskrivning |
 |---|---|
-| `VITE_API_URL` | Backend bas-URL, default `/api/v1` (nginx-proxy) |
+| `VITE_API_URL` | Backend bas-URL, default `/api/v1`; fast same-origin i produktionsimaget |
 | `VITE_GOOGLE_AUTH_ENABLED` | Sätt till `true` för att visa Google-knappen i login-formuläret |
 
 ---
@@ -209,14 +229,14 @@ Alla skyddade endpoints kräver en aktiv session (cookie).
 | Lager | Teknologi |
 |---|---|
 | Frontend | React 18, Vite 5, Redux Toolkit, TailwindCSS, shadcn/ui, date-fns |
-| Backend | Node.js 22, Express 4, TypeScript 5 |
-| ORM | Prisma 5 |
+| Backend | Node.js 26, Express 4, TypeScript 5 |
+| ORM | Prisma 7 |
 | Databas | PostgreSQL 17 |
 | Auth | Passport.js (passport-local + optionell passport-google-oauth20) |
 | Session | express-session + connect-pg-simple (PostgreSQL) |
 | Realtid | SSE (Server-Sent Events) |
 | Monorepo | pnpm workspaces |
-| Container | Docker + nginx |
+| Container | Multi-stage Node-image, Express serverar frontend, extern TLS-proxy |
 
 ---
 
@@ -224,6 +244,7 @@ Alla skyddade endpoints kräver en aktiv session (cookie).
 
 ```
 ghcarpool/
+├── Dockerfile                 # Samlat app-image, bygger frontend + backend
 ├── docker-compose.yml
 ├── .env.example               # Mall för produktion/compose
 ├── .env.dev                   # Färdig konfiguration för lokal dev
@@ -231,8 +252,7 @@ ghcarpool/
 ├── pnpm-workspace.yaml
 ├── packages/
 │   ├── backend/
-│   │   ├── Dockerfile
-│   │   ├── docker-entrypoint.sh   # Kör migrate deploy + startar server
+│   │   ├── docker-entrypoint.sh   # Opt-in migrate deploy + exec server/kommando
 │   │   ├── prisma/
 │   │   │   └── schema.prisma
 │   │   └── src/
@@ -256,8 +276,6 @@ ghcarpool/
 │   │           ├── seed.ts        # Seed-data
 │   │           └── set-password.ts # Sätt lösenord på befintlig användare
 │   └── frontend/
-│       ├── Dockerfile
-│       ├── nginx.conf
 │       └── src/
 │           ├── api/               # REST-klient (client.ts, bookings.ts …)
 │           ├── db/                # SSE-hooks (use-listen-to-*.ts)

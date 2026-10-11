@@ -6,5 +6,12 @@
 !**/.env.example
 **/*.log
 **/coverage
+**/src/generated
+**/certs
+**/*.pem
+**/*.key
+.hermes
+.agents
+scripts
 .DS_Store
 pgdata

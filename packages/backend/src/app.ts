@@ -11,6 +11,7 @@ import adminRouter from './routes/admin';
 import errorLogsRouter from './routes/error-logs';
 import expensesRouter from './routes/expenses';
 import carInfoRouter from './routes/car-info';
+import { frontendMiddleware } from './middleware/frontend';
 
 const app = express();
 
@@ -41,6 +42,10 @@ app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/error-logs', errorLogsRouter);
 app.use('/api/v1/expenses', expensesRouter);
 app.use('/api/v1/car-info', carInfoRouter);
+
+if (process.env.NODE_ENV === 'production') {
+  app.use(frontendMiddleware());
+}
 
 // 404 catch-all
 app.use((_req, res) => {

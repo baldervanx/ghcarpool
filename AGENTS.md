@@ -12,13 +12,17 @@ statistik för en grupp användare.
 
 **Stack:**
 - Monorepo med pnpm workspaces (`packages/backend`, `packages/frontend`)
-- Backend: Node 22 + Express + TypeScript + Prisma + PostgreSQL
+- Backend: Node 26 i produktion (lokal Node 24 stöds) + Express + TypeScript + Prisma 7 + PostgreSQL
 - Frontend: React 18 + Vite + Redux Toolkit + TailwindCSS + shadcn/ui
 - Auth: Passport.js session-baserad (passport-local primär, Google OAuth optionell)
 - Testning: Jest + Supertest (backend), Vitest + MSW (frontend)
-- Container: podman (alias som docker via DOCKER_HOST=ssh://podman-machine)
+- Produktion: två Compose-servicar, `app` (Express + byggd frontend) och `db`
+- TLS/reverse proxy och Authelia: externt infra-repository, inga configs här
+- Container: Docker/Podman; kontrollera aktiv context/anslutning före kommandon.
+  Deploya/starta aldrig om delade remote-servrar utan explicit uppdrag.
 
-Firebase är **helt borttaget** — finns inte i kod, deps eller konfiguration.
+Firebase används inte vid normal drift. Engångsimport från äldre data finns i
+`packages/backend/scripts/migrate-from-firestore.ts`.
 
 ---
 
@@ -30,7 +34,8 @@ ghcarpool/
 │   ├── backend/
 │   │   ├── prisma/
 │   │   │   ├── schema.prisma        # Datamodell
-│   │   │   └── migrations/          # Körs automatiskt av entrypoint
+│   │   │   └── migrations/          # Kontrollerad deploy-åtgärd; opt-in vid startup
+│   │   ├── docker-entrypoint.sh     # RUN_MIGRATIONS=false som default, exec kommando
 │   │   └── src/
 │   │       ├── app.ts               # Express-app, middleware-ordning
 │   │       ├── server.ts            # HTTP-server, lyssnar på PORT
@@ -41,7 +46,8 @@ ghcarpool/
 │   │       │   ├── serializers.ts   # Hjälpfunktioner för JSON-svar
 │   │       │   └── sse.ts           # SSE-hjälpfunktioner
 │   │       ├── middleware/
-│   │       │   └── auth.ts          # requireAuth, requireAdmin
+│   │       │   ├── auth.ts          # requireAuth, requireAdmin
+│   │       │   └── frontend.ts      # Statisk frontend + säker HTML SPA-fallback
 │   │       ├── routes/
 │   │       │   ├── auth.ts          # POST /login, POST /logout, GET /me
 │   │       │   ├── general.ts       # GET /users, /cars, /destinations, /settings
@@ -52,9 +58,6 @@ ghcarpool/
 │   │           ├── seed.ts          # Testdata inkl. passwordHash (dev123)
 │   │           └── set-password.ts  # CLI: sätt lösenord på befintlig user
 │   └── frontend/
-│       ├── Dockerfile               # node:26-alpine builder + nginx:1.27-alpine
-│       ├── nginx.conf               # HTTP på 80, include https.conf
-│       ├── docker-nginx-setup.sh    # Entrypoint: aktiverar HTTPS om cert finns
 │       └── src/
 │           ├── api/client.ts        # fetch-wrapper, credentials:'include', ApiError
 │           ├── store.ts             # Redux store, fetchAuthState via GET /auth/me
@@ -67,9 +70,9 @@ ghcarpool/
 │               ├── book-trip.tsx    # Skapa/redigera bokning
 │               ├── booking-overview.tsx
 │               ├── register-trip.tsx
-│               ├── TripLog.jsx
-│               └── admin-trips.tsx
-├── docker-compose.yml
+│               └── TripLog.jsx
+├── Dockerfile                       # Multi-stage Node 26 Alpine, USER node
+├── docker-compose.yml               # app + db; ingen nginx eller publik DB-port
 ├── .env.example                     # Mall — kopiera till .env
 ├── .env.dev                         # Färdig backend-config för lokal dev
 └── pnpm-workspace.yaml              # bcrypt i allowBuilds + onlyBuiltDependencies
@@ -101,21 +104,32 @@ POST /api/v1/auth/logout
 
 ## API-prefix
 
-Alla API-routes har prefixet `/api/v1/`. Frontend-bundeln byggs med
-`VITE_API_URL=/api/v1` (inbakat i JS vid Docker-build via `--build-arg`).
-Nginx proxar `/api/` → `http://backend:3001`.
+Alla API-routes har prefixet `/api/v1/`. Produktionsbundeln byggs med fast
+`VITE_API_URL=/api/v1`: same-origin frontend/API. Express serverar frontendens
+`dist` efter API-routes och före JSON-404. SPA-fallback gäller bara GET/HEAD
+med HTML Accept; `/api`, `/health`, dotfiles och saknade assets/filnamn undantas.
+Saknad frontend-build stoppar produktionsstartup. Vite-proxyn används fortsatt i dev.
 
 ---
 
 ## Databas — Prisma
 
 Modeller: `User`, `Session`, `Car`, `Destination`, `Settings`,
-`DateCarBooking`, `Booking`, `BookingUser`, `Trip`, `TripUser`
+`DateCarBooking`, `Recurrence`, `Booking`, `BookingUser`, `Trip`, `TripUser`
 
 Viktiga detaljer:
 - `User.passwordHash String?` — null för Google-only-användare
-- `binaryTargets = ["native", "linux-musl-openssl-3.0.x"]` — krävs för Alpine
-- Migrationer körs automatiskt av backend-entrypoint vid containerstart
+- `Booking.recurrenceId` är en FK till `Recurrence` med beständig `isMultiDay`,
+  datumintervall och veckodagar (måndag 0). Legacy `null`-typ måste fastställas
+  explicit innan loggning; känd typ är oföränderlig. Loggad bokningshistorik
+  bevaras vid serieändringar och är skrivskyddad.
+- Prisma 7 använder `prisma-client` till `src/generated/prisma`, CJS och PG-adapter.
+  Klienten genereras av backendens prebuild; genererad källkod ska inte kopieras
+  från värddatorn till Docker-build.
+- Migrationer körs separat med `docker compose run --rm --no-deps app
+  ./node_modules/.bin/prisma migrate deploy` när DB är healthy.
+- `RUN_MIGRATIONS=true` opt-in kör migrationer före start; fel stoppar processen.
+  Default `false` ändrar aldrig schema vid omstart. Inga automatiska seed/reset.
 - Ny migration: `cd packages/backend && pnpm prisma migrate dev --name <namn>`
 
 ---
@@ -128,13 +142,11 @@ Viktiga detaljer:
 | `POSTGRES_USER` | `ghcarpool` | DB-användare |
 | `POSTGRES_PASSWORD` | — | **Obligatorisk** |
 | `POSTGRES_DB` | `ghcarpool` | DB-namn |
-| `POSTGRES_EXPOSE_PORT` | *(tom)* | Sätt `5432` för att exponera DB mot värddatorn |
 | `SESSION_SECRET` | — | **Obligatorisk**, minst 32 tecken |
-| `FRONTEND_URL` | `http://localhost` | CORS-origin + OAuth-redirect-bas |
-| `APP_PORT` | `80` | HTTP-port på värddatorn |
-| `HTTPS_PORT` | *(tom)* | Sätt `443` + lägg cert i `CERTS_DIR` |
-| `CERTS_DIR` | *(tom)* | Katalog med `cert.pem` + `key.pem` |
+| `FRONTEND_URL` | `http://localhost:3001` | CORS-origin + OAuth-redirect-bas |
+| `APP_PORT` | `3001` | HTTP-port på värddatorn; intern app-port alltid `3001` |
 | `COOKIE_SECURE` | `false` | Sätt `true` om HTTPS används |
+| `RUN_MIGRATIONS` | `false` | Kontrollerad opt-in till startup-migrationer |
 | `GOOGLE_CLIENT_ID` | *(tom)* | Aktiverar Google OAuth om satt |
 | `GOOGLE_CLIENT_SECRET` | *(tom)* | — |
 | `VITE_GOOGLE_AUTH_ENABLED` | `false` | Visar Google-knapp i Login.tsx |
@@ -172,7 +184,7 @@ pnpm test         # Vitest
 cd packages/backend && node dist/scripts/seed.js
 
 # Mot körande Docker-stack:
-docker exec ghcarpool_backend_1 node packages/backend/dist/scripts/seed.js
+docker compose exec app node dist/scripts/seed.js
 ```
 Alla seed-användare får lösenordet `dev123`.
 
@@ -182,34 +194,25 @@ Alla seed-användare får lösenordet `dev123`.
 cd packages/backend && node dist/scripts/set-password.js user@example.com nyttlösenord
 
 # I container:
-docker exec ghcarpool_backend_1 \
-  node packages/backend/dist/scripts/set-password.js user@example.com nyttlösenord
+docker compose exec app node dist/scripts/set-password.js user@example.com nyttlösenord
 ```
 
 ### Docker / Podman
 ```bash
-export DOCKER_HOST=ssh://podman-machine   # Alltid när docker-kommandon körs
-
-# Bygg och starta om hela stacken:
-docker build -f packages/backend/Dockerfile  -t ghcarpool_backend  .
-docker build -f packages/frontend/Dockerfile -t ghcarpool_frontend \
-  --build-arg VITE_API_URL=/api/v1 .
-
-# Starta om en enskild container:
-docker restart ghcarpool_backend_1
-
-# OBS: Efter backend-restart måste frontend också startas om
-# (nginx cachar DNS-uppslag vid start — ny container-IP ger 502)
-docker restart ghcarpool_frontend_1
-
-# Loggar:
-docker logs ghcarpool_backend_1 --tail 50
-docker logs ghcarpool_frontend_1 --tail 20
-
-# Exec in i container:
-docker exec -it ghcarpool_backend_1 sh
-docker exec ghcarpool_db_1 psql -U ghcarpool -d ghcarpool
+# Kontrollera att motorn/context är rätt, inte en delad remote-server:
+docker context ls
+docker compose build app
+docker compose up -d db
+docker compose ps db       # Vänta på healthy
+docker compose run --rm --no-deps app ./node_modules/.bin/prisma migrate deploy
+docker compose up -d app   # Endast i godkänd deploy-miljö
+docker compose logs --tail 50 app
+docker compose exec app sh
 ```
+
+Backendens låsta verktygsberoenden behålls i imaget för Prisma CLI.
+Existerande operatörsskript i `scripts/` ska bevaras men är inte container-entrypoint.
+Välj korrekt appservice/arbetskatalog när sådana skript används.
 
 ---
 
@@ -223,10 +226,8 @@ docker exec ghcarpool_db_1 psql -U ghcarpool -d ghcarpool
   Backend-tester kräver `--forceExit`.
 
 **Docker/Podman:**
-- Containrar körs på remote via `DOCKER_HOST=ssh://podman-machine`.
-  `docker compose -f` fungerar **inte** — använd `docker build` + `docker restart`.
-- nginx cachar DNS vid uppstart. Om backend-containern byts ut (ny IP) ger nginx 502.
-  Fix: `docker restart ghcarpool_frontend_1`.
+- Container tooling kan peka på en remote/annan VM. Kontrollera anslutningen;
+  använd inte gamla backend/frontend-build- eller restart-kommandon.
 - `pgdata`-volymen behåller lösenordet från första körning. `POSTGRES_PASSWORD` i env
   påverkar inte en befintlig volym. Fix: `ALTER USER ghcarpool PASSWORD '...'` via psql.
 
@@ -234,17 +235,9 @@ docker exec ghcarpool_db_1 psql -U ghcarpool -d ghcarpool
 - `COOKIE_SECURE=true` kräver HTTPS. Sätt det aldrig vid HTTP — sessionen bryts.
 - `SameSite=Lax` + `credentials: 'include'` i fetch — krävs för att cookien ska skickas.
 
-**HTTPS (optionellt):**
-```bash
-mkdir -p certs
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout certs/key.pem -out certs/cert.pem -subj "/CN=localhost"
-# Sätt sedan i .env: HTTPS_PORT=443, CERTS_DIR=./certs, COOKIE_SECURE=true
-```
-
 **Prisma på Alpine:**
-- `binaryTargets` i schema.prisma måste inkludera `linux-musl-openssl-3.0.x`.
-- Alpine OpenSSL: 3.5.x — matchar `openssl-3.0.x`-target.
+- Installera OpenSSL i build- och runtime-stage för Prisma CLI.
+- Generera Prisma 7-klienten före tsc; ändra inte schemat för gamla engine-targets.
 
 ---
 
@@ -257,6 +250,8 @@ cd packages/backend && pnpm test
 - Tester i `src/__tests__/` — kräver lokal PostgreSQL (från `DATABASE_URL` i `.env`)
 - `setupFiles: ['dotenv/config']` laddar `.env` automatiskt
 - `--forceExit` krävs pga. öppna DB-connections
+- App/static-tester kan köras utan DB:
+  `pnpm exec jest --config jest.config.ts --runInBand src/__tests__/frontend.test.ts src/__tests__/app.test.ts`.
 
 ### Frontend (Vitest + MSW)
 ```bash
@@ -268,7 +263,7 @@ cd packages/frontend && pnpm test
 ### TypeScript
 ```bash
 cd packages/backend  && pnpm exec tsc --noEmit
-cd packages/frontend && pnpm exec tsc --noEmit
+cd packages/frontend && pnpm exec tsc --project tsconfig.app.json --noEmit --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler --jsx react-jsx
 ```
 tsc är auktoritativ — ignorera LSP-fel tills tsc bekräftar.
 

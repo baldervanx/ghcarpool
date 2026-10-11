@@ -18,6 +18,7 @@ import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { addDays, format, subDays } from 'date-fns';
 import bcrypt from 'bcrypt';
+import { restoreLegacyRecurrence, recurrenceWeekday } from '../lib/recurrence';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -257,10 +258,23 @@ async function main() {
     destinationId: string;
     comment: string;
     recurrenceId?: string;
+    isMultiDay?: boolean;
+    recurringStartDate?: string;
+    recurringEndDate?: string;
+    recurringDays?: number[];
     loggedTrip?: LoggedTripSeed;
   };
 
   async function createBookingFixture(fixture: BookingFixture) {
+    const { recurrenceId, isMultiDay, recurringStartDate, recurringEndDate, recurringDays } = fixture;
+    if (recurrenceId) {
+      if (isMultiDay === undefined || !recurringStartDate || !recurringEndDate || !recurringDays) {
+        throw new Error('Recurring seed fixture requires complete series metadata');
+      }
+      await prisma.$transaction(tx => restoreLegacyRecurrence(tx, recurrenceId, {
+        isMultiDay, recurringStartDate, recurringEndDate, recurringDays,
+      }));
+    }
     const parent = await prisma.dateCarBooking.upsert({
       where: { date_carId: { date: fixture.date, carId: fixture.carId } },
       create: { date: fixture.date, carId: fixture.carId },
@@ -408,6 +422,10 @@ async function main() {
       userIds: [annaId, bjornId],
       comment: 'Seed multi-day som slutar idag',
       recurrenceId: multiDayRecurrenceId,
+      isMultiDay: true,
+      recurringStartDate: dateStr(subDays(today, 2)),
+      recurringEndDate: dateStr(today),
+      recurringDays: [],
     });
   }
 
@@ -424,6 +442,10 @@ async function main() {
       userIds: [ceciliaId],
       comment: 'Seed repeating - förekomst',
       recurrenceId: repeatingRecurrenceId,
+      isMultiDay: false,
+      recurringStartDate: dateStr(subDays(today, 6)),
+      recurringEndDate: dateStr(addDays(today, 3)),
+      recurringDays: [...new Set([6, 3, 0, -3].map(offset => recurrenceWeekday(dateStr(subDays(today, offset)))))].sort(),
       ...(daysAgo === 6
         ? { loggedTrip: { carId: volvoId, odo: 87445, distance: 25, byUserId: ceciliaId, userIds: [ceciliaId] } }
         : daysAgo === 3

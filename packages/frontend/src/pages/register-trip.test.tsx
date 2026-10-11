@@ -4,10 +4,11 @@
  *   tripsApi.update → PUT /trips/:id (redigeringsläge)
  */
 import React from 'react';
+import { addDays, format } from 'date-fns';
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks';
 import { TEST_TRIPS, TEST_CARS } from '@/test/handlers';
@@ -18,6 +19,7 @@ import store, {
   setSelectedUsers,
   setUsers,
   setTrips,
+  setBookings,
   fetchSettings,
 } from '@/store';
 import { RegisterTrip } from './register-trip';
@@ -41,6 +43,7 @@ function seedStore(opts: { editMode?: boolean } = {}) {
   store.dispatch(setSelectedCar('c1'));
   store.dispatch(setSelectedUsers(['u1']));
   store.dispatch(setTrips(TEST_TRIPS as any));
+  store.dispatch(setBookings([]));
 }
 
 // Initialisera settings en gång för alla tester
@@ -164,5 +167,97 @@ describe('RegisterTrip', () => {
     await waitFor(() => expect(navMock).toHaveBeenCalledWith('/trip-log'));
     expect(putCalls.length).toBe(1);
     expect((putCalls[0] as any).id).toBe('t1'); // senaste trip = t1
+  });
+
+  it('warns about an unlogged preceding booking when logging an explicit booking', () => {
+    const date = format(new Date(), 'yyyy-MM-dd');
+    const previous = {
+      id: 'previous', parent_id: 'dcb', users: [{ id: 'u2' }], byUser: { id: 'u2' },
+      startTime: 0, endTime: 0, distance: 25, destination: '',
+    };
+    const current = {
+      ...previous, id: 'current', users: [{ id: 'u1' }], startTime: 600, endTime: 660,
+      date, car: { id: 'c1' },
+    };
+    store.dispatch(setBookings([{ id: 'dcb', date, car: { id: 'c1' }, bookings: [previous, current] }]));
+    renderPage({ booking: current });
+    expect(screen.getByText(/Föregående bokning på Volvo XC60 har inte loggats/)).toBeInTheDocument();
+  });
+
+  it('auto-selects the oldest unlogged booking, prefills its users and warns before logging for others', async () => {
+    store.dispatch(setUsers([
+      { id: 'u1', name: 'Me', email: 'u1@test.com', isAdmin: false, shortName: 'U1' },
+      { id: 'u2', name: 'Other', email: 'u2@test.com', isAdmin: false, shortName: 'U2' },
+    ]));
+    const date = format(addDays(new Date(), -2), 'yyyy-MM-dd');
+    const old = {
+      id: 'old', users: [{ id: 'u2' }], byUser: { id: 'u2' }, startTime: 480, endTime: 540,
+      distance: 25, destination: '',
+    };
+    store.dispatch(setBookings([
+      { id: 'new-parent', date: format(addDays(new Date(), -1), 'yyyy-MM-dd'), car: { id: 'c1' }, bookings: [{ ...old, id: 'new' }] },
+      { id: 'old-parent', date, car: { id: 'c1' }, bookings: [old] },
+    ]));
+    const calls: unknown[] = [];
+    server.use(http.post('/api/v1/trips', async ({ request }) => {
+      calls.push(await request.json());
+      return HttpResponse.json({ id: 'trip' }, { status: 201 });
+    }));
+    renderPage();
+    expect(screen.getByText('Du loggar någon annans bokning: U2.')).toBeInTheDocument();
+    expect(screen.getByText(/Observera: Du loggar en bokning från/)).toBeInTheDocument();
+    expect(store.getState().user.selectedUsers).toEqual(['u2']);
+    fireEvent.change(screen.getByLabelText('Sista siffror'), { target: { value: '7225' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Spara resa' }));
+    expect(await screen.findByText('Logga någon annans bokning')).toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }));
+    expect(calls).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Spara resa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'OK' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({ bookingId: 'old', parentId: 'old-parent', userIds: ['u2'] });
+  });
+
+  it('warns when no unlogged booking exists', () => {
+    renderPage();
+    expect(screen.getByText(/Ingen ologgad bokning hittades/)).toBeInTheDocument();
+  });
+
+  it('prevents creating a trip when a no-log vehicle remains selected', () => {
+    store.dispatch(setCarState({ cars: [{ ...TEST_CARS[0], hasLog: false }], selectedCar: 'c1' }));
+    renderPage();
+    expect(screen.getByText(/Valt fordon saknar körjournal/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Sista siffror'), { target: { value: '7225' } });
+    expect(screen.getByRole('button', { name: 'Spara resa' })).toBeDisabled();
+  });
+
+  it('restores an explicitly selected booking after switching away and back to its car', () => {
+    const booking = {
+      id: 'explicit', parent_id: 'parent', car: { id: 'c1' }, users: [{ id: 'u1' }],
+      byUser: { id: 'u1' }, startTime: 480, endTime: 540, distance: 25, destination: '',
+    };
+    renderPage({ booking });
+    expect(screen.getByRole('checkbox', { name: /För bokning/ })).toBeChecked();
+    act(() => { store.dispatch(setSelectedCar('c2')); });
+    expect(screen.queryByRole('checkbox', { name: /För bokning/ })).not.toBeInTheDocument();
+    act(() => { store.dispatch(setSelectedCar('c1')); });
+    expect(screen.getByRole('checkbox', { name: /För bokning/ })).toBeChecked();
+    expect(store.getState().user.selectedUsers).toEqual(['u1']);
+  });
+
+  it('does not allow a stale explicit link to create another trip after an SSE logged update', () => {
+    const date = format(new Date(), 'yyyy-MM-dd');
+    const booking = {
+      id: 'stale', parent_id: 'parent', car: { id: 'c1' }, date, users: [{ id: 'u1' }],
+      byUser: { id: 'u1' }, startTime: 480, endTime: 540, distance: 25, destination: '',
+    };
+    renderPage({ booking });
+    act(() => { store.dispatch(setBookings([{
+      id: 'parent', date, car: { id: 'c1' }, bookings: [{ ...booking, logged: 'trip' }],
+    }])); });
+    fireEvent.change(screen.getByLabelText('Sista siffror'), { target: { value: '7225' } });
+    expect(screen.getByRole('button', { name: 'Spara resa' })).toBeDisabled();
+    expect(screen.getByText(/Bokningen har redan loggats/)).toBeInTheDocument();
   });
 });

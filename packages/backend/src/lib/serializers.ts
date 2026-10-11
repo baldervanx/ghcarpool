@@ -12,6 +12,7 @@ import type {
   DateCarBooking as PrismaDateCarBooking,
   Booking as PrismaBooking,
   BookingUser,
+  Recurrence,
   Trip as PrismaTrip,
   TripUser,
   ErrorLog,
@@ -68,7 +69,7 @@ export function serializeSettings(s: PrismaSettings) {
 
 // ---- Bookings ----
 
-type BookingWithUsers = PrismaBooking & { users: BookingUser[] };
+type BookingWithUsers = PrismaBooking & { users: BookingUser[]; recurrence: Recurrence | null };
 type DateCarBookingFull = PrismaDateCarBooking & {
   bookings: BookingWithUsers[];
   updatedAt: Date;
@@ -84,6 +85,14 @@ function serializeBookingEntry(b: BookingWithUsers, parentId: string) {
     destination: b.destinationId ?? '',
     comment: b.comment ?? undefined,
     recurrenceId: b.recurrenceId ?? undefined,
+    ...(b.recurrenceId !== null ? { isMultiDay: b.recurrence!.isMultiDay } : {}),
+    recurrence: b.recurrence ? {
+      id: b.recurrence.id,
+      isMultiDay: b.recurrence.isMultiDay,
+      recurringStartDate: b.recurrence.recurringStartDate,
+      recurringEndDate: b.recurrence.recurringEndDate,
+      recurringDays: b.recurrence.recurringDays,
+    } : null,
     logged: b.logged ?? undefined,
     byUser: { id: b.byUserId },
     users: b.users.map(bu => ({ id: bu.userId })),

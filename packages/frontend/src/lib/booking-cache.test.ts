@@ -1,10 +1,28 @@
 /** Tests for the booking cache lock grace period. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isMonthLocked } from './booking-cache';
+import { bookingCacheRead, bookingCacheWrite, isMonthLocked } from './booking-cache';
 
 describe('isMonthLocked', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+  });
+
+  describe('booking cache schema', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('invalidates pre-recurrence-metadata caches, including locked historical months', () => {
+      localStorage.setItem('bookings:month:2026-01', JSON.stringify({
+        bookings: [], cachedAt: '2026-01-01T00:00:00Z',
+      }));
+      expect(bookingCacheRead('2026-01')).toBeNull();
+    });
+
+    it('roundtrips the current metadata-aware cache format', () => {
+      bookingCacheWrite('2026-10', [], '2026-10-11T00:00:00Z');
+      expect(bookingCacheRead('2026-10')).toEqual({
+        version: 2, bookings: [], cachedAt: '2026-10-11T00:00:00Z',
+      });
+    });
   });
 
   afterEach(() => {
@@ -29,4 +47,3 @@ describe('isMonthLocked', () => {
     expect(isMonthLocked('2026-09')).toBe(true);
   });
 });
-

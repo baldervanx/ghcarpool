@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Button } from '@/components/ui/button';
@@ -9,25 +9,28 @@ import { Card } from '@/components/ui/card';
 import { CarSelector } from '@/components/CarSelector';
 import UserSelector from '@/components/UserSelector';
 import { setSelectedUsers, setSelectedCar } from '@/store';
-import { addDays, format } from 'date-fns';
+import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import type { AppStore } from '@/store';
+import type { AppStore, Booking } from '@/store';
 import { isOnline } from '@/lib/utils';
 import ConfirmationDialog from "@/components/confirmation-dialog";
 import { tripsApi } from '@/api/trips';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
+import { ApiError } from '@/api/client';
+import { getLogBookings, getRecentLogBookings, getPrecedingUnloggedBooking } from '@/lib/booking-log';
+import { useBookingClock } from '@/lib/use-booking-clock';
 
 const MAX_DIST = 9999;
 const LONG_DIST: number = 500;
-let COST_PER_KM: number = 1;
-
+type ConnectedBooking = Booking & { car: { id: string }; date?: string };
+type StoredTrip = AppStore['trip']['trips'][number];
 
 export function RegisterTrip() {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
-  const { selectedCar } = useSelector((state: AppStore) => state.car);
+  const { selectedCar, cars } = useSelector((state: AppStore) => state.car);
   const { user } = useSelector((state: AppStore) => state.auth);
   const { selectedUsers, users } = useSelector((state: AppStore) => state.user);
   const { data } = useSelector((state: AppStore) => state.settings);
@@ -40,14 +43,38 @@ export function RegisterTrip() {
   const [editOdometer, setEditOdometer] = useState('');
   const [comment, setComment] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
-  const [lastTrip, setLastTrip] = useState(null);
-  const [previousTrip, setPreviousTrip] = useState(null);
+  const [lastTrip, setLastTrip] = useState<StoredTrip | null>(null);
+  const [previousTrip, setPreviousTrip] = useState<StoredTrip | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConnectedBooking, setIsConnectedBooking] = useState(false);
-  const [connectedBooking, setConnectedBooking] = useState(null);
-  const [dialogState, setDialogState] = useState({
+  const [connectedBooking, setConnectedBooking] = useState<ConnectedBooking | null>(null);
+  const now = useBookingClock();
+  const logBookings = useMemo(() => getLogBookings(bookings, cars), [bookings, cars]);
+  const selectedCarInfo = cars.find(car => car.id === selectedCar);
+  const canLogCar = selectedCarInfo !== undefined && selectedCarInfo.hasLog !== false;
+  const explicitBooking: ConnectedBooking | undefined = location.state?.booking;
+  const latestExplicitBooking = bookings.flatMap(container => container.bookings)
+    .find(booking => booking.id === explicitBooking?.id);
+  const selectedBookingLogged = explicitBooking?.car.id === selectedCar &&
+    Boolean(explicitBooking.logged || latestExplicitBooking?.logged);
+  const unresolvedRecurrence = connectedBooking?.recurrence?.isMultiDay === null ||
+    explicitBooking?.car.id === selectedCar &&
+      (latestExplicitBooking?.recurrence ?? explicitBooking.recurrence)?.isMultiDay === null;
+  const costPerKm = typeof data?.cost_per_km === 'number' ? data.cost_per_km : 1;
+  const precedingBooking = connectedBooking?.date
+    ? getPrecedingUnloggedBooking(logBookings, { ...connectedBooking, date: connectedBooking.date }, now)
+    : undefined;
+  const bookingUserNames = connectedBooking?.users.map(member =>
+    users.find(candidate => candidate.id === member.id)?.shortName ?? member.id,
+  ).join(', ');
+  const loggingForOthers = isConnectedBooking && connectedBooking &&
+    !connectedBooking.users.some(member => member.id === user?.user_id);
+  const [dialogState, setDialogState] = useState<{
+    isOpen: boolean; title: string; description: string;
+    onConfirm: (() => void) | null; onCancel: (() => void) | null;
+  }>({
     isOpen: false,
     title: '',
     description: '',
@@ -56,10 +83,8 @@ export function RegisterTrip() {
   });
 
   useEffect(() => {
-    COST_PER_KM = data.cost_per_km;
-    // TODO: This should just be set once when user logs on.
-    dispatch(setSelectedUsers([user.user_id]));
-  }, [dispatch, users.length, user.user_id]);
+    if (user && !location.state?.booking) dispatch(setSelectedUsers([user.user_id]));
+  }, [dispatch, user?.user_id, location.state]);
 
   useEffect(() => {
     const handleOnlineStatus = () => {
@@ -81,47 +106,46 @@ export function RegisterTrip() {
   }, []);
 
   useEffect(() => {
-    if (location.state && location.state.booking) {
-       const booking = location.state.booking;
-       setIsConnectedBooking(true);
-       setConnectedBooking(booking);
+    if (location.state?.booking) {
+       const booking: ConnectedBooking = location.state.booking;
        dispatch(setSelectedCar(booking.car.id));
-       dispatch(setSelectedUsers(booking.users.map(u => u.id)));
     }
-  }, [location.state]);
+  }, [location.state, dispatch]);
 
   const clearConnectedBooking = () => {
     setIsConnectedBooking(false);
     setConnectedBooking(null);
   };
 
-  const setConnectedFromRecentBooking = (selectedCarId: string) => {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const twoWeeksAgo = format(addDays(new Date(), -14), 'yyyy-MM-dd');
-    const recentBookings = bookings
-      .filter(dcb => dcb.car.id === selectedCarId && dcb.date >= twoWeeksAgo && dcb.date <= today)
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    for (const dateBooking of recentBookings) {
-      const chosen = dateBooking.bookings
-        .filter(booking => !booking.logged && !(booking.recurrenceId && booking.endTime === 1440))
-        .sort((a, b) => (a.endTime ?? 0) - (b.endTime ?? 0))[0];
-      if (chosen) {
-        setIsConnectedBooking(true);
-        setConnectedBooking({ ...chosen, car: { id: selectedCarId }, date: dateBooking.date, parent_id: dateBooking.id });
-        return;
-      }
-    }
-    clearConnectedBooking();
-  };
-
-  // If user navigates directly, auto-select the oldest unlogged booking in the loaded 14-day history.
   useEffect(() => {
-    if (location.state?.booking) return; // do not override explicit navigation
-    if (!selectedCar) return clearConnectedBooking();
+    if (!canLogCar) return clearConnectedBooking();
+    const explicit: ConnectedBooking | undefined = location.state?.booking;
+    const chosen = explicit?.car.id === selectedCar
+      ? logBookings.find(booking => booking.id === explicit.id) ?? explicit
+      : getRecentLogBookings(logBookings, now).find(booking =>
+        booking.car.id === selectedCar && !booking.logged &&
+        (booking.date < format(now, 'yyyy-MM-dd') ||
+          booking.startTime <= now.getHours() * 60 + now.getMinutes()),
+      );
+    if (chosen?.logged) {
+      clearConnectedBooking();
+      setErrorMessage('Bokningen har redan loggats. Kontrollera körjournalen innan du registrerar en ny resa.');
+      return;
+    }
+    if (chosen) {
+      setConnectedBooking(previous => previous === chosen ? previous : chosen);
+      setIsConnectedBooking(previous => connectedBooking?.id === chosen.id ? previous : true);
+    } else {
+      clearConnectedBooking();
+    }
+  }, [selectedCar, canLogCar, logBookings, location.state, now, connectedBooking?.id]);
 
-    setConnectedFromRecentBooking(selectedCar);
-  }, [selectedCar, bookings, location.state]);
+  useEffect(() => {
+    if (connectedBooking && !isEditMode) {
+      dispatch(setSelectedUsers(connectedBooking.users.map(member => member.id)));
+      setComment(connectedBooking.destination || '');
+    }
+  }, [connectedBooking, dispatch, isEditMode]);
 
   useEffect(() => {
     setErrorMessage('');
@@ -176,7 +200,7 @@ export function RegisterTrip() {
     let dist: number = parseInt(newOdo) - parseInt(lastOdometer);
     if (dist <= 0 || dist > MAX_DIST || isNaN(dist)) dist = 0;
     setTripDistance(dist);
-    setCost(dist !== 0 ? (dist * COST_PER_KM).toFixed(2) : '');
+    setCost(dist !== 0 ? (dist * costPerKm).toFixed(2) : '');
     setNewOdometer(newOdo);
   };
 
@@ -242,6 +266,18 @@ export function RegisterTrip() {
   };
 
   const handleSubmit = async () => {
+    if (unresolvedRecurrence) {
+      setErrorMessage('Bokningsseriens typ saknas. Välj återkommande eller flerdagars i bokningen innan resan loggas.');
+      return;
+    }
+    if (selectedBookingLogged) {
+      setErrorMessage('Bokningen har redan loggats.');
+      return;
+    }
+    if (!canLogCar) {
+      setErrorMessage('Valt fordon saknar körjournal.');
+      return;
+    }
     if (!selectedCar || selectedUsers.length === 0 || !newOdometer) {
       setErrorMessage('Vänligen fyll i alla fält');
       return;
@@ -254,7 +290,12 @@ export function RegisterTrip() {
       return;
     }
 
-    if (!distanceSimilarToBooking()) {
+    if (!isEditMode && loggingForOthers && !await showConfirmDialog(
+      'Logga någon annans bokning',
+      `Du loggar en bokning för ${bookingUserNames}. Kontrollera att rätt användare och resa är valda.`,
+    )) return;
+
+    if (!isEditMode && !distanceSimilarToBooking()) {
       if (!await showConfirmDialog('Bekräfta sträcka',
           'Angiven sträcka skiljer sig från bokningens ' + connectedBooking.distance
           + ' är detta förväntat?'))
@@ -272,7 +313,6 @@ export function RegisterTrip() {
 
       if (isEditMode && lastTrip) {
         await tripsApi.update(lastTrip.id, {
-          carId: selectedCar,
           userIds: selectedUsers,
           odo: Number(newOdometer),
           distance: tripDistance,
@@ -295,7 +335,7 @@ export function RegisterTrip() {
       navigate('/trip-log');
     } catch (error) {
       console.error('Error saving trip:', error);
-      setErrorMessage('Ett fel uppstod när resan skulle sparas');
+      setErrorMessage(error instanceof ApiError ? error.message : 'Ett fel uppstod när resan skulle sparas');
     } finally {
       setIsProcessing(false);
     }
@@ -324,6 +364,32 @@ export function RegisterTrip() {
         {/* Behöver markera inmatad text som röd, eller helst inte tillåta textinmatning alls.
             Ser ut som att värdet accepteras. */}
         <UserSelector disabled={isProcessing} />
+
+        {unresolvedRecurrence && (
+            <Alert variant="destructive">
+              <AlertDescription>Bokningsseriens typ saknas. Välj återkommande eller flerdagars i bokningen innan resan loggas.</AlertDescription>
+            </Alert>
+        )}
+
+        {selectedCar && !canLogCar && (
+            <Alert variant="destructive">
+              <AlertDescription>Valt fordon saknar körjournal. Välj en bil med körjournal för att registrera en resa.</AlertDescription>
+            </Alert>
+        )}
+
+        {!isEditMode && precedingBooking && (
+            <Alert className="border-yellow-500">
+              <AlertTriangle size={16} />
+              <AlertDescription>Föregående bokning på {precedingBooking.car.name} har inte loggats. Logga resorna i rätt ordning.</AlertDescription>
+            </Alert>
+        )}
+
+        {!isEditMode && loggingForOthers && (
+            <Alert className="border-yellow-500">
+              <AlertTriangle size={16} />
+              <AlertDescription>Du loggar någon annans bokning: {bookingUserNames}.</AlertDescription>
+            </Alert>
+        )}
 
         {lastTrip && canEdit && (
             <div className="flex items-center space-x-2">
@@ -404,7 +470,7 @@ export function RegisterTrip() {
           />
         </div>
 
-        {connectedBooking && (
+        {!isEditMode && connectedBooking && (
             <div className="flex items-center space-x-2">
               <Checkbox
                   id="connected-booking"
@@ -422,14 +488,14 @@ export function RegisterTrip() {
             </div>
         )}
 
-        {selectedCar && !connectedBooking && (
+        {!isEditMode && canLogCar && !connectedBooking && (
             <Alert variant="default" className="border-yellow-500">
               <AlertTriangle size={16} />
               <AlertDescription>Ingen ologgad bokning hittades för vald bil. Kontrollera att du loggar rätt resa.</AlertDescription>
             </Alert>
         )}
 
-        {connectedBooking?.date && connectedBooking.date !== format(new Date(), 'yyyy-MM-dd') && (
+        {!isEditMode && isConnectedBooking && connectedBooking?.date && connectedBooking.date !== format(now, 'yyyy-MM-dd') && (
             <Alert variant="default" className="border-yellow-500">
               <AlertTriangle size={16} />
               <AlertDescription>Observera: Du loggar en bokning från {format(new Date(`${connectedBooking.date}T00:00:00`), 'EEE d MMM', { locale: sv })}. Kontrollera att detta är korrekt.</AlertDescription>
@@ -449,7 +515,7 @@ export function RegisterTrip() {
             className="w-full"
             onClick={handleSubmit}
             disabled={
-                isProcessing || !selectedCar || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0
+                isProcessing || !canLogCar || selectedBookingLogged || unresolvedRecurrence || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0
             }
         >
           {isProcessing && isOnline() ? 'Sparar ...' : (isEditMode ? 'Uppdatera resa' : 'Spara resa')}

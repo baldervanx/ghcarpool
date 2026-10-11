@@ -25,6 +25,10 @@ import { initializeApp, cert, deleteApp, getApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp, DocumentReference } from 'firebase-admin/firestore';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import {
+  restoreLegacyRecurrence, inferLegacyRecurrenceMetadata, isCalendarDate, isRecurringDays,
+  type RecurrenceMetadata,
+} from '../src/lib/recurrence';
 
 // ---------------------------------------------------------------------------
 // Init
@@ -128,10 +132,20 @@ interface FsBooking {
   distance?: number;
   destination?: unknown;   // DocumentReference eller sträng
   comment?: string;
-  recurrenceId?: string;
+  recurrenceId?: unknown;
   logged?: string;         // Trip.id
   byUser?: unknown;        // DocumentReference (userId)
   users?: unknown[];       // DocumentReference[] (userIds)
+}
+
+interface FsRecurrence {
+  id: string;
+  isMultiDay?: unknown;
+  recurringStartDate?: unknown;
+  recurringEndDate?: unknown;
+  recurringDays?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
 }
 
 interface FsDateCarBooking {
@@ -252,6 +266,66 @@ async function migrateSettings(rawDocs: (FsSettings & { id: string })[]): Promis
   return 1;
 }
 
+function recurrenceTimestamp(value: unknown, id: string): Date | undefined {
+  if (value === undefined) return undefined;
+  if (!(value instanceof Timestamp || value instanceof Date || typeof value === 'string' || typeof value === 'number')) {
+    throw new Error(`Recurrence '${id}' has an invalid source timestamp`);
+  }
+  const date = toDate(value);
+  if (!Number.isFinite(date.getTime())) throw new Error(`Recurrence '${id}' has an invalid source timestamp`);
+  return date;
+}
+
+async function migrateRecurrences(recurrences: FsRecurrence[], dcbs: FsDateCarBooking[]): Promise<number> {
+  const entriesById = new Map<string, { date: string; carId: string; startTime: number; endTime: number }[]>();
+  for (const parent of dcbs) {
+    for (const booking of Object.values(parent.bookings ?? {})) {
+      const id = refId(booking.recurrenceId);
+      if (!id) continue;
+      const entries = entriesById.get(id) ?? [];
+      entries.push({
+        date: parent.date, carId: refId(parent.car) ?? '',
+        startTime: booking.startTime, endTime: booking.endTime,
+      });
+      entriesById.set(id, entries);
+    }
+  }
+  const sources = new Map(recurrences.map(recurrence => [recurrence.id, recurrence]));
+  const ids = new Set([...sources.keys(), ...entriesById.keys()]);
+  for (const id of ids) {
+    const source = sources.get(id);
+    const inferred = inferLegacyRecurrenceMetadata(entriesById.get(id) ?? []);
+    const hasSourceRange = [source?.recurringStartDate, source?.recurringEndDate, source?.recurringDays]
+      .some(value => value !== undefined);
+    let range: Pick<RecurrenceMetadata, 'recurringStartDate' | 'recurringEndDate' | 'recurringDays'>;
+    if (hasSourceRange) {
+      if (!source || !isCalendarDate(source.recurringStartDate) || !isCalendarDate(source.recurringEndDate)
+        || source.recurringStartDate > source.recurringEndDate || !isRecurringDays(source.recurringDays)) {
+        throw new Error(`Recurrence '${id}' has invalid source range/day metadata`);
+      }
+      range = {
+        recurringStartDate: source.recurringStartDate, recurringEndDate: source.recurringEndDate,
+        recurringDays: [...source.recurringDays].sort(),
+      };
+    } else {
+      if (!inferred) throw new Error(`Recurrence '${id}' has no source range or booking dates`);
+      range = inferred;
+    }
+    const isMultiDay = typeof source?.isMultiDay === 'boolean' ? source.isMultiDay : inferred?.isMultiDay ?? null;
+    if (!hasSourceRange || typeof source?.isMultiDay !== 'boolean') {
+      console.warn(`[migrate] Recurrence ${id}: saknad metadata härleds från befintliga bokningar; serietyp=${isMultiDay ?? 'okänd'}`);
+    }
+    const metadata = {
+      isMultiDay,
+      ...range,
+      createdAt: recurrenceTimestamp(source?.createdAt, id),
+      updatedAt: recurrenceTimestamp(source?.updatedAt, id),
+    };
+    await prisma.$transaction(tx => restoreLegacyRecurrence(tx, id, metadata));
+  }
+  return ids.size;
+}
+
 async function migrateDateCarBookings(
   dcbs: FsDateCarBooking[],
   knownUserIds: Set<string>,
@@ -317,6 +391,13 @@ async function migrateDateCarBookings(
 
       // logged kan vara en DocumentReference (Trip.id)
       const logged = refId(booking.logged) ?? null;
+      const recurrenceId = refId(booking.recurrenceId) ?? null;
+      if (recurrenceId) {
+        const recurrence = await prisma.recurrence.findUniqueOrThrow({ where: { id: recurrenceId } });
+        if (recurrence.isMultiDay === null) {
+          console.warn(`[migrate] Bokning ${bookingId}: serietyp för ${recurrenceId} är okänd; automatisk loggning spärras`);
+        }
+      }
 
       await prisma.booking.upsert({
         where: { id: bookingId },
@@ -326,7 +407,7 @@ async function migrateDateCarBookings(
           distance: booking.distance ?? 0,
           destinationId,
           comment: booking.comment ?? null,
-          recurrenceId: booking.recurrenceId ?? null,
+          recurrenceId,
           logged,
         },
         create: {
@@ -337,7 +418,7 @@ async function migrateDateCarBookings(
           distance: booking.distance ?? 0,
           destinationId,
           comment: booking.comment ?? null,
-          recurrenceId: booking.recurrenceId ?? null,
+          recurrenceId,
           logged,
           byUserId,
         },
@@ -422,11 +503,12 @@ async function migrateTrips(
 async function main() {
   console.log('[migrate] Läser från Firestore...');
 
-  const [users, cars, destinations, settingsDocs, dcbs, trips] = await Promise.all([
+  const [users, cars, destinations, settingsDocs, recurrences, dcbs, trips] = await Promise.all([
     getAll<FsUser>('users'),
     getAll<FsCar>('cars'),
     getAll<FsDestination>('destinations'),
     getAll<FsSettings>('settings'),
+    getAll<FsRecurrence>('recurrence'),
     getAll<FsDateCarBooking>('date-car-bookings'),
     getAll<FsTrip>('trips'),
   ]);
@@ -434,7 +516,7 @@ async function main() {
   console.log(
     `[migrate] Hittade: ${users.length} users, ${cars.length} cars, ` +
       `${destinations.length} destinations, ${settingsDocs.length} settings, ` +
-      `${dcbs.length} date-car-bookings, ${trips.length} trips`,
+      `${recurrences.length} recurrences, ${dcbs.length} date-car-bookings, ${trips.length} trips`,
   );
 
   console.log('[migrate] Skriver till PostgreSQL...');
@@ -443,6 +525,7 @@ async function main() {
   const carCount = await migrateCars(cars);
   const destCount = await migrateDestinations(destinations);
   const settingsCount = await migrateSettings(settingsDocs);
+  const recurrenceCount = await migrateRecurrences(recurrences, dcbs);
 
   // Bygg upp Set:ar för FK-validering — använd bara faktiskt migrerade users
   const knownUserIds = migratedUserIds;
@@ -466,6 +549,7 @@ async function main() {
   console.log(`  Migrerade: ${carCount} cars`);
   console.log(`  Migrerade: ${destCount} destinations`);
   console.log(`  Migrerade: ${settingsCount} settings`);
+  console.log(`  Migrerade: ${recurrenceCount} recurrences`);
   console.log(`  Migrerade: ${dcbCount} date-car-bookings`);
   console.log(`  Migrerade: ${bookingCount} bookings`);
   console.log(`  Migrerade: ${tripCount} trips`);

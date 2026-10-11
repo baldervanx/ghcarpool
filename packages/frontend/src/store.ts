@@ -299,7 +299,7 @@ const settingsSlice = createSlice({
 });
 
 interface Trip {
-    id: IdObject,
+    id: string,
     byUser: IdObject,
     car: IdObject,
     comment?: string,
@@ -360,6 +360,14 @@ interface IdObject {
     id: string;
 }
 
+export interface Recurrence {
+    id: string;
+    isMultiDay: boolean | null;
+    recurringStartDate: string;
+    recurringEndDate: string;
+    recurringDays: number[];
+}
+
 export interface Booking {
     parent_id?: string; // Optional when
     id: string;
@@ -371,6 +379,7 @@ export interface Booking {
     logged?: string; // The id of the logged entry.
     byUser: IdObject;
     recurrenceId?: string; // For recurring entries
+    recurrence?: Recurrence | null;
     comment?: string;
 }
 

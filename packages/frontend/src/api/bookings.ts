@@ -16,7 +16,11 @@ export interface CreateBookingPayload {
   distance?: number;
   destinationId?: string;
   comment?: string;
-  recurrenceId?: string;
+  recurrenceId?: string | null;
+  isMultiDay?: boolean;
+  recurringStartDate?: string;
+  recurringEndDate?: string;
+  recurringDays?: number[];
   userIds: string[];
   existingBookingId?: string;
   existingParentId?: string;

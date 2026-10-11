@@ -19,7 +19,6 @@ import {
   addDays,
   addMonths,
   isBefore,
-  endOfDay,
   parseISO,
 } from 'date-fns';
 import {
@@ -37,6 +36,7 @@ import {
   bookingCacheRead,
   bookingCacheWrite,
   bookingCacheMonthKey,
+  isMonthLocked,
 } from '@/lib/booking-cache';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api/v1';
@@ -116,10 +116,8 @@ export function useListenToBookings() {
 
         // Spara/uppdatera cache per månad — ej låsta månader cachas med ny tidsstämpel
         const now = new Date().toISOString();
-        const today = endOfDay(new Date());
         for (const key of monthKeys) {
-          const isLocked = isBefore(parseISO(key + '-28'), today) &&
-            isBefore(endOfMonth(parseISO(key + '-01')), today);
+          const isLocked = isMonthLocked(key);
 
           if (!isLocked) {
             // Framtida/innevarande: uppdatera alltid cache

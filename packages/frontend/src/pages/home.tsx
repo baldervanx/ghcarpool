@@ -20,6 +20,7 @@ import { api, ApiError } from '@/api/client';
 interface BookingCar extends Booking {
   car: Car;
   date: string;
+  parent_id: string;
 }
 
 interface RecurrenceInfo {
@@ -81,7 +82,8 @@ export const HomePage = () => {
               ...booking,
               // Would be a bit more efficient to do this later.
               car: cars.find(c => c.id === dayBooking.car.id),
-              date: dayBooking.date
+              date: dayBooking.date,
+              parent_id: dayBooking.id,
             }))
         ).filter(booking =>
             booking.users.some(u => u.id === currentUser)
@@ -92,7 +94,7 @@ export const HomePage = () => {
       return a.startTime - b.startTime;
     });
     setActiveBookings(sortedBookings);
-  }, [bookings, user]);
+  }, [bookings, user, cars]);
 
   // Recurrence-data härleds direkt från bookings i state (satt av SSE-hooken).
   // isMultiDay detekteras via att en bokning spänner flera dagar (startTime=0 eller endTime=1440).
@@ -105,13 +107,13 @@ export const HomePage = () => {
         const related = bookings.filter(d => d.bookings.some(x => x.recurrenceId === b.recurrenceId))
           .sort((a, c) => a.date.localeCompare(c.date));
         if (related.length === 0) continue;
-        // Flerdagsbokning: start och slut är distinkta datum
-        const isMultiDay = related.length > 1 &&
+        const metadata = b.recurrence;
+        const isMultiDay = metadata ? metadata.isMultiDay === true : related.length > 1 &&
           related[0].bookings.some(x => x.recurrenceId === b.recurrenceId && x.endTime === 1440);
         map[b.recurrenceId] = {
           isMultiDay,
-          start: related[0].date,
-          end: related[related.length - 1].date,
+          start: metadata?.recurringStartDate ?? related[0].date,
+          end: metadata?.recurringEndDate ?? related[related.length - 1].date,
         };
       }
     }
@@ -144,6 +146,7 @@ export const HomePage = () => {
   }
 
   function isLastDayOfMultiDay(booking: BookingCar): boolean {
+    if (booking.recurrence?.isMultiDay === null) return false;
     const rec = booking.recurrenceId ? recurrenceMap[booking.recurrenceId] : undefined;
     if (!rec?.isMultiDay) return true;
     return booking.date === rec.end;
@@ -176,7 +179,7 @@ export const HomePage = () => {
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-2xl mx-auto space-y-4">
 
-        <BookingWarnings onLog={logBooking} />
+        <BookingWarnings onLog={logBooking} onEdit={changeBooking} />
 
         {!userLoading && !bookingsLoading && (
             activeBookings.map((booking) => (

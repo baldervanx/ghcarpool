@@ -1,6 +1,6 @@
 # Produktionsberedskap: loggkontroll, en app-container, reverse proxy och OIDC
 
-**Status:** Planerad – fas 1 påbörjad 2026-09-13  
+**Status:** Fas 1 implementerad och riktat verifierad 2026-10-11; fas 2–4 återstår att färdigställa som separata commits. Full test-/lint-gate och manuella produktionskontroller återstår.
 **Utgångspunkt:** `feature/firebase-to-postgres-migration`  
 **Relaterad legacy-commit:** `283db8a` på `feature/log-checking`
 
@@ -9,6 +9,7 @@
 - Caddy och Authelia drivs i ett externt infra-repository. Ingen Caddy- eller Authelia-konfiguration ska läggas i detta repository.
 - Applikationen får inte hårdkodas till en domän. Publik origin, callback-URL:er och cookie-säkerhet ska vara miljökonfiguration.
 - SSO byggs med **OpenID Connect (OIDC)**, där Authelia är identity provider.
+- OIDC kopplar endast befintliga lokala användare: verifierad e-post vid första kopplingen, därefter stabil issuer + subject. Ingen automatisk provisionering eller extern admin-/gruppmappning. Befintlig Google-policy behålls.
 - Backup, återställning och release-rollback för PostgreSQL hanteras av infra-repositoryt och ligger utanför applikationens logik.
 - `Car.hasLog=false` betyder att fordonet saknar egen körjournal/odometer, exempelvis ett släp. UI ska inte erbjuda körjournalsflöden för det och API:t ska avvisa skapande av resor för fordonet.
 - `admin-trips.tsx` var ett tillfälligt Firebase-reparationsverktyg och ska tas bort, inte portas.
@@ -53,8 +54,9 @@ Den relevanta funktionen är:
 **Berörda filer:**
 
 - `packages/backend/src/routes/trips.ts`
-- `packages/backend/src/__tests__/trips.test.ts`
-- vid behov `packages/backend/src/lib/serializers.ts` och SSE-publiceringen
+- `packages/backend/src/routes/bookings.ts`, serializers och SSE-publiceringen
+- `packages/backend/prisma/schema.prisma` och migration `20260914000000_restore_recurrence`
+- backendtester samt seed-, reset- och Firestore-importskript
 
 Ändra `POST /api/v1/trips` så att en och samma Prisma-transaktion:
 
@@ -62,9 +64,67 @@ Den relevanta funktionen är:
 2. Om `bookingId` anges, hämtar bokningen inklusive `DateCarBooking`, användare och relaterade poster.
 3. Verifierar att bokningen tillhör `carId`, att den inte redan är loggad och att eventuell `parentId` stämmer med bokningens faktiska förälder. Klientens `parentId` ska aldrig ensamt styra databasuppdatering.
 4. Skapar resan efter odometervalideringen.
-5. Avgör om den valda `recurrenceId` beskriver en flerdagsbokning genom att läsa seriens bokningsposter. Det finns ingen separat recurrence-modell i Prisma-schemat.
+5. Läser den beständiga `Recurrence.isMultiDay` via bokningens relation; datum och tider får inte avgöra serietyp vid loggning.
 6. Uppdaterar exakt en bokning för enskild/vanlig återkommande bokning, men seriens samtliga poster för en flerdagsbokning.
 7. Returnerar vilka `DateCarBooking`-containers som ändrades så att rätt SSE-uppdateringar kan sändas efter committad transaktion.
+
+**Återställd recurrence-modell:** `Recurrence` har `id`, nullable `isMultiDay`,
+`recurringStartDate`, `recurringEndDate`, `recurringDays`, `createdAt` och
+`updatedAt`, samt en FK-relation från `Booking.recurrenceId` med
+`ON DELETE RESTRICT`. Veckodagar följer Firebase/frontend: måndag `0` till
+söndag `6`. Ny serie kräver `recurrenceId`, explicit boolean `isMultiDay` och
+samtliga tre datum-/veckodagsfält i `POST /bookings`. Datum valideras som
+kalenderdatum i `yyyy-MM-dd`, start får inte vara efter slut och veckodagar
+måste vara unika heltal `0..6`. Vanlig recurrence kräver minst en veckodag;
+flerdagsrecurrence tillåter tom lista eftersom alla dagar omfattas.
+Bokningsdatum måste ligga inom seriens avsedda intervall och, för vanlig
+recurrence, på en vald veckodag.
+
+Befintlig känd serietyp är oföränderlig, även efter att den sista
+ologgade instansen tagits bort; utelämnad flagga behåller typen och motstridig
+flagga ger `409`. Legacy-typen `null` får fastställas en gång genom en explicit
+boolean i `POST /bookings`; därefter är även denna typ oföränderlig. Detta sker
+atomärt med en ologgad instansändring eller skapande av en instans, bevarar
+loggad historik och uppdaterar metadata/delta-sync/SSE för alla länkade
+containers. Utelämnad flagga lämnar legacy-typen okänd; ingen automatisk gissning
+görs av API:t. En ändring utan `recurrenceId` behåller länken; explicit
+`recurrenceId: null` lossar en ologgad instans utan att radera seriens metadata.
+Serieposter måste tillhöra samma fordon. Bil- och serielås skyddar kontrollerna
+och relaterade skrivningar inom samma transaktion.
+
+Datum-/veckodagsmetadata får ändras genom att samtliga tre fält skickas
+tillsammans. Utelämnade fält behåller den beständiga konfigurationen. Ett nytt
+intervall beskriver avsedd framtida serie och får utesluta äldre loggade
+instanser utan att ändra eller radera deras bokningsrader, användarlänkar eller
+logglänkar. Alla containers med serieposter får nya delta-sync-tidsstämplar och
+SSE-snapshots efter commit, inklusive historiska containers vars metadata
+ändrats. Kollisions-/valideringsfel rullar tillbaka även seriemetadata.
+
+GET-, save- och SSE-svar har `recurrence: { id, isMultiDay, recurringStartDate,
+recurringEndDate, recurringDays }` per återkommande bokning och `recurrence: null`
+utan serie. `isMultiDay: true | false | null` finns även som kompatibilitetsalias
+på återkommande bokningar. Frontend ska läsa de beständiga gränserna, inte
+härleda dem från delvis inlästa serieposter; detta gäller även när sista dagen
+slutar `24:00`. Explicit vanlig
+heldagsrecurrence loggar bara vald instans; explicit flerdagsrecurrence loggar
+alla instanser, även när samtliga tider är `00:00–24:00`.
+
+**Legacy-backfill:** Alla befintliga serie-ID:n, bokningar, användarlänkar och
+loggad historik bevaras. Tydliga sammanhängande midnattsgränser med minst en
+partiell dag klassificeras som flerdagsbokning; tydliga vanliga tidsintervall
+klassificeras som normal recurrence. Tvetydiga heldagsserier, ofullständiga
+gränsfragment och ogiltiga/blandade poster får `isMultiDay: null`, aldrig en
+gissad boolean. Intervall härleds från min/max lagrat bokningsdatum och
+veckodagar från giltiga kalenderdatum, med måndag `0`. Bokningskopplad loggning
+av okänd serietyp ger `409` utan
+skrivningar eller SSE-event tills användaren fastställt typen explicit.
+Firestore-importen återställer originalsamlingen `recurrence`, inklusive
+explicit serietyp, avsett intervall, veckodagar och skapande-/ändringstider.
+Saknad metadata härleds konservativt från originalets bokningsposter med
+varning; tvetydig serietyp förblir okänd. Felaktiga angivna datum-/veckodagsfält
+eller tidsstämplar ger explicit importfel i stället för fabricerad metadata.
+Betrodd import/seed får lösa en okänd typ från explicit källdata men får inte
+skriva över en redan känd motstridig typ.
 
 Nya backendtester ska täcka minst:
 
@@ -73,9 +133,42 @@ Nya backendtester ska täcka minst:
 - en enskild bokning loggas;
 - endast vald dag i en vanlig recurrence loggas;
 - alla dagar i en flerdagserie loggas;
+- explicit vanlig/flerdags-heldagsserie loggar en respektive alla instanser;
+- legacy-serie med okänd typ avvisas med `409` utan skrivningar;
+- explicit engångsfastställande av legacy-typ bevarar historik och är atomärt;
+- migrationens backfill bevarar historik och relationer utan gissningar;
+- beständiga intervall/veckodagar serialiseras i save-, GET- och SSE-svar;
+- intervalländring behåller loggad historik och notifierar alla ändrade containers;
 - redan loggad bokning avvisas;
 - transaktionen lämnar ingen resa efter ett valideringsfel;
 - varje ändrad bokningscontainer skickar korrekt SSE-event till berörda användare.
+
+**Utförd backendvalidering:** De fem riktade sviterna för trips, bookings,
+bokningsmutationer och recurrence-migration passerar med **174/174 tester**.
+Det omfattar engångsfastställande av okänd typ till båda boolean-värdena vid
+skapande/ändring, konkurrerande fastställanden, rollback vid kollision och
+ogiltigt datum, oförändrad loggad historik och SSE/delta-sync för alla ändrade
+containers. Migrationstestet verifierar att exakt samtliga containers med
+recurrence får nya tidsstämplar och att övriga containers är oförändrade.
+Backendens TypeScript-kontroll och separat typkontroll av Firestore-importen
+passerar. Alla migrationer kan appliceras på en ny PostgreSQL 17-databas;
+Prisma-schemajämförelsen visar ingen skillnad.
+
+Hela aktuella backendens Jest-körning ger **291 godkända och 1 underkänt test**
+(13 av 14 sviter godkända). Befintlig `expenses.test.ts` förväntar `400` utan
+`carId`, men nuvarande route/schema tillåter bilfri expense och returnerar
+`201`; testets cleanup missar denna rad och får även ett FK-fel för
+`Expense_byUserId`. Detta är utanför fasens booking/trip-scope och har inte
+ändrats. Den separata befintliga OIDC-protokollsviten passerar med **26/26**
+i sitt standardläge; den ingår inte i fas 1.
+
+Databaskörningarna använder endast nya unikt namngivna
+`ghcarpool_phase1_test_*`-databaser i separata PostgreSQL-containers med tmpfs,
+slumpmässig loopback-port och uttryckligen isolerad miljö utan projektets
+`.env`. Containers tas bort efter körningen även vid testfel. Ingen befintlig
+eller produktionsdatabas används. Frontendansvarig rapporterar dessutom sju
+befintliga lintfel i fem oförändrade JSX-filer; hela definition-of-done för
+lint/test är alltså inte grön trots godkänd riktad fas-1-validering.
 
 ### Frontend: registrera resa och varningar
 
@@ -95,16 +188,27 @@ Nya backendtester ska täcka minst:
 - visa datum i den kopplade bokningsetiketten när bokningen inte är från idag;
 - visa varning när en gammal bokning loggas;
 - visa varning när ingen ologgad bokning hittas;
+- varna om närmast föregående bokning på samma bil är ologgad, först när dess sluttid har passerat;
+- varna och kräva bekräftelse när någon annans bokning loggas;
+- läsa beständig serietyp och datumgränser, och blockera loggning av okänd legacy-typ;
 - inte erbjuda körjournalsregistrering för `hasLog=false`.
 
 `home.tsx` ska:
 
 - visa senaste missade, egna bokning per loggbar bil inom 14 dagar;
 - visa en varning på dagens aktiva bokning om närmast föregående bokning på samma bil fortfarande är ologgad;
+- ange bilnamnet i varningen och uppdatera tidsberoende varningar utan sidomladdning;
 - inte behandla flerdagsseriens mellanposter som missade resor;
 - inte visa körjournalsåtgärder för fordon med `hasLog=false`.
 
 `booking-cell.tsx` och serverns bokningsrutter ska fortsatt behandla `booking.logged` som skrivskyddat. Ändring/borttagning av recurrence-serier måste bevara loggade historiska instanser.
+
+Ologgade historiska bokningar kan ändras utan att nya bokningar kan skapas på
+historiska datum. Bokningsformuläret hämtar hela seriens beständiga datumintervall
+före ändring, även när endast en del av historiken finns i Redux. Legacy-typ
+`null` kan fastställas uttryckligen i formuläret. Cacheformat version 2
+ogiltigförklarar äldre månadsdata som saknar recurrence-metadata; initialladdning
+och månadsloader använder samma 14-dagars grace-period.
 
 ### Ta bort temporärt adminverktyg
 
@@ -123,6 +227,13 @@ Det vanliga, behörighetskontrollerade resadministrationsflödet behålls om det
 - `pnpm test`, `pnpm lint` och `pnpm build` passerar.
 - Manuell kontroll: skapa en normal recurrence och en flerdagserie, logga båda, uppdatera sidan och verifiera att rätt poster är skrivskyddade.
 - Manuell kontroll: skapa ett fordon med `hasLog=false`; bokning ska vara möjlig men körjournalsregistrering ska vara omöjlig i både UI och API.
+
+**Status 2026-10-11:** Fasens 174 backendregressioner och 68 frontendtester
+passerar. Frontendens faktiska applikationstypkontroll och Vite-build passerar.
+Alla nio manuella scenarier i `TODO.md` har automatiserad regressionstäckning;
+de tidigare manuella anteckningarna har lämnats oförändrade och ska följas upp
+manuellt efter driftsättning. Full backend-/frontend-gate blockeras fortfarande
+av det befintliga expenses-testet och de sju orelaterade JSX-lintfelen ovan.
 
 ## Fas 2 – Samlat produktionsimage för frontend och backend
 
@@ -171,4 +282,3 @@ Appen ska inte lita på identitetsheaders direkt från klienten. Om infra senare
 4. Fas 3: reverse-proxykompatibilitet och dokumentation.
 5. Fas 4: OIDC.
 6. Infrastrukturens produktionsreleaseövning, databasbackup och rollback hanteras i infra-repositoryt.
-

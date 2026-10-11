@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks';
 import store, {
@@ -144,6 +144,9 @@ describe('BookTrip scenarios', () => {
     calls.forEach((call: any) => {
       expect(call).toMatchObject({ startTime: 600, endTime: 660 });
       expect(call.recurrenceId).toBeTruthy();
+      expect(call.isMultiDay).toBe(false);
+      expect(call.recurringDays).toEqual([0, 2]);
+      expect(call.recurringEndDate).toBe(endDateStr);
     });
   });
 
@@ -175,6 +178,10 @@ describe('BookTrip scenarios', () => {
     expect(calls.length).toBe(3);
     const lastCall = calls[calls.length - 1] as any;
     expect(lastCall.date).toBe(endDateStr);
+    expect(lastCall).toMatchObject({
+      isMultiDay: true, recurringStartDate: format(new Date(), 'yyyy-MM-dd'),
+      recurringEndDate: endDateStr, recurringDays: [],
+    });
   });
 
   it('edits an existing booking and updates distance via REST', async () => {
@@ -207,5 +214,164 @@ describe('BookTrip scenarios', () => {
     expect(postCalls.length).toBeGreaterThanOrEqual(1);
     expect((postCalls[postCalls.length - 1] as any).distance).toBe(15);
     expect((postCalls[postCalls.length - 1] as any).endTime).toBe(600);
+  });
+
+  it('edits an unlogged past booking without forcing its date to today', async () => {
+    const calls = captureBookingRequests();
+    const date = format(addDays(new Date(), -3), 'yyyy-MM-dd');
+    store.dispatch(setBookings([buildExistingSingle(date)]));
+    const { container } = render(
+      <Provider store={store}><MemoryRouter initialEntries={[{
+        pathname: '/book-trip', state: { parent_id: 'dcb-existing', booking_id: 'b-existing' },
+      }]}><BookTrip /></MemoryRouter></Provider>,
+    );
+    expect(container.querySelector('input[type="date"]')).not.toHaveAttribute('min');
+    const page = new BookTripPage();
+    await page.setDistance('15');
+    await page.submit();
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({ date, existingBookingId: 'b-existing' });
+  });
+
+  it('does not offer editing a logged booking via direct navigation', () => {
+    const existing = buildExistingSingle(format(new Date(), 'yyyy-MM-dd'));
+    existing.bookings[0].logged = 'trip';
+    store.dispatch(setBookings([existing]));
+    render(<Provider store={store}><MemoryRouter initialEntries={[{
+      pathname: '/book-trip', state: { parent_id: 'dcb-existing', booking_id: 'b-existing' },
+    }]}><BookTrip /></MemoryRouter></Provider>);
+    expect(screen.getByText('Bokningen är loggad och kan inte ändras.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Spara|Boka/ })).not.toBeInTheDocument();
+  });
+
+  it('preserves logged historical instances when editing a recurring series', async () => {
+    const calls = captureBookingRequests();
+    const deleted: string[] = [];
+    server.use(http.delete('/api/v1/bookings/:parentId/:bookingId', ({ params }) => {
+      deleted.push(String(params.bookingId));
+      return new HttpResponse(null, { status: 204 });
+    }));
+    const series = [0, 1, 2].map(offset => {
+      const entry = buildExistingSingle(format(addDays(new Date(), offset), 'yyyy-MM-dd'));
+      entry.id = `parent-${offset}`;
+      entry.bookings[0] = {
+        ...entry.bookings[0], id: `instance-${offset}`, parent_id: entry.id, recurrenceId: 'series',
+        logged: offset === 0 ? 'logged-trip' : undefined,
+      };
+      return entry;
+    });
+    store.dispatch(setBookings(series));
+    render(<Provider store={store}><MemoryRouter initialEntries={[{
+      pathname: '/book-trip', state: { parent_id: 'parent-1', booking_id: 'instance-1' },
+    }]}><BookTrip /></MemoryRouter></Provider>);
+    const page = new BookTripPage();
+    await page.submit();
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls.map(call => (call as { existingBookingId: string }).existingBookingId))
+      .toEqual(['instance-1', 'instance-2']);
+    expect(deleted).toEqual([]);
+  });
+
+  it('loads a complete persisted multi-day series before editing from a partial booking window', async () => {
+    const calls = captureBookingRequests();
+    const start = format(addDays(new Date(), -2), 'yyyy-MM-dd');
+    const end = format(new Date(), 'yyyy-MM-dd');
+    const recurrence = { id: 'multi', isMultiDay: true, recurringStartDate: start, recurringEndDate: end, recurringDays: [] };
+    const series = [0, 1, 2].map(offset => {
+      const entry = buildExistingSingle(format(addDays(new Date(), offset - 2), 'yyyy-MM-dd'));
+      entry.id = `parent-${offset}`;
+      entry.bookings[0] = {
+        ...entry.bookings[0], id: `part-${offset}`, parent_id: entry.id,
+        recurrenceId: 'multi', recurrence,
+        startTime: offset === 0 ? 480 : 0, endTime: offset === 2 ? 600 : 1440,
+        distance: offset === 2 ? 50 : 0,
+      };
+      return entry;
+    });
+    const ranges: string[][] = [];
+    server.use(http.get('/api/v1/bookings', ({ request }) => {
+      const query = new URL(request.url).searchParams;
+      ranges.push([query.get('startDate')!, query.get('endDate')!]);
+      return HttpResponse.json({ startDate: start, endDate: end, since: null, bookings: series });
+    }));
+    store.dispatch(setBookings([series[1]]));
+    render(<Provider store={store}><MemoryRouter initialEntries={[{
+      pathname: '/book-trip', state: { parent_id: 'parent-1', booking_id: 'part-1' },
+    }]}><BookTrip /></MemoryRouter></Provider>);
+    await waitFor(() => expect(screen.getByRole('spinbutton')).toHaveValue(50));
+    expect(screen.getByRole('checkbox', { name: 'Flerdagars' })).toBeChecked();
+    expect(ranges).toEqual([[start, end]]);
+    const page = new BookTripPage();
+    await page.submit();
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls.map(call => (call as { existingBookingId: string }).existingBookingId))
+      .toEqual(['part-0', 'part-1', 'part-2']);
+    expect(calls.every(call => (call as { isMultiDay: boolean }).isMultiDay)).toBe(true);
+  });
+
+  it('requires an explicit series type before saving unresolved legacy recurrence metadata', async () => {
+    const entry = buildExistingSingle(format(new Date(), 'yyyy-MM-dd'));
+    entry.bookings[0] = {
+      ...entry.bookings[0], recurrenceId: 'unknown',
+      recurrence: {
+        id: 'unknown', isMultiDay: null, recurringStartDate: entry.date,
+        recurringEndDate: format(addDays(new Date(), 1), 'yyyy-MM-dd'), recurringDays: [0, 1, 2, 3, 4, 5, 6],
+      },
+    };
+    server.use(http.get('/api/v1/bookings', () => HttpResponse.json({ bookings: [entry] })));
+    store.dispatch(setBookings([entry]));
+    render(<Provider store={store}><MemoryRouter initialEntries={[{
+      pathname: '/book-trip', state: { parent_id: entry.id, booking_id: entry.bookings[0].id },
+    }]}><BookTrip /></MemoryRouter></Provider>);
+    await screen.findByText(/Välj Återkommande eller Flerdagars innan du sparar/);
+    expect(screen.getByRole('button', { name: 'Spara ändringar' })).toBeDisabled();
+    const page = new BookTripPage();
+    await page.toggleRecurring();
+    expect(screen.getByRole('button', { name: 'Spara ändringar' })).not.toBeDisabled();
+  });
+
+  it('treats consecutive full-day bookings as ordinary recurrence when metadata says so', async () => {
+    const start = format(new Date(), 'yyyy-MM-dd');
+    const end = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+    const recurrence = {
+      id: 'ordinary', isMultiDay: false, recurringStartDate: start, recurringEndDate: end,
+      recurringDays: [0, 1, 2, 3, 4, 5, 6],
+    };
+    const series = [start, end].map((date, index) => {
+      const entry = buildExistingSingle(date);
+      entry.id = `ordinary-parent-${index}`;
+      entry.bookings[0] = {
+        ...entry.bookings[0], id: `ordinary-${index}`, startTime: 0, endTime: 1440,
+        recurrenceId: recurrence.id, recurrence,
+      };
+      return entry;
+    });
+    server.use(http.get('/api/v1/bookings', () => HttpResponse.json({ bookings: series })));
+    store.dispatch(setBookings([series[0]]));
+    render(<Provider store={store}><MemoryRouter initialEntries={[{
+      pathname: '/book-trip', state: { parent_id: series[0].id, booking_id: series[0].bookings[0].id },
+    }]}><BookTrip /></MemoryRouter></Provider>);
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Återkommande' })).toBeChecked());
+    expect(screen.getByRole('checkbox', { name: 'Flerdagars' })).not.toBeChecked();
+  });
+
+  it('explicitly detaches only the chosen instance when recurring mode is disabled', async () => {
+    const calls = captureBookingRequests();
+    const series = [0, 1].map(offset => {
+      const entry = buildExistingSingle(format(addDays(new Date(), offset), 'yyyy-MM-dd'));
+      entry.id = `parent-${offset}`;
+      entry.bookings[0] = { ...entry.bookings[0], id: `part-${offset}`, recurrenceId: 'series' };
+      return entry;
+    });
+    store.dispatch(setBookings(series));
+    render(<Provider store={store}><MemoryRouter initialEntries={[{
+      pathname: '/book-trip', state: { parent_id: 'parent-0', booking_id: 'part-0' },
+    }]}><BookTrip /></MemoryRouter></Provider>);
+    const page = new BookTripPage();
+    await page.toggleRecurring();
+    await page.setDistance('15');
+    await page.submit();
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({ existingBookingId: 'part-0', recurrenceId: null, distance: 15 });
   });
 });

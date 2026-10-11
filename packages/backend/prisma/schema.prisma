@@ -83,6 +83,18 @@ model DateCarBooking {
   @@index([updatedAt])
 }
 
+model Recurrence {
+  id                 String   @id
+  isMultiDay         Boolean? // null = legacy series whose kind could not be established
+  recurringStartDate String
+  recurringEndDate   String
+  recurringDays      Int[]     // Monday = 0, Sunday = 6
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  bookings Booking[]
+}
+
 model Booking {
   id            String          @id @default(cuid())
   parent        DateCarBooking  @relation(fields: [parentId], references: [id], onDelete: Cascade)
@@ -94,11 +106,14 @@ model Booking {
   destinationId String?
   comment       String?
   recurrenceId  String?
+  recurrence    Recurrence?     @relation(fields: [recurrenceId], references: [id], onDelete: Restrict)
   logged        String?         // Trip.id om loggad
   byUser        User            @relation("BookingByUser", fields: [byUserId], references: [id])
   byUserId      String
 
   users BookingUser[]
+
+  @@index([recurrenceId])
 }
 
 model BookingUser {
@@ -202,4 +217,3 @@ model CarInfo {
   insuranceCompany String?  // Fritext, försäkringsbolag
   updatedAt        DateTime @updatedAt
 }
-

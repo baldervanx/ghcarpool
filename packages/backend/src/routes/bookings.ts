@@ -4,7 +4,9 @@ import { Prisma } from '../generated/prisma/client';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
 import { serializeDateCarBooking, serializeDestination } from '../lib/serializers';
-import { subscribe, unsubscribe, sendEvent } from '../lib/sse';
+import { subscribe, unsubscribe } from '../lib/sse';
+import { bookingInclude as dcbInclude, touchBookingParents, publishBookingParent } from '../lib/booking-events';
+import { lockRecurrences, isCalendarDate, isRecurringDays, recurrenceWeekday } from '../lib/recurrence';
 
 const router = Router();
 router.use(requireAuth);
@@ -13,12 +15,6 @@ router.use(requireAuth);
 const bookingChannel = (userId: string) => `bookings:${userId}`;
 
 // ---- helpers ----
-
-const dcbInclude = {
-  bookings: {
-    include: { users: true },
-  },
-} as const;
 
 // Defaultfönster: innevarande månad + 3 månader framåt
 function defaultDateRange() {
@@ -31,15 +27,18 @@ function defaultDateRange() {
   };
 }
 
-// Touch updatedAt på en DateCarBooking så att ?since= fångar ändringen.
-// Använder raw SQL eftersom Prisma inte tillåter att man explicit sätter @updatedAt
-// men en tom update() triggrar inte alltid @updatedAt i äldre Prisma-versioner.
-async function touchParent(parentId: string) {
-  await prisma.$executeRaw`
-    UPDATE "DateCarBooking"
-    SET "updatedAt" = NOW()
-    WHERE id = ${parentId}
-  `;
+function mutationError(message: string, httpStatus: number): Error & { httpStatus: number } {
+  return Object.assign(new Error(message), { httpStatus });
+}
+
+async function lockCars(tx: Prisma.TransactionClient, carIds: string[]) {
+  // Trips and booking mutations share these locks; sort moves to avoid deadlocks.
+  for (const carId of [...new Set(carIds)].sort()) {
+    const cars = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Car" WHERE id = ${carId} FOR UPDATE
+    `;
+    if (cars.length === 0) throw mutationError('Bil hittades inte', 404);
+  }
 }
 
 // ---- GET /api/v1/bookings  (initial load + lazy month load) ----
@@ -103,6 +102,10 @@ router.post('/', async (req: Request, res: Response) => {
     destinationId,
     comment,
     recurrenceId,
+    isMultiDay,
+    recurringStartDate,
+    recurringEndDate,
+    recurringDays,
     userIds,
     existingBookingId,
     existingParentId,
@@ -114,7 +117,11 @@ router.post('/', async (req: Request, res: Response) => {
     distance?: number;
     destinationId?: string;
     comment?: string;
-    recurrenceId?: string;
+    recurrenceId?: string | null;
+    isMultiDay?: boolean;
+    recurringStartDate?: string;
+    recurringEndDate?: string;
+    recurringDays?: number[];
     userIds: string[];
     existingBookingId?: string;
     existingParentId?: string;
@@ -135,48 +142,127 @@ router.post('/', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'endTime måste vara större än startTime' });
     return;
   }
-
-  // Lös upp destinationId:
-  //   - tom sträng/null → ingen destination
-  //   - ser ut som ett CUID (börjar med "c", 25 tecken) → slå upp i DB, returnera 400 om ej finns
-  //   - annars → behandla som ett namn, find-or-create en temporär destination
-  const rawDestId = emptyToNull(destinationId);
-  let resolvedDestinationId: string | null = null;
-  let newDestination: ReturnType<typeof import('../lib/serializers').serializeDestination> | null = null;
-
-  if (rawDestId !== null) {
-    const looksLikeCuid = /^c[a-z0-9]{24}$/.test(rawDestId);
-    if (looksLikeCuid) {
-      // Normalt fall: kontrollera att destinationen finns
-      const destExists = await prisma.destination.findUnique({
-        where: { id: rawDestId },
-        select: { id: true },
-      });
-      if (!destExists) {
-        res.status(400).json({ error: `Destination '${rawDestId}' finns inte` });
-        return;
-      }
-      resolvedDestinationId = rawDestId;
-    } else {
-      // Fri text: find-or-create en temporär destination baserat på namn
-      const trimmedName = rawDestId.trim();
-      let dest = await prisma.destination.findFirst({
-        where: { name: { equals: trimmedName, mode: 'insensitive' } },
-      });
-      if (!dest) {
-        dest = await prisma.destination.create({
-          data: { name: trimmedName, shortName: '', temporary: true },
-        });
-        // Lägg med i svaret så frontenden kan uppdatera sin destinations-lista
-        newDestination = serializeDestination(dest);
-      }
-      resolvedDestinationId = dest.id;
-    }
+  if (existingBookingId && !existingParentId) {
+    res.status(400).json({ error: 'existingParentId krävs vid ändring av bokning' });
+    return;
+  }
+  if ((recurrenceId !== undefined && recurrenceId !== null && typeof recurrenceId !== 'string')
+    || (isMultiDay !== undefined && typeof isMultiDay !== 'boolean')) {
+    res.status(400).json({ error: 'recurrenceId måste vara text och isMultiDay måste vara boolean' });
+    return;
+  }
+  const hasRange = [recurringStartDate, recurringEndDate, recurringDays].some(value => value !== undefined);
+  if (hasRange && (!isCalendarDate(recurringStartDate) || !isCalendarDate(recurringEndDate)
+    || recurringStartDate > recurringEndDate || !isRecurringDays(recurringDays))) {
+    res.status(400).json({ error: 'Ogiltiga datum eller veckodagar för bokningsserien' });
+    return;
   }
 
-  let dcb;
+  const rawDestId = emptyToNull(destinationId);
+
+  let result;
   try {
-    dcb = await prisma.$transaction(async (tx) => {
+    result = await prisma.$transaction(async (tx) => {
+      const source = existingBookingId
+        ? await tx.dateCarBooking.findUnique({
+          where: { id: existingParentId! },
+          select: { carId: true },
+        })
+        : null;
+      if (existingBookingId && !source) throw mutationError('Bokning hittades inte', 404);
+      await lockCars(tx, [carId, ...(source ? [source.carId] : [])]);
+
+      const existingBooking = existingBookingId
+        ? await tx.booking.findUnique({
+          where: { id: existingBookingId },
+          include: { parent: true, users: true },
+        })
+        : null;
+      if (existingBookingId && (!existingBooking || existingBooking.parentId !== existingParentId)) {
+        throw mutationError('Bokning hittades inte', 404);
+      }
+      if (existingBooking?.logged) {
+        throw mutationError('Loggad bokning kan inte ändras', 409);
+      }
+      const resolvedRecurrenceId = recurrenceId === undefined
+        ? existingBooking?.recurrenceId ?? null
+        : emptyToNull(recurrenceId);
+      if ((isMultiDay !== undefined || hasRange) && !resolvedRecurrenceId) {
+        throw mutationError('Seriemetadata kräver recurrenceId', 400);
+      }
+      await lockRecurrences(tx, [existingBooking?.recurrenceId, resolvedRecurrenceId]);
+      const metadataParentIds: string[] = [];
+      if (resolvedRecurrenceId !== null) {
+        let recurrence = await tx.recurrence.findUnique({ where: { id: resolvedRecurrenceId } });
+        if (!recurrence) {
+          if (isMultiDay === undefined || !hasRange) {
+            throw mutationError('Ny bokningsserie kräver isMultiDay, startdatum, slutdatum och veckodagar', 400);
+          }
+          recurrence = await tx.recurrence.create({
+            data: {
+              id: resolvedRecurrenceId, isMultiDay,
+              recurringStartDate: recurringStartDate!, recurringEndDate: recurringEndDate!,
+              recurringDays: [...recurringDays!].sort(),
+            },
+          });
+        } else if (isMultiDay !== undefined && recurrence.isMultiDay !== null && recurrence.isMultiDay !== isMultiDay) {
+          throw mutationError('Bokningsseriens typ kan inte ändras', 409);
+        }
+        const series = await tx.booking.findMany({
+          where: { recurrenceId: resolvedRecurrenceId },
+          include: { parent: true },
+        });
+        if (series.some(booking => booking.parent.carId !== carId)) {
+          throw mutationError('Bokningsserien måste tillhöra samma fordon', 409);
+        }
+        const resolvesKind = recurrence.isMultiDay === null && isMultiDay !== undefined;
+        const changesRange = hasRange && (recurrence.recurringStartDate !== recurringStartDate
+          || recurrence.recurringEndDate !== recurringEndDate
+          || JSON.stringify(recurrence.recurringDays) !== JSON.stringify([...recurringDays!].sort()));
+        if (resolvesKind || changesRange) {
+          recurrence = await tx.recurrence.update({
+            where: { id: resolvedRecurrenceId },
+            data: {
+              ...(resolvesKind ? { isMultiDay } : {}),
+              ...(changesRange ? {
+                recurringStartDate: recurringStartDate!, recurringEndDate: recurringEndDate!,
+                recurringDays: [...recurringDays!].sort(),
+              } : {}),
+            },
+          });
+          metadataParentIds.push(...series.map(booking => booking.parentId));
+        }
+        if (!isCalendarDate(date) || date < recurrence.recurringStartDate || date > recurrence.recurringEndDate
+          || (recurrence.isMultiDay === false && !recurrence.recurringDays.includes(recurrenceWeekday(date)))) {
+          throw mutationError('Bokningsdatum ligger utanför seriens datum eller veckodagar', 400);
+        }
+        if (recurrence.isMultiDay === false && recurrence.recurringDays.length === 0) {
+          throw mutationError('Vanlig bokningsserie kräver minst en veckodag', 400);
+        }
+      }
+
+      let resolvedDestinationId: string | null = null;
+      let newDestination: ReturnType<typeof serializeDestination> | null = null;
+      if (rawDestId !== null) {
+        if (/^c[a-z0-9]{24}$/.test(rawDestId)) {
+          const dest = await tx.destination.findUnique({ where: { id: rawDestId } });
+          if (!dest) throw mutationError(`Destination '${rawDestId}' finns inte`, 400);
+          resolvedDestinationId = dest.id;
+        } else {
+          const name = rawDestId.trim();
+          let dest = await tx.destination.findFirst({
+            where: { name: { equals: name, mode: 'insensitive' } },
+          });
+          if (!dest) {
+            dest = await tx.destination.create({
+              data: { name, shortName: '', temporary: true },
+            });
+            newDestination = serializeDestination(dest);
+          }
+          resolvedDestinationId = dest.id;
+        }
+      }
+
       // Find or create the DateCarBooking container
       let parent = await tx.dateCarBooking.findUnique({
         where: { date_carId: { date, carId } },
@@ -209,25 +295,19 @@ router.post('/', async (req: Request, res: Response) => {
         );
       }
 
-      if (existingBookingId && existingParentId) {
+      if (existingBooking) {
         // UPDATE existing booking
-        const existingBooking = parent.bookings.find((booking) => booking.id === existingBookingId);
-        if (!existingBooking || parent.id !== existingParentId) {
-          throw Object.assign(new Error('Bokning hittades inte'), { httpStatus: 404 });
-        }
-        if (existingBooking.logged) {
-          throw Object.assign(new Error('Loggad bokning kan inte ändras'), { httpStatus: 409 });
-        }
-        await tx.bookingUser.deleteMany({ where: { bookingId: existingBookingId } });
+        await tx.bookingUser.deleteMany({ where: { bookingId: existingBooking.id } });
         await tx.booking.update({
-          where: { id: existingBookingId },
+          where: { id: existingBooking.id },
           data: {
+            parentId: parent.id,
             startTime,
             endTime,
             distance,
             destinationId: resolvedDestinationId,
             comment: emptyToNull(comment),
-            recurrenceId: emptyToNull(recurrenceId),
+            recurrenceId: resolvedRecurrenceId,
             users: { create: userIds.map(uid => ({ userId: uid })) },
           },
         });
@@ -241,26 +321,30 @@ router.post('/', async (req: Request, res: Response) => {
             distance,
             destinationId: resolvedDestinationId,
             comment: emptyToNull(comment),
-            recurrenceId: emptyToNull(recurrenceId),
+            recurrenceId: resolvedRecurrenceId,
             byUserId,
             users: { create: userIds.map(uid => ({ userId: uid })) },
           },
         });
       }
 
-      // Touch updatedAt på parent så ?since= fångar ändringen.
-      // Raw SQL eftersom Prisma @updatedAt inte kan sättas explicit i data: {}.
-      await tx.$executeRaw`
-        UPDATE "DateCarBooking"
-        SET "updatedAt" = NOW()
-        WHERE id = ${parent.id}
-      `;
-
-      // Re-fetch the full parent with all bookings
-      return tx.dateCarBooking.findUniqueOrThrow({
-        where: { id: parent.id },
+      const parentIds = [...new Set([
+        parent.id, ...(existingBooking ? [existingBooking.parentId] : []), ...metadataParentIds,
+      ])];
+      await touchBookingParents(tx, parentIds);
+      const parents = await tx.dateCarBooking.findMany({
+        where: { id: { in: parentIds } },
         include: dcbInclude,
       });
+      return {
+        parent: parents.find(p => p.id === parent.id)!,
+        parents,
+        newDestination,
+        extraUserIds: [
+          byUserId,
+          ...(existingBooking ? [existingBooking.byUserId, ...existingBooking.users.map(u => u.userId)] : []),
+        ],
+      };
     });
   } catch (err: unknown) {
     const e = err as Error & { httpStatus?: number };
@@ -271,20 +355,15 @@ router.post('/', async (req: Request, res: Response) => {
     throw err;
   }
 
-  const serialized = serializeDateCarBooking(dcb);
+  const serialized = serializeDateCarBooking(result.parent);
 
-  // Broadcast to all subscribers of the users involved
-  const affectedUserIds = new Set([
-    byUserId,
-    ...req.body.userIds as string[],
-  ]);
-  for (const uid of affectedUserIds) {
-    sendEvent(bookingChannel(uid), existingBookingId ? 'update' : 'add', serialized);
+  for (const parent of result.parents) {
+    publishBookingParent(parent, !existingBookingId && parent.id === result.parent.id ? 'add' : 'update', result.extraUserIds);
   }
 
   // Inkludera nyss skapad temporär destination i svaret (Alt A: bara avsändaren uppdateras)
-  const responseBody = newDestination
-    ? { ...serialized, newDestination }
+  const responseBody = result.newDestination
+    ? { ...serialized, newDestination: result.newDestination }
     : serialized;
 
   res.status(existingBookingId ? 200 : 201).json(responseBody);
@@ -294,55 +373,43 @@ router.post('/', async (req: Request, res: Response) => {
 router.delete('/:parentId/:bookingId', async (req: Request, res: Response) => {
   const { parentId, bookingId } = req.params;
 
-  const booking = await prisma.booking.findUnique({
-    where: { id: bookingId },
-    include: { users: true },
-  });
-
-  if (!booking || booking.parentId !== parentId) {
-    res.status(404).json({ error: 'Bokning hittades inte' });
-    return;
-  }
-  if (booking.logged) {
-    res.status(409).json({ error: 'Loggad bokning kan inte tas bort' });
-    return;
-  }
-
-  // Only the creator or an admin may delete
-  if (booking.byUserId !== req.user!.id && !req.user!.isAdmin) {
-    res.status(403).json({ error: 'Åtkomst nekad' });
-    return;
-  }
-
-  await prisma.booking.delete({ where: { id: bookingId } });
-
-  // Fetch the updated parent (may now be empty)
-  const parent = await prisma.dateCarBooking.findUnique({
-    where: { id: parentId },
-    include: dcbInclude,
-  });
-
-  const affectedUserIds = new Set([
-    booking.byUserId,
-    ...booking.users.map(u => u.userId),
-  ]);
-
-  if (parent) {
-    // Touch updatedAt så delta-sync (?since=) fångar borttagningen
-    await touchParent(parent.id);
-    const serialized = serializeDateCarBooking(parent);
-    for (const uid of affectedUserIds) {
-      sendEvent(bookingChannel(uid), 'update', serialized);
+  let result;
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const source = await tx.dateCarBooking.findUnique({
+        where: { id: parentId }, select: { carId: true },
+      });
+      if (!source) throw mutationError('Bokning hittades inte', 404);
+      await lockCars(tx, [source.carId]);
+      const booking = await tx.booking.findUnique({
+        where: { id: bookingId }, include: { users: true },
+      });
+      if (!booking || booking.parentId !== parentId) throw mutationError('Bokning hittades inte', 404);
+      await lockRecurrences(tx, [booking.recurrenceId]);
+      if (booking.logged) throw mutationError('Loggad bokning kan inte tas bort', 409);
+      if (booking.byUserId !== req.user!.id && !req.user!.isAdmin) {
+        throw mutationError('Åtkomst nekad', 403);
+      }
+      await tx.booking.delete({ where: { id: bookingId } });
+      await touchBookingParents(tx, [parentId]);
+      const parent = await tx.dateCarBooking.findUniqueOrThrow({
+        where: { id: parentId }, include: dcbInclude,
+      });
+      return {
+        parent,
+        extraUserIds: [req.user!.id, booking.byUserId, ...booking.users.map(u => u.userId)],
+      };
+    });
+  } catch (err: unknown) {
+    const e = err as Error & { httpStatus?: number };
+    if (e.httpStatus) {
+      res.status(e.httpStatus).json({ error: e.message });
+      return;
     }
-    res.json(serialized);
-  } else {
-    // Parent removed (no more bookings on that date/car)
-    const ghost = { id: parentId };
-    for (const uid of affectedUserIds) {
-      sendEvent(bookingChannel(uid), 'remove', ghost);
-    }
-    res.json(ghost);
+    throw err;
   }
+  publishBookingParent(result.parent, 'update', result.extraUserIds);
+  res.json(serializeDateCarBooking(result.parent));
 });
 
 export default router;

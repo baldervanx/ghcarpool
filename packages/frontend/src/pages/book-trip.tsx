@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {Card} from '@/components/ui/card';
 import {Button} from '@/components/ui/button';
@@ -8,7 +8,7 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {CarSelector} from '@/components/CarSelector';
 import {useDispatch, useSelector} from 'react-redux';
 import UserSelector from '@/components/UserSelector';
-import type {AppStore, DateCarBooking, Booking} from '@/store';
+import type {AppStore, DateCarBooking, Booking, Recurrence} from '@/store';
 import {setSelectedCar, setSelectedUsers, addDestination} from '@/store';
 import {addDays, differenceInCalendarDays, format} from 'date-fns';
 import {Info, OctagonAlert, TriangleAlert} from 'lucide-react';
@@ -16,6 +16,7 @@ import ConfirmationDialog from '@/components/confirmation-dialog';
 import {TimeSelector} from "@/components/time-selector";
 import {DestinationSelector} from "@/components/destination-selector";
 import {bookingsApi} from '@/api/bookings';
+import type { SaveBookingResponse } from '@/api/bookings';
 
 
 const BookTrip = () => {
@@ -41,6 +42,15 @@ const BookTrip = () => {
   const [existingBooking, setExistingBooking] = useState<string>(null);
   const [storedDateCarBooking, setStoredDateCarBooking] = useState<DateCarBooking>(null);
   const [recurrenceId, setRecurrenceId] = useState(null);
+  const [storedRecurrence, setStoredRecurrence] = useState<Recurrence | null>(null);
+  const [recurrenceTypeResolved, setRecurrenceTypeResolved] = useState(true);
+  const [recurrenceLoading, setRecurrenceLoading] = useState(false);
+  const [completeRecurrenceBookings, setCompleteRecurrenceBookings] = useState<DateCarBooking[]>([]);
+  const recurrenceRequest = useRef(0);
+  const availableBookings = Array.from(new Map([
+    ...completeRecurrenceBookings.map(entry => [entry.id, entry] as const),
+    ...bookings.map(entry => [entry.id, entry] as const),
+  ]).values());
   const [dialogState, setDialogState] = useState({
     isOpen: false,
     title: '',
@@ -52,6 +62,9 @@ const BookTrip = () => {
   const [bookingToSwap, setBookingToSwap] = useState<Booking>(null);
 
   useEffect(() => {
+    recurrenceRequest.current++;
+    setRecurrenceLoading(false);
+    setCompleteRecurrenceBookings([]);
     if (location.state?.parent_id) {
       const {parent_id, booking_id} = location.state;
       const dateCarBooking = bookings.find(dcb => dcb.id === parent_id);
@@ -91,39 +104,85 @@ const BookTrip = () => {
     } else {
       dispatch(setSelectedUsers([user.user_id]));
     }
+    return () => { recurrenceRequest.current++; };
   }, [location.state, bookings, user.user_id]);
 
   const fetchRecurrenceData = async (rId: string, carId: string) => {
-    // Recurrence-data finns nu i bookings-state via SSE-hooken.
-    // Hitta alla bookings med detta recurrenceId i det aktuella car-urvalet.
-    const recurringBookings = bookings
+    const requestVersion = recurrenceRequest.current;
+    let recurringBookings = bookings
       .filter(b => b.car.id === carId && b.bookings.some(b2 => b2.recurrenceId === rId))
       .sort((a, b) => a.date.localeCompare(b.date));
 
     if (recurringBookings.length === 0) return;
 
+    const metadata = recurringBookings.flatMap(container => container.bookings)
+      .find(booking => booking.recurrenceId === rId && booking.recurrence)?.recurrence;
+    setStoredRecurrence(metadata ?? null);
+    if (metadata) {
+      setBookingDate(metadata.recurringStartDate);
+      setRecurringEndDate(metadata.recurringEndDate);
+      setRecurringDays(metadata.recurringDays);
+      setRecurrenceTypeResolved(metadata.isMultiDay !== null);
+      {
+        setRecurrenceLoading(true);
+        try {
+          const response = await bookingsApi.list(metadata.recurringStartDate, metadata.recurringEndDate);
+          if (requestVersion !== recurrenceRequest.current) return;
+          recurringBookings = response.bookings
+            .filter(entry => entry.car.id === carId && entry.bookings.some(booking => booking.recurrenceId === rId))
+            .sort((a, b) => a.date.localeCompare(b.date));
+          setCompleteRecurrenceBookings(response.bookings);
+        } catch (error) {
+          if (requestVersion !== recurrenceRequest.current) return;
+          console.error('Recurrence load failed:', error);
+          setRecurrenceTypeResolved(false);
+          setAlerts([{ type: 'error', message: 'Kunde inte hämta hela bokningsserien. Försök igen innan du sparar.' }]);
+          return;
+        } finally {
+          if (requestVersion === recurrenceRequest.current) setRecurrenceLoading(false);
+        }
+      }
+      if (metadata.isMultiDay === null) {
+        setIsRecurring(false);
+        setIsMultiDay(false);
+        setAlerts([{ type: 'warn', message: 'Bokningsseriens typ saknas. Välj Återkommande eller Flerdagars innan du sparar.' }]);
+        return;
+      }
+      if (metadata.isMultiDay && (!recurringBookings.some(entry => entry.date === metadata.recurringStartDate) ||
+        !recurringBookings.some(entry => entry.date === metadata.recurringEndDate))) {
+        setRecurrenceTypeResolved(false);
+        setAlerts([{ type: 'error', message: 'Bokningsseriens första eller sista dag saknas. Bokningen kan inte sparas.' }]);
+        return;
+      }
+    }
+
+    if (recurringBookings.length === 0) {
+      setRecurrenceTypeResolved(false);
+      setAlerts([{ type: 'error', message: 'Bokningar saknas inom seriens datumintervall.' }]);
+      return;
+    }
     const firstEntry = recurringBookings[0].bookings.find(b2 => b2.recurrenceId === rId);
     const lastEntry = recurringBookings[recurringBookings.length - 1].bookings.find(b2 => b2.recurrenceId === rId);
 
     if (!firstEntry || !lastEntry) return;
 
-    // Kontrollera om det är en flerdagsbokning (00:00–24:00 i mitten)
-    const isMultiDayBooking = recurringBookings.length > 1 &&
+    const isMultiDayBooking = metadata ? metadata.isMultiDay : recurringBookings.length > 1 &&
       firstEntry.endTime === 24 * 60 && lastEntry.startTime === 0;
 
     if (isMultiDayBooking) {
       setIsMultiDay(true);
-      setBookingDate(recurringBookings[0].date);
+      setIsRecurring(false);
+      setBookingDate(metadata?.recurringStartDate ?? recurringBookings[0].date);
       setBookingStartTime(timeToString(firstEntry.startTime));
       setBookingEndTime(timeToString(lastEntry.endTime));
       setDistance(lastEntry.distance.toString());
     } else {
       setIsRecurring(true);
-      // Härleda veckodagar från de funna datumen
+      setIsMultiDay(false);
       const days = recurringBookings.map(b => dayToIndex(new Date(b.date)));
-      setRecurringDays([...new Set(days)]);
+      setRecurringDays(metadata?.recurringDays ?? [...new Set(days)]);
     }
-    setRecurringEndDate(recurringBookings[recurringBookings.length - 1].date);
+    setRecurringEndDate(metadata?.recurringEndDate ?? recurringBookings[recurringBookings.length - 1].date);
   };
 
   function timeToString(minutes: number): string {
@@ -225,7 +284,7 @@ const BookTrip = () => {
       const numDays = differenceInCalendarDays(end, start);
       const newRecurrenceId = recurrenceId ?? crypto.randomUUID();
 
-      const promises: Promise<DateCarBooking>[] = [];
+      const promises: Promise<SaveBookingResponse>[] = [];
 
       for (let dayOffset = 0; dayOffset <= numDays; dayOffset++) {
         const currentDate = addDays(start, dayOffset);
@@ -241,8 +300,9 @@ const BookTrip = () => {
           }
 
           const dateStr = format(currentDate, 'yyyy-MM-dd');
-          const dateCarBooking = bookings.find(b => b.car.id === selectedCar && b.date === dateStr);
+          const dateCarBooking = availableBookings.find(b => b.car.id === selectedCar && b.date === dateStr);
           const existingOnDate = dateCarBooking?.bookings.find(b => b.recurrenceId === newRecurrenceId);
+          if (existingOnDate?.logged) continue;
 
           // Validate overlap client-side before sending
           if (dateCarBooking) {
@@ -259,6 +319,10 @@ const BookTrip = () => {
             destinationId: destination || undefined,
             comment: comment || undefined,
             recurrenceId: newRecurrenceId,
+            isMultiDay,
+            recurringStartDate: bookingDate,
+            recurringEndDate,
+            recurringDays: isMultiDay ? [] : recurringDays,
             userIds: selectedUsers,
             existingBookingId: existingOnDate?.id,
             existingParentId: dateCarBooking?.id,
@@ -275,13 +339,13 @@ const BookTrip = () => {
             targetDates.add(format(cd, 'yyyy-MM-dd'));
           }
         }
-        const toDelete = bookings.filter(b =>
+        const toDelete = availableBookings.filter(b =>
           b.car.id === selectedCar && !targetDates.has(b.date) &&
           b.bookings.some(b2 => b2.recurrenceId === recurrenceId)
         );
         for (const dcb of toDelete) {
           const bookingToDelete = dcb.bookings.find(b2 => b2.recurrenceId === recurrenceId);
-          if (bookingToDelete) {
+          if (bookingToDelete && !bookingToDelete.logged) {
             promises.push(bookingsApi.delete(dcb.id, bookingToDelete.id).then(() => dcb));
           }
         }
@@ -347,6 +411,7 @@ const BookTrip = () => {
         userIds: selectedUsers,
         existingBookingId: existingBooking ?? undefined,
         existingParentId: storedDateCarBooking?.id,
+        recurrenceId: recurrenceId ? null : undefined,
       }).then(response => {
         if (response.newDestination) {
           dispatch(addDestination(response.newDestination));
@@ -370,13 +435,13 @@ const BookTrip = () => {
       if (recurrenceId && !single) {
         // Delete all future bookings with this recurrenceId
         const today = format(new Date(), 'yyyy-MM-dd');
-        const toDelete = bookings.filter(b =>
+        const toDelete = availableBookings.filter(b =>
           b.car.id === selectedCar && b.date >= today &&
           b.bookings.some(b2 => b2.recurrenceId === recurrenceId)
         );
         await Promise.all(toDelete.map(dcb => {
           const b2 = dcb.bookings.find(b => b.recurrenceId === recurrenceId);
-          return b2 ? bookingsApi.delete(dcb.id, b2.id) : Promise.resolve();
+          return b2 && !b2.logged ? bookingsApi.delete(dcb.id, b2.id) : Promise.resolve();
         }));
       } else if (existingBooking && storedDateCarBooking) {
         await bookingsApi.delete(storedDateCarBooking.id, existingBooking);
@@ -433,6 +498,9 @@ const BookTrip = () => {
 
   const validateAllFields = async () => {
     let validations = [];
+    if (!recurrenceTypeResolved || recurrenceLoading) {
+      validations.push({ type: 'error', message: 'Bokningsseriens typ och hela datumintervall måste vara fastställda innan du sparar.' });
+    }
     const distanceReq = isDistanceRequired();
     if (!selectedCar || selectedUsers.length === 0 || !bookingDate || !bookingStartTime || !bookingEndTime || (!distance && distanceReq)) {
       validations.push({ type: 'error', message: `Vänligen fyll i alla obligatoriska fält: bil, användare, datum, start- och sluttid${distanceReq?", samt distans":""}.` });
@@ -446,6 +514,10 @@ const BookTrip = () => {
 
     if (isMultiDay && !recurringEndDate) {
       validations.push({ type: 'error', message: 'Välj slutdatum för flerdags bokning' });
+    }
+    if (((isRecurring || isMultiDay) && recurringEndDate < bookingDate) ||
+      (isMultiDay && recurringEndDate === bookingDate)) {
+      validations.push({ type: 'error', message: 'Bokningsseriens slutdatum måste ligga efter startdatumet.' });
     }
 
     setAlerts(validations);
@@ -545,6 +617,12 @@ const BookTrip = () => {
     }
   }
 
+  const requestedBooking = bookings.find(container => container.id === location.state?.parent_id)
+    ?.bookings.find(booking => booking.id === location.state?.booking_id);
+  if (requestedBooking?.logged) {
+    return <Card className="max-w-md mx-auto p-6">Bokningen är loggad och kan inte ändras.</Card>;
+  }
+
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
         <ConfirmationDialog
@@ -556,12 +634,12 @@ const BookTrip = () => {
         />
 
         <div className="space-y-3">
-        <CarSelector acceptChange={acceptCarChange} disabled={(isEditing && isRecurring) || isComitting}/>
+        <CarSelector acceptChange={acceptCarChange} disabled={(isEditing && isRecurring) || isComitting || recurrenceLoading}/>
         {bookingToSwap && (
             <Label className="indent-9 flex">Växlar bil på bokning {timeToString(bookingToSwap.startTime)}-{timeToString(bookingToSwap.endTime)} av {bookingToSwap.byUser.id}</Label>
         )}
         </div>
-        <UserSelector disabled={isEditing && isRecurring}/>
+        <UserSelector disabled={(isEditing && isRecurring) || recurrenceLoading}/>
 
         <div className="flex gap-2">
           <div className="space-y-2 flex-1 min-w-[10rem]">
@@ -570,7 +648,7 @@ const BookTrip = () => {
                 type="date"
                 value={bookingDate}
                 onChange={(e) => setBookingDate(e.target.value)}
-                min={getBookingDate()}
+                min={isEditing ? undefined : getBookingDate()}
                 max={getBookingDate(undefined, 96)}
                 disabled={isEditing && isRecurring}
                 className="px-1.5 w-full appearance-none"
@@ -602,10 +680,13 @@ const BookTrip = () => {
             <Checkbox
                 id="recurring"
                 checked={isRecurring}
-                disabled={isComitting}
+                disabled={isComitting || recurrenceLoading || Boolean(storedRecurrence?.isMultiDay)}
                 onCheckedChange={(checked) => {
                   setIsRecurring(checked === true);
-                  if (checked) setIsMultiDay(false)
+                  if (checked) {
+                    setIsMultiDay(false);
+                    setRecurrenceTypeResolved(true);
+                  }
                 }}
             />
             <Label htmlFor="recurring" className="text-sm">
@@ -616,10 +697,13 @@ const BookTrip = () => {
             <Checkbox
                 id="multiday"
                 checked={isMultiDay}
-                disabled={isEditing}
+                disabled={isComitting || recurrenceLoading || isEditing && storedRecurrence?.isMultiDay !== null}
                 onCheckedChange={(checked) => {
                   setIsMultiDay(checked === true);
-                  if (checked) setIsRecurring(false)
+                  if (checked) {
+                    setIsRecurring(false);
+                    setRecurrenceTypeResolved(true);
+                  }
                 }}
             />
             <Label htmlFor="multiday" className="text-sm">
@@ -741,7 +825,7 @@ const BookTrip = () => {
           <Button
               className="w-full"
               onClick={handleBooking}
-              disabled={isComitting || !selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || (!distance && isDistanceRequired())}
+              disabled={isComitting || recurrenceLoading || !recurrenceTypeResolved || !selectedCar || selectedUsers.length === 0 || !bookingStartTime || !bookingEndTime || (!distance && isDistanceRequired())}
           >
             {isEditing ? 'Spara ändringar' : 'Boka resa'}
           </Button>

@@ -2,33 +2,19 @@ import { Router, Request, Response } from 'express';
 import type { Prisma } from '../generated/prisma/client';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
-import { serializeTrip, serializeDateCarBooking } from '../lib/serializers';
+import { serializeTrip } from '../lib/serializers';
 import { subscribe, unsubscribe, sendEvent } from '../lib/sse';
+import { bookingInclude, touchBookingParents, publishBookingParent } from '../lib/booking-events';
+import { lockRecurrences } from '../lib/recurrence';
 
 const router = Router();
 router.use(requireAuth);
 
 const tripInclude = { users: true } as const;
-const linkedBookingInclude = { parent: true, users: true } as const;
+const linkedBookingInclude = { parent: true, users: true, recurrence: true } as const;
 type BookingWithParentAndUsers = Prisma.BookingGetPayload<{ include: typeof linkedBookingInclude }>;
-type UpdatedParent = { id: string; userIds: string[] };
 
 const TRIPS_CHANNEL = 'trips';
-const bookingChannel = (userId: string) => `bookings:${userId}`;
-
-function isContiguousMultiDaySeries(bookings: BookingWithParentAndUsers[]) {
-  if (bookings.length < 2) return false;
-
-  const sorted = [...bookings].sort((a, b) => a.parent.date.localeCompare(b.parent.date));
-  if (sorted[0].endTime !== 1440 || sorted[sorted.length - 1].startTime !== 0) return false;
-
-  return sorted.every((booking, index) => {
-    if (index === 0) return true;
-    const previous = new Date(`${sorted[index - 1].parent.date}T00:00:00Z`);
-    previous.setUTCDate(previous.getUTCDate() + 1);
-    return previous.toISOString().slice(0, 10) === booking.parent.date;
-  });
-}
 
 router.get('/', async (req: Request, res: Response) => {
   const { since: sinceParam } = req.query as { since?: string };
@@ -66,11 +52,12 @@ router.post('/', async (req: Request, res: Response) => {
   };
   const byUserId = req.user!.id;
 
-  if (!carId || !Array.isArray(userIds) || userIds.length === 0) {
+  if (typeof carId !== 'string' || !carId || !Array.isArray(userIds) || userIds.length === 0
+    || userIds.some(id => typeof id !== 'string' || !id) || new Set(userIds).size !== userIds.length) {
     res.status(400).json({ error: 'Obligatoriska fält saknas: carId, userIds' });
     return;
   }
-  if (typeof odo !== 'number' || typeof distance !== 'number' || typeof cost !== 'number') {
+  if (!Number.isSafeInteger(odo) || !Number.isSafeInteger(distance) || !Number.isFinite(cost)) {
     res.status(400).json({ error: 'odo, distance och cost måste vara tal' });
     return;
   }
@@ -78,25 +65,59 @@ router.post('/', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'odo och distance måste vara positiva' });
     return;
   }
+  if ((bookingId !== undefined && (typeof bookingId !== 'string' || !bookingId))
+    || (parentId !== undefined && (typeof parentId !== 'string' || !parentId || !bookingId))) {
+    res.status(400).json({ error: 'Ogiltigt bookingId eller parentId' });
+    return;
+  }
+  if (comment !== undefined && typeof comment !== 'string') {
+    res.status(400).json({ error: 'comment måste vara text' });
+    return;
+  }
 
-  let trip;
-  let updatedParents: UpdatedParent[] = [];
+  let result;
   try {
-    trip = await prisma.$transaction(async (tx) => {
+    result = await prisma.$transaction(async (tx) => {
+      // Booking edits/deletes use the same lock, so validation stays valid until commit.
+      await tx.$queryRaw`SELECT id FROM "Car" WHERE id = ${carId} FOR UPDATE`;
       const car = await tx.car.findUnique({ where: { id: carId }, select: { hasLog: true } });
       if (!car) throw Object.assign(new Error('Fordonet hittades inte'), { httpStatus: 404 });
       if (!car.hasLog) throw Object.assign(new Error('Fordonet saknar körjournal'), { httpStatus: 400 });
 
       let bookingToLog: BookingWithParentAndUsers | null = null;
-      if (bookingId || parentId) {
-        if (!bookingId || !parentId) {
-          throw Object.assign(new Error('bookingId och parentId måste anges tillsammans'), { httpStatus: 400 });
-        }
+      if (bookingId) {
         bookingToLog = await tx.booking.findUnique({ where: { id: bookingId }, include: linkedBookingInclude });
-        if (!bookingToLog || bookingToLog.parentId !== parentId || bookingToLog.parent.carId !== carId) {
+        if (!bookingToLog || (parentId !== undefined && bookingToLog.parentId !== parentId)
+          || bookingToLog.parent.carId !== carId) {
           throw Object.assign(new Error('Bokningen hör inte till angivet fordon och datum'), { httpStatus: 400 });
         }
         if (bookingToLog.logged) throw Object.assign(new Error('Bokningen är redan loggad'), { httpStatus: 409 });
+      }
+
+      let bookingsToLog = bookingToLog ? [bookingToLog] : [];
+      if (bookingToLog && bookingToLog.recurrenceId !== null) {
+        await lockRecurrences(tx, [bookingToLog.recurrenceId]);
+        const recurrence = await tx.recurrence.findUniqueOrThrow({
+          where: { id: bookingToLog.recurrenceId },
+        });
+        if (recurrence.isMultiDay === null) {
+          throw Object.assign(new Error('Bokningsseriens typ är okänd och måste fastställas före loggning'), { httpStatus: 409 });
+        }
+        const recurrenceBookings = await tx.booking.findMany({
+          where: { recurrenceId: bookingToLog.recurrenceId },
+          include: linkedBookingInclude,
+        });
+        if (recurrenceBookings.some(booking => booking.parent.carId !== carId)) {
+          throw Object.assign(new Error('Bokningsserien omfattar flera fordon'), { httpStatus: 409 });
+        }
+        if (recurrence.isMultiDay) bookingsToLog = recurrenceBookings;
+      }
+      if (bookingsToLog.some(booking => booking.logged)) {
+        throw Object.assign(new Error('Bokningen är redan loggad'), { httpStatus: 409 });
+      }
+      const users = await tx.user.count({ where: { id: { in: userIds } } });
+      if (users !== userIds.length) {
+        throw Object.assign(new Error('Användare hittades inte'), { httpStatus: 400 });
       }
 
       const latestTrip = await tx.trip.findFirst({
@@ -117,26 +138,22 @@ router.post('/', async (req: Request, res: Response) => {
         include: tripInclude,
       });
 
-      if (bookingToLog) {
-        let bookingsToLog = [bookingToLog];
-        if (bookingToLog.recurrenceId) {
-          const recurrenceBookings = await tx.booking.findMany({
-            where: { recurrenceId: bookingToLog.recurrenceId, parent: { carId } },
-            include: linkedBookingInclude,
-          });
-          if (isContiguousMultiDaySeries(recurrenceBookings)) bookingsToLog = recurrenceBookings;
-        }
-        await tx.booking.updateMany({
+      const parentIds = [...new Set(bookingsToLog.map(booking => booking.parentId))];
+      if (bookingsToLog.length) {
+        const updated = await tx.booking.updateMany({
           where: { id: { in: bookingsToLog.map(booking => booking.id) }, logged: null },
           data: { logged: created.id },
         });
-        updatedParents = [...new Map(bookingsToLog.map(booking => [booking.parentId, {
-          id: booking.parentId,
-          userIds: booking.users.map(user => user.userId),
-        }])).values()];
+        if (updated.count !== bookingsToLog.length) {
+          throw Object.assign(new Error('Bokningen är redan loggad'), { httpStatus: 409 });
+        }
+        await touchBookingParents(tx, parentIds);
       }
 
-      return created;
+      const parents = await tx.dateCarBooking.findMany({
+        where: { id: { in: parentIds } }, include: bookingInclude,
+      });
+      return { trip: created, parents };
     });
   } catch (err: unknown) {
     const e = err as Error & { httpStatus?: number };
@@ -147,17 +164,10 @@ router.post('/', async (req: Request, res: Response) => {
     throw err;
   }
 
-  const serialized = serializeTrip(trip);
+  const serialized = serializeTrip(result.trip);
   sendEvent(TRIPS_CHANNEL, 'add', serialized);
 
-  for (const updatedParent of updatedParents) {
-    const dcb = await prisma.dateCarBooking.findUnique({
-      where: { id: updatedParent.id }, include: { bookings: { include: { users: true } } },
-    });
-    if (!dcb) continue;
-    const affectedUserIds = new Set([byUserId, ...updatedParent.userIds]);
-    for (const uid of affectedUserIds) sendEvent(bookingChannel(uid), 'update', serializeDateCarBooking(dcb));
-  }
+  for (const parent of result.parents) publishBookingParent(parent, 'update', [byUserId, ...userIds]);
 
   res.status(201).json(serialized);
 });

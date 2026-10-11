@@ -108,6 +108,8 @@ export const TEST_ADMIN_TRIPS = [
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 export const handlers = [
+  http.get('/api/v1/auth/config', () => HttpResponse.json({ local: true, google: false, oidc: false })),
+
   // Generella resurser
   http.get('/api/v1/users',        () => HttpResponse.json(TEST_USERS)),
   http.get('/api/v1/cars',         () => HttpResponse.json(TEST_CARS)),

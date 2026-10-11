@@ -14,9 +14,7 @@ RUN pnpm install --frozen-lockfile --filter @ghcarpool/frontend...
 COPY packages/backend ./packages/backend
 COPY packages/frontend ./packages/frontend
 
-ARG VITE_GOOGLE_AUTH_ENABLED=false
-RUN VITE_API_URL=/api/v1 VITE_GOOGLE_AUTH_ENABLED="$VITE_GOOGLE_AUTH_ENABLED" \
-    pnpm --filter @ghcarpool/frontend run build
+RUN VITE_API_URL=/api/v1 pnpm --filter @ghcarpool/frontend run build
 RUN pnpm --filter @ghcarpool/backend run build
 
 FROM node:26-alpine AS runtime

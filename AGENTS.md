@@ -14,7 +14,7 @@ statistik för en grupp användare.
 - Monorepo med pnpm workspaces (`packages/backend`, `packages/frontend`)
 - Backend: Node 26 i produktion (lokal Node 24 stöds) + Express + TypeScript + Prisma 7 + PostgreSQL
 - Frontend: React 18 + Vite + Redux Toolkit + TailwindCSS + shadcn/ui
-- Auth: Passport.js session-baserad (passport-local primär, Google OAuth optionell)
+- Auth: Passport.js session-baserad (local primär, Google OAuth och OIDC optionella)
 - Testning: Jest + Supertest (backend), Vitest + MSW (frontend)
 - Produktion: två Compose-servicar, `app` (Express + byggd frontend) och `db`
 - TLS/reverse proxy och Authelia: externt infra-repository, inga configs här
@@ -41,7 +41,10 @@ ghcarpool/
 │   │       ├── server.ts            # HTTP-server, lyssnar på PORT
 │   │       ├── db/prisma.ts         # Prisma-singleton
 │   │       ├── lib/
-│   │       │   ├── passport.ts      # LocalStrategy + optionell GoogleStrategy
+│   │       │   ├── passport.ts      # Local + optionell Google/OIDC
+│   │       │   ├── oidc.ts          # openid-client: state/nonce/PKCE, validerad callback
+│   │       │   ├── oidc-config.ts   # Validerad runtime-env och säkra redirects
+│   │       │   ├── oidc-user.ts     # Befintliga användare, issuer+subject-länk
 │   │       │   ├── session.ts       # connect-pg-simple, COOKIE_SECURE-flag
 │   │       │   ├── serializers.ts   # Hjälpfunktioner för JSON-svar
 │   │       │   └── sse.ts           # SSE-hjälpfunktioner
@@ -50,7 +53,7 @@ ghcarpool/
 │   │       │   ├── frontend.ts      # Statisk frontend + säker HTML SPA-fallback
 │   │       │   └── proxy.ts         # Validerad trust proxy, origin och dev-CORS
 │   │       ├── routes/
-│   │       │   ├── auth.ts          # POST /login, POST /logout, GET /me
+│   │       │   ├── auth.ts          # /login, /logout, /me, /config, /google, /oidc
 │   │       │   ├── general.ts       # GET /users, /cars, /destinations, /settings
 │   │       │   ├── bookings.ts      # CRUD bokningar + SSE-stream
 │   │       │   ├── trips.ts         # CRUD körloggar + SSE-stream
@@ -90,15 +93,41 @@ POST /api/v1/auth/login  { email, password }
   → 200 { id, email, isAdmin }  |  401
 
 GET /api/v1/auth/me
-  → session deserialiseras → 200 { id, email, isAdmin }  |  401
+  → session deserialiseras → 200 { id, email, isAdmin }  |  200 { user: null }
 
 POST /api/v1/auth/logout
-  → req.logout() → session raderas → 200 { ok: true }
+  → req.logout() → session raderas + cookie rensas → 200 { ok: true }
 ```
 
 - Sessioner lagras i PostgreSQL-tabellen `session` (via connect-pg-simple)
 - `requireAuth` / `requireAdmin` i `src/middleware/auth.ts` — kontrollerar `req.user`
 - Google OAuth aktiveras automatiskt om `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` finns i env
+- Googles befintliga e-postbaserade upsert/provisionering är oförändrad och separat från OIDC.
+- `GET /api/v1/auth/config` returnerar `{ local, google, oidc }` vid runtime utan secrets.
+  Login-knappar använder detta; inga frontend-buildflaggor styr auth.
+- OIDC aktiveras endast med alla fyra core-env-värden. Alla tomma innebär avstängt,
+  även med default scopes; partiell core-konfiguration stoppar startup.
+- OIDC första länk kräver exakt befintlig lokal e-post och boolean
+  `email_verified: true` från validerat ID-token eller subject-bunden UserInfo;
+  aldrig auto-provisionering. Senare login använder enbart
+  stabil issuer+subject i `OidcIdentity`. Unik issuer+user förhindrar e-postövertagande.
+- ID-token valideras först. Endast olänkad identitet med saknad e-post/verifiering
+  hämtar UserInfo via `openid-client.fetchUserInfo` med ID-tokenets expected subject.
+  Endast UserInfo `email`/`email_verified` används; explicit false/ogiltiga ID-token-
+  claims kan inte överstyras. Komplett verifierad ID-token-e-post utan lokal användare
+  ersätts inte via UserInfo. Länkade konton kräver ingen UserInfo-tillgänglighet.
+- Fel UserInfo-subject, saknad/overifierad e-post eller providerfel avvisar första länk.
+  Access token skickas enbart server-side över HTTPS i Authorization-headern;
+  aldrig i URL, frontend, session eller loggar. UserInfo-grupper ger inga rättigheter.
+- OIDC använder `openid-client`, code flow/query callback, PKCE S256, state och nonce.
+  Token-signatur/issuer/audience/giltighet valideras; transaktionen lagras i session,
+  förbrukas vid callback och gäller tio minuter. Callback-URL kommer från env, inte headers.
+- Admin hämtas endast från lokal DB (`User.isAdmin`), aldrig OIDC-grupper/claims.
+  Lyckad OIDC-callback använder samma Passport/PostgreSQL-session som local.
+- Skyddade direktlänkar behåller path/query/fragment i `returnTo`; lokal och OIDC-login
+  återgår till validerad same-origin path, annars `/home`. Google-redirect är oförändrad.
+- Logout avslutar bara lokal session/cookie. Authelia/Google-session kan finnas kvar
+  och nästa SSO-login kan ske direkt; central logout görs separat hos leverantören.
 - `COOKIE_SECURE=true` krävs endast vid HTTPS — **aldrig** vid HTTP
 
 ---
@@ -115,11 +144,14 @@ Saknad frontend-build stoppar produktionsstartup. Vite-proxyn används fortsatt 
 
 ## Databas — Prisma
 
-Modeller: `User`, `Session`, `Car`, `Destination`, `Settings`,
+Modeller: `User`, `OidcIdentity`, `Session`, `Car`, `Destination`, `Settings`,
 `DateCarBooking`, `Recurrence`, `Booking`, `BookingUser`, `Trip`, `TripUser`
 
 Viktiga detaljer:
 - `User.passwordHash String?` — null för Google-only-användare
+- `OidcIdentity` har primärnyckel issuer+subject, unik issuer+user och FK till `User`
+  med cascade vid användarborttagning. Migration `20261011000000_add_oidc_identity`
+  måste deployas innan OIDC används; Google kräver inte denna identitetsmodell.
 - `Booking.recurrenceId` är en FK till `Recurrence` med beständig `isMultiDay`,
   datumintervall och veckodagar (måndag 0). Legacy `null`-typ måste fastställas
   explicit innan loggning; känd typ är oföränderlig. Loggad bokningshistorik
@@ -152,7 +184,18 @@ Viktiga detaljer:
 | `RUN_MIGRATIONS` | `false` | Kontrollerad opt-in till startup-migrationer |
 | `GOOGLE_CLIENT_ID` | *(tom)* | Aktiverar Google OAuth om satt |
 | `GOOGLE_CLIENT_SECRET` | *(tom)* | — |
-| `VITE_GOOGLE_AUTH_ENABLED` | `false` | Visar Google-knapp i Login.tsx |
+| `GOOGLE_CALLBACK_URL` | `/api/v1/auth/google/callback` | Google-flödets befintliga callback |
+| `OIDC_ISSUER` | *(tom)* | HTTPS issuer för discovery |
+| `OIDC_CLIENT_ID` | *(tom)* | Konfidentiell OIDC-klient |
+| `OIDC_CLIENT_SECRET` | *(tom)* | Klienthemlighet, aldrig i frontend/loggar/Git |
+| `OIDC_REDIRECT_URI` | *(tom)* | HTTPS `<publik-origin>/api/v1/auth/oidc/callback` |
+| `OIDC_SCOPES` | `openid email profile` | Måste innehålla `openid` och `email`; aktiverar inte OIDC ensam |
+
+OIDC issuer/redirect får inte innehålla userinfo, query eller fragment.
+Första länken kräver `email` + verifieringsclaim i ID-token eller validerad UserInfo.
+Authelias standardclaims för `openid email profile` ligger i UserInfo; appen stöder
+det utan särskild infra-claims-policy. Se [officiella Authelia-claims](https://www.authelia.com/integration/openid-connect/openid-connect-1.0-claims/index.md).
+Leverantörsbyte kräver ändrad app-env/omstart, inte ombyggd frontend.
 
 ### packages/backend/.env (lokal dev)
 Kopiera `.env.dev` → `packages/backend/.env`. Innehåller `DATABASE_URL`,
@@ -268,6 +311,9 @@ cd packages/backend && pnpm test
 - Tester i `src/__tests__/` — kräver lokal PostgreSQL (från `DATABASE_URL` i `.env`)
 - `setupFiles: ['dotenv/config']` laddar `.env` automatiskt
 - `--forceExit` krävs pga. öppna DB-connections
+- OIDC-protokolltester körs via `pnpm test:oidc` och automatiskt i backendens pretest.
+  Default använder fixtures; `OIDC_TEST_DATABASE_URL` kan välja en färsk isolerad DB
+  på `127.0.0.1` med namn som börjar `ghcarpool_oidc_test_` för riktiga PG-sessioner.
 - App/static/proxy-tester kan köras utan DB:
   `pnpm exec jest --config jest.config.ts --runInBand src/__tests__/frontend.test.ts src/__tests__/proxy.test.ts src/__tests__/app.test.ts`.
 

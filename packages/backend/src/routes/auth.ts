@@ -3,8 +3,13 @@ import bcrypt from 'bcrypt';
 import passport from '../lib/passport';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
+import { frontendUrl, oidcSettings, safeReturnTo } from '../lib/oidc-config';
 
 const router = Router();
+
+router.get('/config', (_req, res) => {
+  res.set('Cache-Control', 'no-store').json({ local: true, google: googleEnabled, oidc: Boolean(oidcSettings) });
+});
 
 // POST /api/v1/auth/login
 router.post('/login', (req, res, next) => {
@@ -27,7 +32,16 @@ router.post('/login', (req, res, next) => {
 router.post('/logout', (req, res, next) => {
   req.logout((err) => {
     if (err) return next(err);
-    res.json({ ok: true });
+    req.session.destroy((sessionErr) => {
+      if (sessionErr) return next(sessionErr);
+      res.clearCookie('connect.sid', {
+        path: '/',
+        httpOnly: true,
+        secure: process.env.COOKIE_SECURE === 'true',
+        sameSite: 'lax',
+      });
+      res.json({ ok: true });
+    });
   });
 });
 
@@ -93,6 +107,25 @@ if (googleEnabled) {
       res.redirect(process.env.FRONTEND_URL ?? '/');
     },
   );
+}
+
+if (oidcSettings) {
+  router.get('/oidc', passport.authenticate('oidc'));
+  router.get('/oidc/callback', (req, res, next) => {
+    passport.authenticate('oidc', (err: unknown, user: Express.User | false, info?: { returnTo?: string }) => {
+      if (err || !user) {
+        res.redirect(frontendUrl('/login?error=oidc'));
+        return;
+      }
+      req.logIn(user, (loginErr) => {
+        if (loginErr) return next(new Error('Could not create login session'));
+        req.session.save((sessionErr) => {
+          if (sessionErr) return next(new Error('Could not save login session'));
+          res.redirect(frontendUrl(safeReturnTo(info?.returnTo)));
+        });
+      });
+    })(req, res, next);
+  });
 }
 
 export default router;

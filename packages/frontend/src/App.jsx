@@ -17,7 +17,7 @@ import CarInfoPage from './pages/car-info';
 import { AccessibilityProvider } from './lib/utils';
 import { ThemeProvider } from './components/theme-context';
 import { HomePage } from './pages/home';
-import PropTypes from "prop-types";
+import { ProtectedRoute } from '@/components/protected-route';
 import {useListenToTrips} from "@/db/use-listen-to-trips";
 import {useListenToBookings} from "@/db/use-listen-to-bookings";
 
@@ -86,20 +86,6 @@ function App() {
       </Router>
   );
 }
-
-function ProtectedRoute({ children }) {
-  const { user, isMember } = useSelector(state => state.auth);
-
-  if (!user || !isMember) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return children;
-}
-
-ProtectedRoute.propTypes = {
-  children: PropTypes.node.isRequired,
-};
 
 export default function RootApp() {
   return (

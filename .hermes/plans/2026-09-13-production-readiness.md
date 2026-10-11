@@ -1,6 +1,6 @@
 # Produktionsberedskap: loggkontroll, en app-container, reverse proxy och OIDC
 
-**Status:** Fas 1–3 implementerade och riktat verifierade 2026-10-11; fas 4 återstår att färdigställa som separat commit. Full test-/lint-gate och manuella produktionskontroller återstår.
+**Status:** Fas 1–4 implementerade och verifierade 2026-10-11, med separata fascommits. Full test-/lint-gate blockeras av befintliga orelaterade fel; manuella kontroller och integration mot extern produktionsinfrastruktur återstår.
 **Utgångspunkt:** `feature/firebase-to-postgres-migration`  
 **Relaterad legacy-commit:** `283db8a` på `feature/log-checking`
 
@@ -154,13 +154,13 @@ Backendens TypeScript-kontroll och separat typkontroll av Firestore-importen
 passerar. Alla migrationer kan appliceras på en ny PostgreSQL 17-databas;
 Prisma-schemajämförelsen visar ingen skillnad.
 
-Hela aktuella backendens Jest-körning ger **291 godkända och 1 underkänt test**
+Fas 1:s helkörning före proxykompletteringen gav **291 godkända och 1 underkänt test**
 (13 av 14 sviter godkända). Befintlig `expenses.test.ts` förväntar `400` utan
 `carId`, men nuvarande route/schema tillåter bilfri expense och returnerar
 `201`; testets cleanup missar denna rad och får även ett FK-fel för
 `Expense_byUserId`. Detta är utanför fasens booking/trip-scope och har inte
-ändrats. Den separata befintliga OIDC-protokollsviten passerar med **26/26**
-i sitt standardläge; den ingår inte i fas 1.
+ändrats. OIDC-protokollsviten gav då **26/26** i sitt standardläge; den ingår
+inte i fas 1. Slutliga resultat efter fas 4 finns under slutverifiering nedan.
 
 Databaskörningarna använder endast nya unikt namngivna
 `ghcarpool_phase1_test_*`-databaser i separata PostgreSQL-containers med tmpfs,
@@ -252,8 +252,8 @@ Verifiera `/health`, API-404 som JSON, SPA-direktlänkar, session och SSE i den 
 `db` är implementerade. nginx och separata package-Dockerfiles är borttagna.
 43 app-/static-regressioner passerar. Migrationer är en separat deploy-åtgärd
 som standard; `RUN_MIGRATIONS=true` är ett uttryckligt, felstoppande alternativ
-vid startup. Container-/sessions-/SSE-verifiering har gjorts isolerat och
-upprepas mot det slutliga imaget när även fas 3–4 är integrerade.
+vid startup. Container-/sessions-/SSE-verifiering har gjorts isolerat med
+integrerad fas 3–4; slutresultaten finns under slutverifiering nedan.
 
 Databasverktyget `scripts/run-db-scripts.sh` använder också den nya app-servicen:
 projektets Compose-labels identifierar exakt en container, och `CONTAINER_NAME`
@@ -296,6 +296,69 @@ forwarding-headers när avsändaren inte är betrodd.
 7. Testa callback, obehörig användare, direktlänk till skyddad route, sessionsutgång och logout.
 
 Appen ska inte lita på identitetsheaders direkt från klienten. Om infra senare använder forward-auth måste appporten fortfarande vara privat och proxyn måste rensa/sätta headers själv; OIDC är den auktoritativa inloggningsvägen.
+
+**Status 2026-10-11:** OIDC är implementerat med lazy discovery,
+authorization code flow, PKCE S256, state, nonce och signatur-/issuer-/audience-
+validering genom `openid-client`. Auth-transaktionen förbrukas före tokenutbyte
+och gäller högst tio minuter. Lokal inloggning fungerar oberoende av leverantörens
+tillgänglighet. `OidcIdentity` lagrar issuer+subject med en unik användarlänk per
+issuer; migration `20261011000000_add_oidc_identity` ska appliceras före OIDC-trafik.
+
+Första kopplingen kräver en redan befintlig lokal användare och strikt
+`email_verified: true`. Kompletta validerade ID-token-claims kan användas;
+annars hämtas subject-bunden UserInfo med backendens access token. Samma `sub`
+som i det validerade ID-tokenet krävs. Detta stöder Authelias vanliga minimala
+ID-token utan särskild infra-claims-policy. Explicit falska eller felaktiga
+ID-token-claims kan inte kringgås via UserInfo, och en komplett verifierad men
+okänd e-post ersätts inte via UserInfo. Redan länkade konton använder endast
+issuer+subject och behöver inte UserInfo, även om e-post ändras eller saknas.
+Ingen automatisk provisionering eller extern admin-/gruppmappning görs.
+Googles ursprungliga separata provisioneringspolicy är oförändrad.
+
+`GET /api/v1/auth/config` styr leverantörsknappar vid runtime utan frontendens
+gamla build-flagga. Skyddade direktlänkar bevarar pathname, query och fragment;
+lokal/OIDC-inloggning återgår endast till validerade same-origin sökvägar.
+Logout förstör PostgreSQL-sessionen och rensar cookien, men avslutar inte central
+SSO-session. Miljöreferens och operatörsvägledning finns i README och `.env.example`.
+Ingen Caddy- eller Authelia-konfiguration har lagts till.
+
+## Slutverifiering och kvarvarande release-gates
+
+- **Frontend:** 85/85 tester i 14 filer passerar, inklusive bokningsscenarier,
+  runtime-inloggning och skyddade direktlänkar. Den faktiska applikationens
+  TypeScript-kontroll och produktionsbuild passerar.
+- **Backend:** Slutlig Jest-helkörning på en ny isolerad PostgreSQL 17-databas
+  ger 348 godkända och 1 underkänt test, med 14 av 15 sviter godkända. Det enda
+  underkända testet och dess FK-cleanup-fel är det befintliga expenses-felet
+  beskrivet ovan. Backendens typkontroll och samtliga nio migrationer passerar.
+- **OIDC:** 45 signerade protokolltester passerar med verklig PostgreSQL på både
+  Node 24 och det byggda Node 26-imaget. De täcker även Authelia-lik minimal
+  ID-token/UserInfo, subject-mismatch, saknade/overifierade claims, providerfel,
+  okända användare, stabila länkar samt att tokens inte läcker till URL,
+  frontend, session eller loggar. 64 riktade backendtester för auth/policy och
+  17 frontendtester för login/direktlänkar passerar.
+- **Samlat image:** Node 26-build och isolerade HTTP-kontroller passerar för
+  health, JSON-API-404, SPA-direktlänk, beständig lokal session/logout,
+  exakt recurrence-metadata, vald normal instans respektive alla flerdagsinstanser,
+  loggning för annan användare, ändring av historisk ologgad bokning,
+  avvisad ändring av loggad bokning och avvisad loggning för `hasLog=false`.
+  Båda levande SSE-strömmarna och alla ändrade flerdagscontainers verifierades.
+  Databasverktygets fake-runtime-regressioner passerar också.
+- **Lint:** Sju befintliga fel kvarstår i fem orörda JSX-filer:
+  `CarContext.jsx`, `OfflineStatus.jsx`, `UserSelector.jsx`, `theme-context.jsx`
+  och `TripLog.jsx`. Full lint-/test-gate är därför inte grön.
+
+Alla databastester kördes med uttryckligen isolerad miljö och nya tillfälliga
+databaser/containers; dessa resurser har tagits bort. Ingen befintlig databas
+eller delad deployment har ändrats. `TODO.md`:s manuella anteckningar är bevarade
+och inte inkluderade i fascommits.
+
+Före produktionsrelease återstår manuella omtester av de nio TODO-scenarierna,
+verklig integration mot extern Caddy/Authelia, kontroll av publika HTTPS-cookies
+och SSE genom proxyn samt infra-repositoryts backup-/rollback-övning.
+Release-migrationerna måste köras kontrollerat; appens normala omstarter
+migrerar inte databasen. Implementationen är alltså färdig, men hela
+produktionsrelease-gaten är ännu inte godkänd.
 
 ## Rekommenderad ordning
 

@@ -3,6 +3,7 @@ import { Strategy as LocalStrategy } from 'passport-local';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import bcrypt from 'bcrypt';
 import prisma from '../db/prisma';
+import { registerOidcStrategy } from './oidc';
 
 // ── Serialisering ─────────────────────────────────────────────────────────────
 passport.serializeUser((user, done) => {
@@ -72,5 +73,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
     ),
   );
 }
+
+registerOidcStrategy();
 
 export default passport;

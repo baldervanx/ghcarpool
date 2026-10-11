@@ -65,9 +65,10 @@ describe('POST /api/v1/auth/login', () => {
 // ── GET /api/v1/auth/me ───────────────────────────────────────────────────────
 
 describe('GET /api/v1/auth/me', () => {
-  it('returnerar 401 utan session', async () => {
+  it('returnerar user:null utan session', async () => {
     const res = await request(app).get('/api/v1/auth/me');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ user: null });
   });
 
   it('returnerar inloggad användare med giltig session', async () => {
@@ -95,9 +96,10 @@ describe('POST /api/v1/auth/logout', () => {
     expect(logoutRes.status).toBe(200);
     expect(logoutRes.body.ok).toBe(true);
 
-    // /me ska nu returnera 401
+    expect(logoutRes.headers['set-cookie'][0]).toMatch(/connect.sid=;/);
     const meRes = await agent.get('/api/v1/auth/me');
-    expect(meRes.status).toBe(401);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body).toEqual({ user: null });
   });
 });
 

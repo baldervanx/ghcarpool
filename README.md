@@ -10,7 +10,7 @@ packages/
   backend/    Node 26 + Express + TypeScript + Prisma ORM
 ```
 
-- **Auth**: Session-baserad inloggning med e-post + lösenord (Passport.js). Google OAuth är optionellt (styrs av env-variabler). Ingen extern autentiseringstjänst krävs.
+- **Auth**: Session-baserad inloggning med e-post + lösenord (Passport.js), optionell Google OAuth och optionell OIDC (t.ex. Authelia). Leverantörer styrs av runtime-env; ingen extern autentiseringstjänst krävs för lokal inloggning.
 - **Databas**: PostgreSQL 17 + Prisma. Alla skrivningar går via backend. Sessioner lagras i databasen.
 - **Realtid**: SSE (Server-Sent Events). Backend broadcastar `add/update/remove`-events när data förändras.
 - **Deployment**: Två produktionsservicar i Docker Compose: `app` (Express + byggd React-app) och `db` (PostgreSQL). TLS/reverse proxy och Authelia hanteras i ett externt infra-repository; inga sådana konfigurationer finns här.
@@ -43,6 +43,8 @@ cp .env.example .env
 | `RUN_MIGRATIONS` | Default `false`; migrationer är en separat deploy-åtgärd |
 
 Google OAuth är **frivilligt** — lämna `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` tomma för att hoppa över det.
+OIDC är också frivilligt: lämna dess fyra kärnvärden tomma i `.env.example` för
+att behålla lokal/Google-inloggning utan OIDC. Se OIDC-policyn nedan innan det aktiveras.
 
 ### 3. Bygg, migrera och starta
 
@@ -92,6 +94,18 @@ docker compose exec app node dist/scripts/seed.js
 ```bash
 docker compose down          # Behåller data i pgdata-volymen
 ```
+
+### Operatörsskript för engångsimport
+
+`./scripts/run-db-scripts.sh migrate` använder verktygen som paketeras i app-imaget
+för engångsimport från Firestore. Helpern hittar den körande `app`-servicen via
+Compose-labels; använd `COMPOSE_PROJECT_NAME` för rätt projekt eller `CONTAINER_NAME`
+för en uttryckligen vald container utan sådana labels. Kontrollera alltid målmiljön.
+Lägg credentials i `packages/backend/serviceAccount.json` eller ange
+`SERVICE_ACCOUNT_LOCAL`; filen ska aldrig committas och är exkluderad från Docker-build.
+Helpern kopierar den till en temporär fil i containern och tar bort kopian vid avslut.
+Spara backup enligt infra-repositoryts rutiner före import. Helperns `reset` raderar
+data och är aldrig en del av normal release eller startup.
 
 ### HTTPS bakom extern reverse proxy
 
@@ -227,13 +241,21 @@ pnpm exec ts-node src/scripts/set-password.ts user@example.com lösenord123
 | `GOOGLE_CLIENT_ID` | Nej | Google OAuth — utelämnas för att inaktivera |
 | `GOOGLE_CLIENT_SECRET` | Nej | Google OAuth — utelämnas för att inaktivera |
 | `GOOGLE_CALLBACK_URL` | Nej | Google OAuth callback, default `/api/v1/auth/google/callback` |
+| `OIDC_ISSUER` | OIDC: Ja | HTTPS issuer-URL för discovery, exakt som leverantörens issuer |
+| `OIDC_CLIENT_ID` | OIDC: Ja | Registrerad konfidentiell OIDC-klient |
+| `OIDC_CLIENT_SECRET` | OIDC: Ja | Klienthemlighet; lagra som secret, aldrig i frontend eller Git |
+| `OIDC_REDIRECT_URI` | OIDC: Ja | Absolut HTTPS callback: `<publik-origin>/api/v1/auth/oidc/callback` |
+| `OIDC_SCOPES` | Nej | Default `openid email profile`; måste inkludera `openid` och `email` |
 
-### Frontend (build-args / `.env.local`)
+### Frontend (`.env.local`; fast API-prefix i produktionsbuild)
 
 | Variabel | Beskrivning |
 |---|---|
 | `VITE_API_URL` | Backend bas-URL, default `/api/v1`; fast same-origin i produktionsimaget |
-| `VITE_GOOGLE_AUTH_ENABLED` | Sätt till `true` för att visa Google-knappen i login-formuläret |
+
+Inloggningssidan hämtar `{ local, google, oidc }` från `GET /api/v1/auth/config`
+vid runtime. Inga `VITE_*`-flaggor styr auth-leverantörer. Ändra backendens env och
+starta om appen för att ändra tillgängliga leverantörer; frontend behöver inte byggas om.
 
 ---
 
@@ -244,8 +266,77 @@ pnpm exec ts-node src/scripts/set-password.ts user@example.com lösenord123
 3. Passport.js verifierar mot `User.passwordHash` (bcrypt).
 4. Vid godkänd inloggning skapar Express en session (lagras i PostgreSQL via `connect-pg-simple`).
 5. Alla efterföljande anrop bär automatiskt session-cookien (`credentials: include`).
-6. `GET /api/v1/auth/me` returnerar inloggad användare — används av frontend vid sidladdning.
-7. `POST /api/v1/auth/logout` förstör sessionen.
+6. `GET /api/v1/auth/me` returnerar `200` med inloggad användare eller `{ user: null }` — används av frontend vid sidladdning.
+7. `POST /api/v1/auth/logout` förstör den lokala sessionen och rensar sessionscookien.
+
+### OIDC: befintliga användare, ingen auto-provisionering
+
+OIDC finns parallellt med lokal och Google-inloggning. Aktivering kräver alla fyra
+värdena `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` och `OIDC_REDIRECT_URI`.
+Om samtliga är tomma är OIDC avstängt, även om default `OIDC_SCOPES` är satt.
+Delvis kärnkonfiguration stoppar startup. Issuer och redirect URI måste vara HTTPS
+utan användarinfo, query eller fragment. `FRONTEND_URL` ska vara appens publika origin.
+
+Exempel för den externa identitetsleverantörens registrerade klient:
+
+```dotenv
+OIDC_ISSUER=https://sso.example
+OIDC_CLIENT_ID=ghcarpool
+OIDC_CLIENT_SECRET=replace_with_idp_client_secret
+OIDC_REDIRECT_URI=https://carpool.example/api/v1/auth/oidc/callback
+OIDC_SCOPES=openid email profile
+```
+
+Använd era riktiga issuer/client-värden och samma publika app-origin som
+`FRONTEND_URL`. Klienten använder authorization code flow, `response_mode=query`,
+PKCE S256 och `client_secret_basic`. `openid-client` validerar state, nonce,
+signatur, issuer, audience och tokenens giltighet; auth-transaktionen lagras
+i PostgreSQL-sessionen, gäller i tio minuter och förbrukas vid callback.
+Appen hämtar inte identitet från klientens identitetsheaders.
+
+**Länkningspolicy:** ID-tokenets signatur, issuer och subject valideras alltid först.
+En första OIDC-inloggning kräver `email` och boolean `email_verified: true` från
+kompletta validerade ID-token-claims eller från subject-bunden UserInfo. När en
+olänkad identitet saknar e-post eller verifieringsclaim i ID-tokenet hämtar appen
+UserInfo med `openid-client.fetchUserInfo` och kräver samma `sub` som i ID-tokenet.
+Endast UserInfos e-post/verifiering används tillsammans med redan validerad
+issuer+subject; grupper och andra profilfält ändrar inte identitet eller behörighet.
+E-postadressen måste matcha en redan befintlig `User.email` exakt. Ingen lokal
+användare skapas automatiskt. Explicit `email_verified: false` eller ogiltiga
+ID-token-claims kan inte åsidosättas via UserInfo. En komplett verifierad ID-token-
+e-post som saknar lokal användare ersätts aldrig med en annan e-post via UserInfo.
+Länken sparas i `OidcIdentity` med issuer+subject; samma lokala konto får inte
+länkas till en annan subject hos samma issuer via e-post. Senare inloggningar
+använder enbart denna stabila identitet, även om e-post ändras eller saknas;
+länkade konton kräver inga UserInfo-anrop. Saknad/overifierad e-post, fel subject
+eller misslyckad UserInfo för en första länk avvisar inloggningen. Access token
+skickas privat från backend till UserInfo över HTTPS i Authorization-headern,
+aldrig i URL, frontend, sessionsdata eller loggar.
+Kör release-migrationerna, inklusive `20261011000000_add_oidc_identity`, före OIDC-trafik.
+
+Authelias vanliga authorization-code-flöde med `openid email profile` levererar
+e-post-claims via UserInfo, inte normalt i ID-tokenet. Appen stöder detta utan
+särskild infra-claims-policy; se [Authelias officiella claims-dokumentation](https://www.authelia.com/integration/openid-connect/openid-connect-1.0-claims/index.md).
+Ingen Authelia- eller Caddy-konfiguration hör hemma i detta repository.
+
+**Behörigheter:** Adminstatus kommer uteslutande från lokal `User.isAdmin`.
+OIDC-grupper och andra provider-claims ger aldrig adminbehörighet. Borttagen lokal
+användare får inte längre åtkomst. Googles ursprungliga, separata policy är oförändrad:
+Google-strategin kan skapa en lokal användare via e-postbaserad upsert. OIDC-policyn
+ovan ändrar inte Google-provisionering.
+
+`GET /api/v1/auth/oidc` startar SSO; callback är
+`GET /api/v1/auth/oidc/callback`. Lyckad callback skapar samma Passport-session i
+PostgreSQL som lokal inloggning. Misslyckad callback går till `/login?error=oidc`
+med ett generiskt fel, utan att visa eller logga tokens/klienthemligheter.
+Skyddade direktlänkar sparar pathname, query och fragment i `returnTo`; lokal
+och OIDC-inloggning återgår till validerad same-origin sökväg, annars `/home`.
+Google-flödet behåller sitt befintliga redirect-beteende.
+
+**Logout är endast lokal:** Appen raderar PostgreSQL-sessionen och sessionscookien,
+men loggar inte ut från Authelia eller Google. En central SSO-session kan därför
+finnas kvar och nästa SSO-inloggning kan ske utan ny lösenordsfråga. Logga ut hos
+identitetsleverantören separat när även den sessionen ska avslutas.
 
 ---
 
@@ -258,8 +349,11 @@ Alla skyddade endpoints kräver en aktiv session (cookie).
 | GET | `/health` | — | Hälsokontroll |
 | POST | `/api/v1/auth/login` | — | Logga in |
 | POST | `/api/v1/auth/logout` | session | Logga ut |
-| GET | `/api/v1/auth/me` | session | Inloggad användares profil |
+| GET | `/api/v1/auth/me` | — | Profil eller `{ user: null }`, alltid 200 |
+| GET | `/api/v1/auth/config` | — | Aktiverade leverantörer, inga secrets |
 | GET | `/api/v1/auth/google` | — | Starta Google OAuth (om aktiverat) |
+| GET | `/api/v1/auth/oidc` | — | Starta OIDC (om aktiverat) |
+| GET | `/api/v1/auth/oidc/callback` | — | Validera OIDC och skapa lokal session |
 | GET | `/api/v1/users` | session | Alla användare |
 | GET | `/api/v1/cars` | session | Alla bilar |
 | GET | `/api/v1/destinations` | session | Alla destinationer |
@@ -285,7 +379,7 @@ Alla skyddade endpoints kräver en aktiv session (cookie).
 | Backend | Node.js 26, Express 4, TypeScript 5 |
 | ORM | Prisma 7 |
 | Databas | PostgreSQL 17 |
-| Auth | Passport.js (passport-local + optionell passport-google-oauth20) |
+| Auth | Passport.js (local/Google/OIDC) + openid-client |
 | Session | express-session + connect-pg-simple (PostgreSQL) |
 | Realtid | SSE (Server-Sent Events) |
 | Monorepo | pnpm workspaces |
@@ -313,14 +407,17 @@ ghcarpool/
 │   │       ├── server.ts          # HTTP-server entry point
 │   │       ├── db/prisma.ts       # PrismaClient singleton
 │   │       ├── lib/
-│   │       │   ├── passport.ts    # LocalStrategy + optionell GoogleStrategy
+│   │       │   ├── passport.ts    # Local + optionell Google/OIDC
+│   │       │   ├── oidc.ts        # State/nonce/PKCE och OIDC-tokenvalidering
+│   │       │   ├── oidc-config.ts # Validerad runtime-env och redirect
+│   │       │   ├── oidc-user.ts   # Befintlig användare, issuer+subject-länk
 │   │       │   ├── serializers.ts
 │   │       │   ├── session.ts
 │   │       │   └── sse.ts
 │   │       ├── middleware/
 │   │       │   └── auth.ts        # requireAuth + requireAdmin
 │   │       ├── routes/
-│   │       │   ├── auth.ts        # /auth/login, /logout, /me, /google
+│   │       │   ├── auth.ts        # /auth/login, /logout, /me, /config, /google, /oidc
 │   │       │   ├── admin.ts
 │   │       │   ├── bookings.ts
 │   │       │   ├── general.ts

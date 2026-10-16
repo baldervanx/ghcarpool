@@ -276,6 +276,14 @@ function recurrenceTimestamp(value: unknown, id: string): Date | undefined {
   return date;
 }
 
+const failures: string[] = [];
+
+function recordFailure(scope: string, id: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  failures.push(`${scope} ${id}: ${message}`);
+  console.error(`[migrate] Hoppar över ${scope} ${id} pga fel: ${message}`);
+}
+
 async function migrateRecurrences(recurrences: FsRecurrence[], dcbs: FsDateCarBooking[]): Promise<number> {
   const entriesById = new Map<string, { date: string; carId: string; startTime: number; endTime: number }[]>();
   for (const parent of dcbs) {
@@ -293,6 +301,7 @@ async function migrateRecurrences(recurrences: FsRecurrence[], dcbs: FsDateCarBo
   const sources = new Map(recurrences.map(recurrence => [recurrence.id, recurrence]));
   const ids = new Set([...sources.keys(), ...entriesById.keys()]);
   for (const id of ids) {
+    try {
     const source = sources.get(id);
     const inferred = inferLegacyRecurrenceMetadata(entriesById.get(id) ?? []);
     const hasSourceRange = [source?.recurringStartDate, source?.recurringEndDate, source?.recurringDays]
@@ -322,6 +331,9 @@ async function migrateRecurrences(recurrences: FsRecurrence[], dcbs: FsDateCarBo
       updatedAt: recurrenceTimestamp(source?.updatedAt, id),
     };
     await prisma.$transaction(tx => restoreLegacyRecurrence(tx, id, metadata));
+    } catch (err) {
+      recordFailure('recurrence', id, err);
+    }
   }
   return ids.size;
 }
@@ -337,6 +349,7 @@ async function migrateDateCarBookings(
   let bookingCount = 0;
 
   for (const dcb of dcbs) {
+    try {
     const carId = refId(dcb.car);
     // Skippa om bilen inte finns (referensintegritet)
     if (!carId || !knownCarIds.has(carId)) {
@@ -437,6 +450,9 @@ async function migrateDateCarBookings(
         });
       }
     }
+    } catch (err) {
+      recordFailure('date-car-booking', dcb.id, err);
+    }
   }
 
   return { dcbCount, bookingCount };
@@ -449,6 +465,7 @@ async function migrateTrips(
 ): Promise<number> {
   let count = 0;
   for (const t of trips) {
+    try {
     const carId = refId(t.car);
     if (!carId || !knownCarIds.has(carId)) {
       console.warn(`[migrate] Hoppar över trip ${t.id}: bil ${carId} saknas`);
@@ -491,6 +508,9 @@ async function migrateTrips(
         update: {},
         create: { tripId: t.id, userId: uid },
       });
+    }
+    } catch (err) {
+      recordFailure('trip', t.id, err);
     }
   }
   return count;
@@ -559,6 +579,13 @@ async function main() {
       '  Användare utan email har fått adressen noemail-<id>@ghcarpool.local.\n' +
       '  Sätt riktig adress + lösenord via psql eller admin-API:et.',
   );
+
+  if (failures.length > 0) {
+    console.error(`\n[migrate] ${failures.length} poster misslyckades (övriga är migrerade):`);
+    for (const f of failures) console.error(`  - ${f}`);
+    console.error('[migrate] Åtgärda datan i Firestore och kör skriptet igen; det är idempotent.');
+    process.exitCode = 1;
+  }
 }
 
 main()

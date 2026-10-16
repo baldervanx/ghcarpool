@@ -1,6 +1,6 @@
 # ghcarpool
 
-Samåkningssystem för arbetsplatser. Låter användare boka bilar, logga resor och se historik.
+Bildelnings-app för småskaliga bilpoolar. Låter användare boka bilar, logga resor och se historik.
 
 ## Arkitektur
 

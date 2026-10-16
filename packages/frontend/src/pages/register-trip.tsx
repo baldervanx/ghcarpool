@@ -50,6 +50,7 @@ export function RegisterTrip() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isConnectedBooking, setIsConnectedBooking] = useState(false);
   const [connectedBooking, setConnectedBooking] = useState<ConnectedBooking | null>(null);
+  const [loggingForOthersConfirmed, setLoggingForOthersConfirmed] = useState(false);
   const now = useBookingClock();
   const logBookings = useMemo(() => getLogBookings(bookings, cars), [bookings, cars]);
   const selectedCarInfo = cars.find(car => car.id === selectedCar);
@@ -64,13 +65,15 @@ export function RegisterTrip() {
       (latestExplicitBooking?.recurrence ?? explicitBooking.recurrence)?.isMultiDay === null;
   const costPerKm = typeof data?.cost_per_km === 'number' ? data.cost_per_km : 1;
   const precedingBooking = connectedBooking?.date
-    ? getPrecedingUnloggedBooking(logBookings, { ...connectedBooking, date: connectedBooking.date }, now)
+    ? getPrecedingUnloggedBooking(logBookings, { ...connectedBooking, date: connectedBooking.date }, now, user?.user_id)
     : undefined;
   const bookingUserNames = connectedBooking?.users.map(member =>
     users.find(candidate => candidate.id === member.id)?.shortName ?? member.id,
   ).join(', ');
   const loggingForOthers = isConnectedBooking && connectedBooking &&
     !connectedBooking.users.some(member => member.id === user?.user_id);
+  const bookingUsersKey = JSON.stringify(connectedBooking?.users.map(member => member.id).sort());
+  const selectedUsersKey = JSON.stringify([...selectedUsers].sort());
   const [dialogState, setDialogState] = useState<{
     isOpen: boolean; title: string; description: string;
     onConfirm: (() => void) | null; onCancel: (() => void) | null;
@@ -85,6 +88,10 @@ export function RegisterTrip() {
   useEffect(() => {
     if (user && !location.state?.booking) dispatch(setSelectedUsers([user.user_id]));
   }, [dispatch, user?.user_id, location.state]);
+
+  useEffect(() => {
+    setLoggingForOthersConfirmed(false);
+  }, [connectedBooking?.id, selectedCar, isConnectedBooking, isEditMode, user?.user_id, bookingUsersKey, selectedUsersKey]);
 
   useEffect(() => {
     const handleOnlineStatus = () => {
@@ -290,10 +297,10 @@ export function RegisterTrip() {
       return;
     }
 
-    if (!isEditMode && loggingForOthers && !await showConfirmDialog(
-      'Logga någon annans bokning',
-      `Du loggar en bokning för ${bookingUserNames}. Kontrollera att rätt användare och resa är valda.`,
-    )) return;
+    if (!isEditMode && loggingForOthers && !loggingForOthersConfirmed) {
+      setErrorMessage('Bekräfta att du loggar bokning åt rätt användare.');
+      return;
+    }
 
     if (!isEditMode && !distanceSimilarToBooking()) {
       if (!await showConfirmDialog('Bekräfta sträcka',
@@ -387,7 +394,20 @@ export function RegisterTrip() {
         {!isEditMode && loggingForOthers && (
             <Alert className="border-yellow-500">
               <AlertTriangle size={16} />
-              <AlertDescription>Du loggar någon annans bokning: {bookingUserNames}.</AlertDescription>
+              <AlertDescription className="space-y-2">
+                <p>Notera: Du loggar bokning åt {bookingUserNames}.</p>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                      id="confirm-logging-for-others"
+                      checked={loggingForOthersConfirmed}
+                      onCheckedChange={checked => setLoggingForOthersConfirmed(checked === true)}
+                      disabled={isProcessing}
+                  />
+                  <Label htmlFor="confirm-logging-for-others">
+                    Jag bekräftar att rätt användare och resa är valda.
+                  </Label>
+                </div>
+              </AlertDescription>
             </Alert>
         )}
 
@@ -515,7 +535,8 @@ export function RegisterTrip() {
             className="w-full"
             onClick={handleSubmit}
             disabled={
-                isProcessing || !canLogCar || selectedBookingLogged || unresolvedRecurrence || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0
+                isProcessing || !canLogCar || selectedBookingLogged || unresolvedRecurrence || selectedUsers.length === 0 || !newOdometer || tripDistance <= 0 ||
+                (!isEditMode && loggingForOthers && !loggingForOthersConfirmed)
             }
         >
           {isProcessing && isOnline() ? 'Sparar ...' : (isEditMode ? 'Uppdatera resa' : 'Spara resa')}

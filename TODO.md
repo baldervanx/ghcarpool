@@ -12,15 +12,15 @@ Making ghcarpool ready for production deployment requires a few additional steps
 
 
 Test scenarios:
-1. Previous booking of another user not logged on the car booked by current user. The user should be warned that there is an unlogged previous booking on the home page. (not working!!)
-2. Previous booking of another user not logged on the car booked by current user. The user should be warned that there is an unlogged previous booking on the register-trip page. (not working!!)
+1. Previous booking of another user not logged on the car booked by current user. Warn on the home page, including when the predecessor is on an earlier date. Do not skip a logged or own immediate predecessor to warn about older bookings. (working!)
+2. Previous booking of another user not logged on the car booked by current user. Apply the same predecessor warning on the register-trip page, including across dates. (working!)
 3. There is a past booking of the current user on any car. The user should be warned that there is an unlogged booking on the home page. (working!)
 4. A multi-day booking is logged. All bookings in the series should be marked as logged. (working!)
 5. A repeated booking is logged. Only the current booking should be marked as logged. (working!)
 6. It shall be possible to edit a past booking that hasn't been logged. (working!)
 7. It shall be possible to log someone else's booking. (working!)
-8. When logging someone else's booking (current user is not in the list of users), the user should be warned that they are logging someone else's booking. (working! - message could be better "Du loggar bokning åt <namn>")
-9. A car is booked several times on the same day. The user should be warned about an unlogged booking _after_ the booking time of the previous booking ended. (working!)
+8. When logging someone else's booking (current user is not in the list of users), show "Notera: Du loggar bokning åt <namn>" with a required inline confirmation checkbox instead of an extra ownership popup on save. Reset confirmation when the booking, car, users or logging mode changes. (working!)
+9. A car is booked several times on the same day. Warn about another user's unlogged preceding booking only _after_ its booking time ended. Do not show this predecessor warning for an own booking; keep the separate own missed-booking reminder. (working!)
 
 Ideas for future improvements:
 1. Two-way sync with firebase. Only for bookings, recurrences, date-car-bookings and trips.
@@ -39,3 +39,5 @@ Ideas for future improvements:
    Warnings and similar feedback is even more important in this case. 
 6. Cars should be extended with a range-field that can be used to calculate if a car can be booked for a trip or not. Winter degradation must be another field, as it is less for some cars.
 7. Multi-languange support. The frontend should be able to switch between languages. The backend should be able to provide translations for all messages, warnings and errors. Investigate the best way to implement this (translations in file or in database).
+8. README should contain more overview of what the application does, its features etc, how to set it up and how to run it. Details should be moved to a separate document. The README should be the first thing a new developer sees when they look at the project. It should contain a high-level overview of the project, its purpose, and how to get started with development.
+9. Any swedish text in documentation, code, comments, etc. should be translated to english. This code principle must be documented in AGENTS.md.

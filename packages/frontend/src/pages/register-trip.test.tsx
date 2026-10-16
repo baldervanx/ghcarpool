@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { addDays, format } from 'date-fns';
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vitest';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -64,11 +64,23 @@ function renderPage(locationState?: unknown) {
   );
 }
 
+function otherUserBooking() {
+  return {
+    id: 'other-booking', parent_id: 'other-parent', car: { id: 'c1' },
+    date: format(addDays(new Date(), -1), 'yyyy-MM-dd'),
+    users: [{ id: 'u2' }], byUser: { id: 'u2' },
+    startTime: 480, endTime: 540, distance: 25, destination: '',
+  };
+}
+
+const confirmationLabel = 'Jag bekräftar att rätt användare och resa är valda.';
+
 describe('RegisterTrip', () => {
   beforeEach(() => {
     navMock.mockReset();
     seedStore();
   });
+  afterEach(() => vi.useRealTimers());
 
   it('skapar en ny resa (POST /trips) och navigerar till /trip-log', async () => {
     const calls: unknown[] = [];
@@ -169,19 +181,34 @@ describe('RegisterTrip', () => {
     expect((putCalls[0] as any).id).toBe('t1'); // senaste trip = t1
   });
 
-  it('warns about an unlogged preceding booking when logging an explicit booking', () => {
+  it.each([
+    { daysAgo: 0, userId: 'u2', logged: undefined, warns: true },
+    { daysAgo: 1, userId: 'u2', logged: undefined, warns: true },
+    { daysAgo: 3, userId: 'u2', logged: undefined, warns: true },
+    { daysAgo: 0, userId: 'u1', logged: undefined, warns: false },
+    { daysAgo: 1, userId: 'u1', logged: undefined, warns: false },
+    { daysAgo: 1, userId: 'u2', logged: 'trip', warns: false },
+  ])('handles a predecessor from $daysAgo days ago by $userId (logged=$logged)', ({ daysAgo, userId, logged, warns }) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 11, 10));
     const date = format(new Date(), 'yyyy-MM-dd');
+    const previousDate = format(addDays(new Date(), -daysAgo), 'yyyy-MM-dd');
     const previous = {
-      id: 'previous', parent_id: 'dcb', users: [{ id: 'u2' }], byUser: { id: 'u2' },
-      startTime: 0, endTime: 0, distance: 25, destination: '',
+      id: 'previous', users: [{ id: userId }], byUser: { id: userId }, logged,
+      startTime: 480, endTime: 540, distance: 25, destination: '',
     };
     const current = {
-      ...previous, id: 'current', users: [{ id: 'u1' }], startTime: 600, endTime: 660,
-      date, car: { id: 'c1' },
+      ...previous, id: 'current', logged: undefined, users: [{ id: 'u1' }], startTime: 600, endTime: 660,
+      date, parent_id: 'current-parent', car: { id: 'c1' },
     };
-    store.dispatch(setBookings([{ id: 'dcb', date, car: { id: 'c1' }, bookings: [previous, current] }]));
+    store.dispatch(setBookings([
+      { id: 'current-parent', date, car: { id: 'c1' }, bookings: daysAgo === 0 ? [previous, current] : [current] },
+      ...(daysAgo === 0 ? [] : [{ id: 'previous-parent', date: previousDate, car: { id: 'c1' }, bookings: [previous] }]),
+    ]));
     renderPage({ booking: current });
-    expect(screen.getByText(/Föregående bokning på Volvo XC60 har inte loggats/)).toBeInTheDocument();
+    const warning = screen.queryByText(/Föregående bokning på Volvo XC60 har inte loggats/);
+    if (warns) expect(warning).toBeInTheDocument();
+    else expect(warning).not.toBeInTheDocument();
   });
 
   it('auto-selects the oldest unlogged booking, prefills its users and warns before logging for others', async () => {
@@ -204,19 +231,134 @@ describe('RegisterTrip', () => {
       return HttpResponse.json({ id: 'trip' }, { status: 201 });
     }));
     renderPage();
-    expect(screen.getByText('Du loggar någon annans bokning: U2.')).toBeInTheDocument();
+    expect(screen.getByText('Notera: Du loggar bokning åt U2.')).toBeInTheDocument();
     expect(screen.getByText(/Observera: Du loggar en bokning från/)).toBeInTheDocument();
     expect(store.getState().user.selectedUsers).toEqual(['u2']);
     fireEvent.change(screen.getByLabelText('Sista siffror'), { target: { value: '7225' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Spara resa' }));
-    expect(await screen.findByText('Logga någon annans bokning')).toBeInTheDocument();
+    const save = screen.getByRole('button', { name: 'Spara resa' });
+    const confirmation = screen.getByRole('checkbox', { name: confirmationLabel });
+    expect(confirmation).not.toBeChecked();
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
     expect(calls).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }));
-    expect(calls).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Spara resa' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'OK' }));
+    fireEvent.click(confirmation);
+    expect(save).toBeEnabled();
+    fireEvent.click(confirmation);
+    expect(save).toBeDisabled();
+    fireEvent.click(confirmation);
+    fireEvent.click(save);
     await waitFor(() => expect(calls).toHaveLength(1));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(calls[0]).toMatchObject({ bookingId: 'old', parentId: 'old-parent', userIds: ['u2'] });
+  });
+
+  it('resets confirmation when switching away from a car and back', () => {
+    renderPage({ booking: otherUserBooking() });
+    fireEvent.click(screen.getByRole('checkbox', { name: confirmationLabel }));
+    expect(screen.getByRole('checkbox', { name: confirmationLabel })).toBeChecked();
+    act(() => { store.dispatch(setSelectedCar('c2')); });
+    expect(screen.queryByRole('checkbox', { name: confirmationLabel })).not.toBeInTheDocument();
+    act(() => { store.dispatch(setSelectedCar('c1')); });
+    expect(screen.getByRole('checkbox', { name: confirmationLabel })).not.toBeChecked();
+  });
+
+  it('requires a fresh confirmation after unlinking and relinking the booking', () => {
+    renderPage({ booking: otherUserBooking() });
+    fireEvent.change(screen.getByLabelText('Sista siffror'), { target: { value: '7225' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: confirmationLabel }));
+    const linked = screen.getByRole('checkbox', { name: /För bokning/ });
+    fireEvent.click(linked);
+    expect(screen.queryByRole('checkbox', { name: confirmationLabel })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Spara resa' })).toBeEnabled();
+    fireEvent.click(linked);
+    expect(screen.getByRole('checkbox', { name: confirmationLabel })).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'Spara resa' })).toBeDisabled();
+  });
+
+  it('resets confirmation when the selected trip users change', () => {
+    renderPage({ booking: otherUserBooking() });
+    fireEvent.click(screen.getByRole('checkbox', { name: confirmationLabel }));
+    act(() => { store.dispatch(setSelectedUsers(['u1', 'u2'])); });
+    expect(screen.getByRole('checkbox', { name: confirmationLabel })).not.toBeChecked();
+  });
+
+  it('keeps confirmation across clock ticks and unrelated booking updates', () => {
+    vi.useFakeTimers();
+    const booking = otherUserBooking();
+    const container = { id: booking.parent_id, date: booking.date, car: booking.car, bookings: [booking] };
+    store.dispatch(setBookings([container]));
+    renderPage({ booking });
+    fireEvent.click(screen.getByRole('checkbox', { name: confirmationLabel }));
+    act(() => { vi.advanceTimersByTime(1000); });
+    act(() => {
+      store.dispatch(setBookings([
+        container, { id: 'unrelated', date: booking.date, car: { id: 'c2' }, bookings: [] },
+      ]));
+    });
+    expect(screen.getByRole('checkbox', { name: confirmationLabel })).toBeChecked();
+  });
+
+  it('resets confirmation after switching to edit mode and back', () => {
+    renderPage({ booking: otherUserBooking() });
+    fireEvent.click(screen.getByRole('checkbox', { name: confirmationLabel }));
+    const editMode = screen.getByRole('checkbox', { name: /Redigera din senaste resa/ });
+    fireEvent.click(editMode);
+    expect(screen.queryByRole('checkbox', { name: confirmationLabel })).not.toBeInTheDocument();
+    fireEvent.click(editMode);
+    expect(screen.getByRole('checkbox', { name: confirmationLabel })).not.toBeChecked();
+  });
+
+  it('resets confirmation when a different booking is selected automatically after an update', () => {
+    const first = otherUserBooking();
+    const second = { ...first, id: 'next-booking', startTime: 600, endTime: 660 };
+    store.dispatch(setBookings([{
+      id: first.parent_id, date: first.date, car: first.car, bookings: [first, second],
+    }]));
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: confirmationLabel }));
+    act(() => {
+      store.dispatch(setBookings([{
+        id: first.parent_id, date: first.date, car: first.car,
+        bookings: [{ ...first, logged: 'trip' }, second],
+      }]));
+    });
+    expect(screen.getByRole('checkbox', { name: /För bokning.*11:00/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: confirmationLabel })).not.toBeChecked();
+  });
+
+  it('does not require confirmation for a shared booking that includes the current user', () => {
+    const booking = { ...otherUserBooking(), users: [{ id: 'u2' }, { id: 'u1' }] };
+    renderPage({ booking });
+    fireEvent.change(screen.getByLabelText('Sista siffror'), { target: { value: '7225' } });
+    expect(screen.queryByText(/Notera: Du loggar bokning åt/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: confirmationLabel })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Spara resa' })).toBeEnabled();
+  });
+
+  it('retains distance confirmation after confirming a booking for someone else', async () => {
+    const calls: unknown[] = [];
+    server.use(http.post('/api/v1/trips', async ({ request }) => {
+      calls.push(await request.json());
+      return HttpResponse.json({ id: 'trip' }, { status: 201 });
+    }));
+    renderPage({ booking: otherUserBooking() });
+    fireEvent.change(screen.getByLabelText('Sista siffror'), { target: { value: '7250' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: confirmationLabel }));
+    fireEvent.click(screen.getByRole('button', { name: 'Spara resa' }));
+    expect(await screen.findByRole('alertdialog', { name: 'Bekräfta sträcka' })).toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({ bookingId: 'other-booking', distance: 50 });
+  });
+
+  it('retains long-distance confirmation for trips without a linked booking', async () => {
+    renderPage();
+    fireEvent.change(screen.getByLabelText('Sista siffror'), { target: { value: '7800' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Spara resa' }));
+    expect(await screen.findByRole('alertdialog', { name: 'Bekräfta lång sträcka' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }));
+    expect(navMock).not.toHaveBeenCalled();
   });
 
   it('warns when no unlogged booking exists', () => {

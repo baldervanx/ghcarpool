@@ -53,6 +53,61 @@ describe('booking log selection', () => {
     expect(getPrecedingUnloggedBooking(entries, entries[2], now)).toBeUndefined();
   });
 
+  it('selects the nearest predecessor across dates rather than the largest time of day', () => {
+    const entries = getLogBookings([
+      day('2026-10-09', [booking('older', 1200, 1380)]),
+      day('2026-10-10', [booking('previous', 480, 540)]),
+      day('2026-10-11', [booking('current', 600, 660)]),
+      day('2026-10-12', [booking('future')]),
+    ], cars);
+    expect(getPrecedingUnloggedBooking(entries, entries[2], now, 'u2')?.id).toBe('previous');
+  });
+
+  it('handles a midnight boundary across years', () => {
+    const entries = getLogBookings([
+      day('2025-12-31', [booking('previous', 1200, 1440)]),
+      day('2026-01-01', [booking('current', 0, 60)]),
+    ], cars);
+    expect(getPrecedingUnloggedBooking(entries, entries[1], new Date(2025, 11, 31, 23, 59, 59), 'u2')).toBeUndefined();
+    expect(getPrecedingUnloggedBooking(entries, entries[1], new Date(2026, 0, 1), 'u2')?.id).toBe('previous');
+  });
+
+  it('does not skip a logged predecessor on another date', () => {
+    const entries = getLogBookings([
+      day('2026-10-09', [booking('older')]),
+      day('2026-10-10', [{ ...booking('previous'), logged: 'trip' }]),
+      day('2026-10-11', [booking('current', 600, 660)]),
+    ], cars);
+    expect(getPrecedingUnloggedBooking(entries, entries[2], now, 'u2')).toBeUndefined();
+  });
+
+  it('suppresses an own predecessor without falling back to an older booking by someone else', () => {
+    const entries = getLogBookings([
+      day('2026-10-09', [{ ...booking('older'), users: [{ id: 'u2' }] }]),
+      day('2026-10-10', [booking('own')]),
+      day('2026-10-11', [booking('current', 600, 660)]),
+    ], cars);
+    expect(getPrecedingUnloggedBooking(entries, entries[2], now, 'u1')).toBeUndefined();
+  });
+
+  it('treats shared bookings as own regardless of their creator or participant order', () => {
+    const entries = getLogBookings([
+      day('2026-10-10', [{
+        ...booking('shared'), byUser: { id: 'u2' }, users: [{ id: 'u2' }, { id: 'u1' }],
+      }]),
+      day('2026-10-11', [booking('current', 600, 660)]),
+    ], cars);
+    expect(getPrecedingUnloggedBooking(entries, entries[1], now, 'u1')).toBeUndefined();
+  });
+
+  it('ignores preceding bookings on other cars', () => {
+    const entries = getLogBookings([
+      day('2026-10-10', [booking('other-car')], 'c3'),
+      day('2026-10-11', [booking('current', 600, 660)]),
+    ], [...cars, { ...cars[0], id: 'c3' }]);
+    expect(getPrecedingUnloggedBooking(entries, entries[1], now, 'u2')).toBeUndefined();
+  });
+
   it('uses persisted series type and boundaries rather than midnight heuristics', () => {
     const ordinary = {
       id: 'daily', isMultiDay: false, recurringStartDate: '2026-10-10',

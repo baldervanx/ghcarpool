@@ -57,6 +57,45 @@ describe('home booking warnings', () => {
     expect(onLog.mock.calls.map(([entry]) => entry.id)).toEqual(['today', 'second-car']);
   });
 
+  it.each(['2026-10-10', '2026-10-08'])('warns about another user on %s before an own booking today', date => {
+    store.dispatch(setBookings([
+      day(date, [booking('other', 'u2', 1200, 1380)]),
+      day('2026-10-11', [booking('mine', 'u1', 600, 660)]),
+    ]));
+    const onLog = renderWarnings();
+    expect(screen.getByText('Bokning av Andra på Volvo har inte loggats.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Logga' }));
+    expect(onLog).toHaveBeenCalledWith(expect.objectContaining({ id: 'other', date }));
+  });
+
+  it.each(['2026-10-11', '2026-10-10'])('keeps the own missed-booking reminder but suppresses the predecessor warning for %s', date => {
+    vi.setSystemTime(new Date(2026, 9, 11, 10));
+    store.dispatch(setBookings([
+      day(date, [
+        booking('own-previous', 'u1'),
+        ...(date === '2026-10-11' ? [booking('mine', 'u1', 660, 720)] : []),
+      ]),
+      ...(date === '2026-10-11' ? [] : [
+        day('2026-10-09', [booking('older-other', 'u2')]),
+        day('2026-10-11', [booking('mine', 'u1', 660, 720)]),
+      ]),
+    ]));
+    const onLog = renderWarnings();
+    expect(screen.queryByText('Föregående bokning ej loggad')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Logga' }));
+    expect(onLog).toHaveBeenCalledWith(expect.objectContaining({ id: 'own-previous' }));
+  });
+
+  it('does not warn about older history when the immediate predecessor was logged', () => {
+    store.dispatch(setBookings([
+      day('2026-10-09', [booking('older-other', 'u2')]),
+      day('2026-10-10', [{ ...booking('previous', 'u2'), logged: 'trip' }]),
+      day('2026-10-11', [booking('mine', 'u1', 600, 660)]),
+    ]));
+    renderWarnings();
+    expect(screen.queryByText('Föregående bokning ej loggad')).not.toBeInTheDocument();
+  });
+
   it('offers correction, not logging, for unresolved legacy series', () => {
     store.dispatch(setBookings([day('2026-10-10', [{
       ...booking('unknown', 'u1'), recurrenceId: 'unknown',

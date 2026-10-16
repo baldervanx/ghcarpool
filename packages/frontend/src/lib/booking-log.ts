@@ -45,11 +45,14 @@ export function getRecentLogBookings(bookings: LogBooking[], now: Date): LogBook
 
 export function getPrecedingUnloggedBooking(
   bookings: LogBooking[], booking: Pick<LogBooking, 'id' | 'date' | 'startTime'> & { car: { id: string } }, now: Date,
+  currentUserId?: string,
 ): LogBooking | undefined {
   const previous = bookings.filter(candidate =>
     candidate.id !== booking.id && candidate.car.id === booking.car.id &&
-    candidate.date === booking.date && candidate.endTime <= booking.startTime &&
+    (candidate.date < booking.date || candidate.date === booking.date && candidate.endTime <= booking.startTime) &&
     hasBookingEnded(candidate, now),
-  ).sort((a, b) => b.endTime - a.endTime)[0];
-  return previous && !previous.logged ? previous : undefined;
+  ).sort((a, b) => b.date.localeCompare(a.date) || b.endTime - a.endTime || b.startTime - a.startTime)[0];
+  return previous && !previous.logged && !previous.users.some(member => member.id === currentUserId)
+    ? previous
+    : undefined;
 }

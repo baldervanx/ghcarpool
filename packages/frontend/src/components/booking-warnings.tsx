@@ -51,7 +51,7 @@ export function BookingWarnings({ onLog, onEdit }: BookingWarningsProps) {
     if (booking.logged || !booking.users.some(member => member.id === user.user_id)) continue;
     if (hasBookingEnded(booking, now)) missedByCar.set(booking.car.id, booking);
     if (booking.date === today) {
-      const preceding = getPrecedingUnloggedBooking(recent, booking, now);
+      const preceding = getPrecedingUnloggedBooking(recent, booking, now, user.user_id);
       if (preceding) precedingByBooking.set(preceding.id, preceding);
     }
   }

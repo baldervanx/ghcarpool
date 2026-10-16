@@ -17,6 +17,26 @@ packages/
 
 ---
 
+## Bokningsvarningar och loggning
+
+På startsidan och vid loggning varnar appen om bilens närmast föregående
+avslutade bokning är ologgad och du inte ingår bland dess användare.
+Kontrollen fungerar även mellan olika datum. En redan loggad föregående
+bokning hoppas inte över för att leta efter äldre ologgade bokningar.
+Detsamma gäller en egen föregående bokning: den ger ingen föregående-varning,
+men den separata påminnelsen om egna missade loggningar finns kvar.
+Startsidan utgår från dina ologgade bokningar idag och använder sitt befintliga
+14-dagarsfönster för historiken.
+
+När du loggar en bokning utan att själv ingå bland dess användare visas
+”Notera: Du loggar bokning åt &lt;namn&gt;”. Bekräfta rätt användare och resa med
+kryssrutan i varningen innan du sparar; ingen extra ägarbekräftelse visas.
+Bekräftelsen återställs när du byter bokning, bil eller användare, ändrar
+bokningskopplingen eller växlar redigeringsläge.
+Bekräftelser för avvikande eller ovanligt lång körsträcka finns kvar.
+
+---
+
 ## Kom igång — Docker (rekommenderas)
 
 ### 1. Förutsättningar

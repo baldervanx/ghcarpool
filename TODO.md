@@ -24,16 +24,17 @@ Test scenarios:
 
 Ideas for future improvements:
 1. Two-way sync with firebase. Only for bookings, recurrences, date-car-bookings and trips.
+   Development plan: [.hermes/plans/2026-10-16-firebase-beta-sync.md](.hermes/plans/2026-10-16-firebase-beta-sync.md).
    Is it possible to trigger sync on "commit" of a booking? Old frontend may need an update to support this. The sync should be triggered on the backend, not on the frontend. 
-   Extra help-fields with date/and or checksum may help with this. The sync should be triggered on the backend, not on the frontend.
-   Important that the sync is only possible to activate on production environment, not on development environment.
-   Errors should be logged on postgres side, and if possible only affect this side. I.e. a collision should mean that firebase-side is left intact, and the user should be warned that the booking was not logged on firebase. The user should be able to retry the sync.
+   Extra help-fields with date/and or checksum may help with this. 
+   Important that the sync is only possible to activate on production environment, not on development environment (unless it is towards a test-firebase-instance).
+   Errors should be logged on postgres side, and if possible only affect this side. I.e. a collision should mean that firebase-side is left intact, and the user should be warned that the booking was not synced to firebase. The user should be able to retry the sync.
 2. Fix current migration: 
    - Only import bookings one year back.
    - serietyp=okänd, means no recurrence found? 
    - Recurrence 'xxxx' has invalid source range/day metadata, seems to be missing "days" field. Could probably just be dropped.
    - More information needed to identify the failing bookings, can't find them based on document id. 
-4. Test-mode that can inject test data into the database. This is useful for testing the frontend without having to create test data manually. 
+4. (Fixat) Test-mode that can inject test data into the database. This is useful for testing the frontend without having to create test data manually. 
    The test data should be removed after the test is done. The test-mode should be activated by an environment variable, not by a code change.
 5. Develop MCP-interface that can be used by an AI agent to book and log trips. A chat-interface could be added to the home page to test it.
    Warnings and similar feedback is even more important in this case. 

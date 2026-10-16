@@ -40,6 +40,7 @@ const BookingOverview = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { cars } = useSelector((state: AppStore) => state.car);
+  const { allowPastBookings } = useSelector((state: AppStore) => state.auth);
   const { destinations } = useSelector((state: AppStore) => state.destination);
   const { bookings, loading, loadingMonths } = useSelector((state: AppStore) => state.booking);
   const accessibleCn = useAccessibleCn();
@@ -185,13 +186,13 @@ const BookingOverview = () => {
                 date={row.original}
                 destinations={destinations}
                 onClick={handleBookingClick}
-                readOnly={row.original < today}
+                readOnly={!allowPastBookings && row.original < today}
                 accessibleCn={accessibleCn}
             />
         );
       }
     }))
-  ], [cars, bookings, currentMonth]);
+  ], [cars, bookings, currentMonth, allowPastBookings]);
 
   const table = useReactTable({
     data: dates,
@@ -243,6 +244,11 @@ const BookingOverview = () => {
 
   return (
       <div className="flex flex-col w-full max-h-[calc(100vh-80px)]">
+        {allowPastBookings && (
+          <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+            Testläge: bokningar före dagens datum är tillåtna.
+          </p>
+        )}
         <Table ref={tableRef} className="[&_tr_td]:p-1 [&_tr_th]:p-1">
           <TableHeader className="sticky text-base top-0 bg-background z-40">
             <TableRow>

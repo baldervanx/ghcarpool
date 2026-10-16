@@ -24,7 +24,7 @@ const BookTrip = () => {
   const dispatch = useDispatch();
   const location = useLocation();
   const {selectedCar, cars} = useSelector((state: AppStore) => state.car);
-  const {user} = useSelector((state: AppStore) => state.auth);
+  const {user, allowPastBookings} = useSelector((state: AppStore) => state.auth);
   const {selectedUsers, users} = useSelector((state: AppStore) => state.user);
   const {bookings} = useSelector((state: AppStore) => state.booking);
   const [bookingDate, setBookingDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -511,6 +511,10 @@ const BookTrip = () => {
     if (isRecurring && (!recurringEndDate || recurringDays.length === 0)) {
       validations.push({ type: 'error', message: 'Välj veckodagar och slutdatum för återkommande bokning' });
     }
+    if (!allowPastBookings && bookingDate < getBookingDate() &&
+      (!isEditing || bookingDate !== (storedRecurrence?.recurringStartDate ?? storedDateCarBooking?.date))) {
+      validations.push({ type: 'error', message: 'Nya bokningar får inte ligga före dagens datum' });
+    }
 
     if (isMultiDay && !recurringEndDate) {
       validations.push({ type: 'error', message: 'Välj slutdatum för flerdags bokning' });
@@ -625,6 +629,11 @@ const BookTrip = () => {
 
   return (
       <Card className="max-w-md mx-auto p-6 space-y-4">
+        {allowPastBookings && (
+          <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+            Testläge: bokningar före dagens datum är tillåtna.
+          </p>
+        )}
         <ConfirmationDialog
             isOpen={dialogState.isOpen}
             title={dialogState.title}
@@ -648,7 +657,7 @@ const BookTrip = () => {
                 type="date"
                 value={bookingDate}
                 onChange={(e) => setBookingDate(e.target.value)}
-                min={isEditing ? undefined : getBookingDate()}
+                min={isEditing || allowPastBookings ? undefined : getBookingDate()}
                 max={getBookingDate(undefined, 96)}
                 disabled={isEditing && isRecurring}
                 className="px-1.5 w-full appearance-none"

@@ -201,6 +201,13 @@ Leverantörsbyte kräver ändrad app-env/omstart, inte ombyggd frontend.
 Kopiera `.env.dev` → `packages/backend/.env`. Innehåller `DATABASE_URL`,
 `SESSION_SECRET`, `FRONTEND_URL`, `PORT`, `NODE_ENV`.
 
+`ALLOW_PAST_BOOKINGS=true` är opt-in för historiska testbokningar och gäller endast
+med exakt `NODE_ENV=development`. Auth-skyddad `GET /api/v1/config` skickar
+`allowPastBookings` med `Cache-Control: no-store`; frontend laddar detta utan
+localStorage-cache vid auth-init. API:t blockerar annars nya historiska bokningar
+och flytt till andra historiska datum, men bevarar redigering av ologgade bokningar
+på ursprungligt datum. Loggade bokningar är alltid skrivskyddade.
+
 ---
 
 ## Kommandon

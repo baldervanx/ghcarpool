@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/test/mocks';
 import store, {
@@ -89,6 +89,55 @@ describe('BookTrip scenarios', () => {
   beforeEach(() => {
     navMock.mockReset();
     seedBaseStore();
+  });
+
+  it('rejects a new historical booking without test mode, even if the date input is bypassed', async () => {
+    const calls = captureBookingRequests();
+    const { container } = render(
+      <Provider store={store}><MemoryRouter><BookTrip /></MemoryRouter></Provider>,
+    );
+    const input = container.querySelector('input[type="date"]');
+    expect(input).toHaveAttribute('min', format(new Date(), 'yyyy-MM-dd'));
+    fireEvent.change(input, { target: { value: format(addDays(new Date(), -3), 'yyyy-MM-dd') } });
+    const page = new BookTripPage();
+    await page.selectStart('08', '00');
+    await page.selectEnd('09', '00');
+    await page.setDistance('10');
+    await page.submit();
+    expect(await screen.findByText('Nya bokningar får inte ligga före dagens datum')).toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+    expect(navMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['single', 'recurring', 'multi-day'])('creates historical %s bookings in test mode', async kind => {
+    store.dispatch(setAuthState({ ...store.getState().auth, allowPastBookings: true }));
+    const calls = captureBookingRequests();
+    const start = addDays(new Date(), -7);
+    const end = addDays(start, 2);
+    const { container } = render(
+      <Provider store={store}><MemoryRouter initialEntries={[{
+        pathname: '/book-trip', state: { car: 'car1', date: start },
+      }]}><BookTrip /></MemoryRouter></Provider>,
+    );
+    expect(container.querySelector('input[type="date"]')).not.toHaveAttribute('min');
+    expect(screen.getByRole('status')).toHaveTextContent('Testläge');
+    const page = new BookTripPage();
+    if (kind === 'recurring') {
+      await page.toggleRecurring();
+      await page.selectRecurringDay((start.getDay() + 6) % 7);
+      await page.setEndDate(format(end, 'yyyy-MM-dd'));
+    } else if (kind === 'multi-day') {
+      await page.toggleMultiDay();
+      await page.setEndDate(format(end, 'yyyy-MM-dd'));
+    }
+    await page.selectStart('08', '00');
+    await page.selectEnd('09', '00');
+    await page.setDistance('10');
+    await page.submit();
+    await waitFor(() => expect(navMock).toHaveBeenCalled());
+    expect(calls).toHaveLength(kind === 'multi-day' ? 3 : 1);
+    expect(calls[0]).toMatchObject({ date: format(start, 'yyyy-MM-dd') });
+    expect(calls.every(call => (call as { date: string }).date < format(new Date(), 'yyyy-MM-dd'))).toBe(true);
   });
 
   it('creates a simple booking and persists it via REST', async () => {

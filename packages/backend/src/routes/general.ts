@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../db/prisma';
 import { requireAuth } from '../middleware/auth';
+import { allowsPastBookings } from '../lib/booking-policy';
 import {
   serializeUser,
   serializeCar,
@@ -12,6 +13,11 @@ const router = Router();
 
 // All routes require auth
 router.use(requireAuth);
+
+// Runtime capabilities must not be cached across environments.
+router.get('/config', (_req, res) => {
+  res.set('Cache-Control', 'no-store').json({ allowPastBookings: allowsPastBookings() });
+});
 
 // GET /api/v1/users
 router.get('/users', async (_req, res) => {

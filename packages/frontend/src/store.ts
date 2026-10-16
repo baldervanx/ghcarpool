@@ -101,6 +101,7 @@ export const fetchAuthState = createAsyncThunk(
             }
 
             const user = response as { id: string; email: string; isAdmin: boolean };
+            const config = await api.get<{ allowPastBookings: boolean }>('/config');
             const users = await dispatch(fetchUsers()).unwrap();
             await Promise.all([
                 dispatch(fetchCars()),
@@ -118,8 +119,10 @@ export const fetchAuthState = createAsyncThunk(
                 },
                 isMember: Boolean(matchedUser),
                 loading: false,
+                allowPastBookings: config.allowPastBookings === true,
             }));
-        } catch {
+        } catch (error) {
+            console.error('Session initialization failed:', error);
             dispatch(setAuthState({ user: null, isMember: false, loading: false }));
         }
     }
@@ -127,6 +130,7 @@ export const fetchAuthState = createAsyncThunk(
 
 // Auth Slice
 interface AuthState {
+    allowPastBookings?: boolean;
     user: {
         uid: string;
         email: string;
@@ -142,11 +146,12 @@ const authSlice = createSlice({
     initialState: {
         user: null,
         isMember: false,
-        loading: true
+        loading: true,
+        allowPastBookings: false,
     } as AuthState,
     reducers: {
         setAuthState: (state, action: PayloadAction<AuthState>) => {
-            return { ...state, ...action.payload };
+            return { ...state, ...action.payload, allowPastBookings: action.payload.allowPastBookings === true };
         }
     },
     extraReducers: (builder) => {

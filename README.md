@@ -215,6 +215,27 @@ pnpm dev:frontend
 
 Vite proxar automatiskt `/api/*` till `http://localhost:3001`.
 
+### Testläge för bokningar bakåt i tiden
+
+Lägg till följande i `packages/backend/.env` och starta om backend:
+
+```dotenv
+NODE_ENV=development
+ALLOW_PAST_BOOKINGS=true
+```
+
+Ladda om sidan efter ändringen. Bokningsformuläret och bokningsöversikten visar
+en testlägesindikator och tillåter nya bokningar före dagens datum, även
+återkommande bokningar och flerdagarsbokningar. Bokningarna sparas som vanligt
+i den konfigurerade databasen; använd en separat utvecklingsdatabas.
+
+Flaggan är avstängd som standard och ignoreras om `NODE_ENV` inte är exakt
+`development`, även i produktion. Backend skickar läget via ett icke-cachat
+`GET /api/v1/config`; ingen frontend-miljövariabel eller ombyggnad behövs.
+Utan testläge avvisar API:t nya bokningar och flytt till andra historiska datum.
+Befintliga ologgade bokningar kan fortfarande redigeras på sitt ursprungliga datum.
+Loggade bokningar är skrivskyddade även i testläge.
+
 ### Sätta lösenord på en användare (dev)
 
 ```bash
@@ -234,6 +255,7 @@ pnpm exec ts-node src/scripts/set-password.ts user@example.com lösenord123
 | `SESSION_SECRET` | Ja | Hemlig nyckel för express-session (min 32 tecken) |
 | `PORT` | Nej | HTTP-port, default `3001` |
 | `NODE_ENV` | Nej | `development` eller `production` |
+| `ALLOW_PAST_BOOKINGS` | Nej | `true` tillåter historiska testbokningar endast med `NODE_ENV=development`; default avstängt |
 | `FRONTEND_URL` | Produktion: Ja | Publik origin; dev-CORS default `http://localhost:5173` |
 | `TRUST_PROXY` | Nej | Default `false`; betrodd proxy-IP/CIDR eller fast hop count |
 | `COOKIE_SECURE` | Nej | `true` vid publik HTTPS; default `false` |

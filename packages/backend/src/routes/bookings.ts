@@ -7,6 +7,7 @@ import { serializeDateCarBooking, serializeDestination } from '../lib/serializer
 import { subscribe, unsubscribe } from '../lib/sse';
 import { bookingInclude as dcbInclude, touchBookingParents, publishBookingParent } from '../lib/booking-events';
 import { lockRecurrences, isCalendarDate, isRecurringDays, recurrenceWeekday } from '../lib/recurrence';
+import { canBookDate } from '../lib/booking-policy';
 
 const router = Router();
 router.use(requireAuth);
@@ -142,6 +143,14 @@ router.post('/', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'endTime måste vara större än startTime' });
     return;
   }
+  if (!isCalendarDate(date)) {
+    res.status(400).json({ error: 'Ogiltigt bokningsdatum' });
+    return;
+  }
+  if (!existingBookingId && !canBookDate(date)) {
+    res.status(400).json({ error: 'Nya bokningar får inte ligga före dagens datum' });
+    return;
+  }
   if (existingBookingId && !existingParentId) {
     res.status(400).json({ error: 'existingParentId krävs vid ändring av bokning' });
     return;
@@ -183,6 +192,9 @@ router.post('/', async (req: Request, res: Response) => {
       }
       if (existingBooking?.logged) {
         throw mutationError('Loggad bokning kan inte ändras', 409);
+      }
+      if (!canBookDate(date, existingBooking?.parent.date)) {
+        throw mutationError('Bokningar får inte flyttas till ett annat datum före dagens datum', 400);
       }
       const resolvedRecurrenceId = recurrenceId === undefined
         ? existingBooking?.recurrenceId ?? null

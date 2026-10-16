@@ -111,6 +111,7 @@ export const handlers = [
   http.get('/api/v1/auth/config', () => HttpResponse.json({ local: true, google: false, oidc: false })),
 
   // Generella resurser
+  http.get('/api/v1/config',       () => HttpResponse.json({ allowPastBookings: false })),
   http.get('/api/v1/users',        () => HttpResponse.json(TEST_USERS)),
   http.get('/api/v1/cars',         () => HttpResponse.json(TEST_CARS)),
   http.get('/api/v1/destinations', () => HttpResponse.json(TEST_DESTINATIONS)),

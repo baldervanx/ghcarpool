@@ -12,15 +12,15 @@ Making ghcarpool ready for production deployment requires a few additional steps
 
 
 Test scenarios:
-1. Previous booking of another user not logged on the same car. The user should be warned that there is an unlogged previous booking on the home page. (working - but warning does not mention which car!)
-2. Previous booking of another user not logged on the same car. The user should be warned that there is an unlogged previous booking on the register-trip page. (not working!)
-3. There is a past booking of the same user on any car. The user should be warned that there is an unlogged booking on the home page. (working)
-4. A multi-day booking is logged. All bookings in the series should be marked as logged. (working)
-5. A repeated booking is logged. Only the current booking should be marked as logged. (working)
-6. It shall be possible to edit a past booking that hasn't been logged. (not working! - past bookings are read only)
-7. It shall be possible to log someone else's booking. (working)
-8. When logging someone else's booking (current user is not in the list of users), the user should be warned that they are logging someone else's booking. (not working!)
-9. A car is booked several times on the same day. The user should be warned about an unlogged booking _after_ the booking time of the previous booking ended. (not working!)
+1. Previous booking of another user not logged on the car booked by current user. The user should be warned that there is an unlogged previous booking on the home page. (not working!!)
+2. Previous booking of another user not logged on the car booked by current user. The user should be warned that there is an unlogged previous booking on the register-trip page. (not working!!)
+3. There is a past booking of the current user on any car. The user should be warned that there is an unlogged booking on the home page. (working!)
+4. A multi-day booking is logged. All bookings in the series should be marked as logged. (working!)
+5. A repeated booking is logged. Only the current booking should be marked as logged. (working!)
+6. It shall be possible to edit a past booking that hasn't been logged. (working!)
+7. It shall be possible to log someone else's booking. (working!)
+8. When logging someone else's booking (current user is not in the list of users), the user should be warned that they are logging someone else's booking. (working! - message could be better "Du loggar bokning åt <namn>")
+9. A car is booked several times on the same day. The user should be warned about an unlogged booking _after_ the booking time of the previous booking ended. (working!)
 
 Ideas for future improvements:
 1. Two-way sync with firebase. Only for bookings, recurrences, date-car-bookings and trips.
@@ -36,6 +36,6 @@ Ideas for future improvements:
 4. Test-mode that can inject test data into the database. This is useful for testing the frontend without having to create test data manually. 
    The test data should be removed after the test is done. The test-mode should be activated by an environment variable, not by a code change.
 5. Develop MCP-interface that can be used by an AI agent to book and log trips. A chat-interface could be added to the home page to test it.
-   Warnings and similar feedback is even more important in this case.
-   
+   Warnings and similar feedback is even more important in this case. 
 6. Cars should be extended with a range-field that can be used to calculate if a car can be booked for a trip or not. Winter degradation must be another field, as it is less for some cars.
+7. Multi-languange support. The frontend should be able to switch between languages. The backend should be able to provide translations for all messages, warnings and errors. Investigate the best way to implement this (translations in file or in database).

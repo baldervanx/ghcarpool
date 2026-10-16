@@ -26,8 +26,8 @@ it('leaves existing auth routes mounted', async () => {
   expect(res.type).toBe('application/json');
 });
 
-it.each(['/api/v1/bookings/stream', '/api/v1/trips/stream'])(
-  'keeps SSE endpoint %s session-protected', async url => {
+it.each(['/api/v1/bookings/stream', '/api/v1/trips/stream', '/api/v1/config'])(
+  'keeps endpoint %s session-protected', async url => {
     const res = await request(app).get(url).set('Accept', 'text/event-stream');
     expect(res.status).toBe(401);
     expect(res.type).toBe('application/json');

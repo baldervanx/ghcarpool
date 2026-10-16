@@ -29,6 +29,12 @@ let creator: request.Agent;
 let admin: request.Agent;
 const subscriptions: ReturnType<typeof subscribe>[] = [];
 
+beforeEach(() => {
+  jest.replaceProperty(process, 'env', {
+    ...process.env, NODE_ENV: 'development', ALLOW_PAST_BOOKINGS: 'true',
+  });
+});
+
 beforeAll(async () => {
   await assertBookingTestDatabase();
   const passwordHash = await bcrypt.hash('booking-test-password', 4);
@@ -46,6 +52,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  jest.restoreAllMocks();
   subscriptions.splice(0).forEach(unsubscribe);
   await prisma.dateCarBooking.deleteMany({ where: { carId: { in: carIds } } });
   await prisma.recurrence.deleteMany({ where: { id: { startsWith: prefix } } });
